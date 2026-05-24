@@ -1,0 +1,135 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --sat: env(safe-area-inset-top);
+  --sab: env(safe-area-inset-bottom);
+  --sal: env(safe-area-inset-left);
+  --sar: env(safe-area-inset-right);
+}
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html {
+    /* Prevent text size adjustment on orientation change (iOS) */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+    /* Prevent rubber-band scroll at body level */
+    overscroll-behavior: none;
+  }
+
+  /* Prevent Safari auto-zoom on input focus */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+@layer utilities {
+  /* Safe area padding helpers */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .pl-safe {
+    padding-left: env(safe-area-inset-left);
+  }
+  .pr-safe {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  /* Bottom nav sits above home indicator */
+  .bottom-safe {
+    bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Scrollable containers with touch momentum */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Prevent scroll bleed from child into parent (for bottom sheets) */
+  .overscroll-contain {
+    overscroll-behavior: contain;
+  }
+
+  /* Minimum Apple HIG tap target 44×44pt */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Hide scrollbar but keep scroll functionality */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Bottom sheet animation */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+
+.sheet-enter {
+  animation: slideUp 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+.sheet-exit {
+  animation: slideDown 0.25s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* Skeleton loading shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f0f0 25%,
+    #e0e0e0 50%,
+    #f0f0f0 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

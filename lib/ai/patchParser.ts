@@ -1,0 +1,106 @@
+import { ItineraryPatchSchema, AIPlansArraySchema, type ItineraryPatch, type AIPlan } from '@/lib/types/patch'
+import { ItinerarySchema, type Itinerary } from '@/lib/types/itinerary'
+
+export function extractPatch(text: string): ItineraryPatch | null {
+  const match = text.match(/<patch>([\s\S]*?)<\/patch>/)
+  if (!match) return null
+
+  try {
+    const cleaned = match[1].trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    const raw = JSON.parse(cleaned)
+    const result = ItineraryPatchSchema.safeParse(raw)
+    if (!result.success) {
+      console.error('[patchParser] Patch validation failed:', result.error.flatten())
+      return null
+    }
+    return result.data
+  } catch (err) {
+    console.error('[patchParser] JSON parse error:', err)
+    return null
+  }
+}
+
+function tryParseItinerary(candidate: string): Itinerary | null {
+  const cleaned = candidate.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  try {
+    const raw = JSON.parse(cleaned)
+    const result = ItinerarySchema.safeParse(raw)
+    if (!result.success) {
+      console.error('[patchParser] Itinerary validation issues:', JSON.stringify(
+        result.error.issues.map(i => ({ path: i.path.join('.'), msg: i.message, code: i.code }))
+      ))
+      return null
+    }
+    return result.data
+  } catch {
+    return null
+  }
+}
+
+export function extractItinerary(text: string): Itinerary | null {
+  // Primary: look for <itinerary>...</itinerary> XML tag
+  const xmlMatch = text.match(/<itinerary>([\s\S]*?)<\/itinerary>/)
+  if (xmlMatch) {
+    const result = tryParseItinerary(xmlMatch[1])
+    if (result) return result
+  }
+
+  // Fallback: try to find a raw JSON object with "metadata" and "days" fields
+  // (handles MiniMax which may not output XML tags)
+  const jsonMatch = text.match(/\{[\s\S]*"metadata"[\s\S]*"days"[\s\S]*\}/)
+  if (jsonMatch) {
+    // Try to extract valid JSON — find the outermost balanced braces
+    let depth = 0, start = -1, end = -1
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') { if (depth === 0) start = i; depth++ }
+      else if (text[i] === '}') { depth--; if (depth === 0) { end = i; break } }
+    }
+    if (start !== -1 && end !== -1) {
+      const result = tryParseItinerary(text.slice(start, end + 1))
+      if (result) {
+        console.log('[patchParser] Extracted itinerary from raw JSON (no XML tag)')
+        return result
+      }
+    }
+  }
+
+  return null
+}
+
+export function stripPatchTag(text: string): string {
+  return text.replace(/<patch>[\s\S]*?<\/patch>/g, '').trim()
+}
+
+/**
+ * 解析 <plans>[...]</plans> 標籤，回傳 AIPlan 陣列
+ */
+export function extractPlans(text: string): AIPlan[] | null {
+  const match = text.match(/<plans>([\s\S]*?)<\/plans>/)
+  if (!match) return null
+
+  try {
+    const cleaned = match[1].trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    const raw = JSON.parse(cleaned)
+    console.log('[patchParser] Plans raw type:', typeof raw, Array.isArray(raw) ? 'isArray len=' + raw.length : 'notArray', 'keys:', typeof raw === 'object' && raw !== null ? Object.keys(raw).slice(0, 5) : 'n/a')
+    if (Array.isArray(raw) && raw.length > 0) {
+      console.log('[patchParser] Plans[0] keys:', Object.keys(raw[0]).join(','))
+    }
+    const result = AIPlansArraySchema.safeParse(raw)
+    if (!result.success) {
+      console.error('[patchParser] Plans validation failed:', JSON.stringify(result.error.flatten()))
+      console.error('[patchParser] Plans raw[0]:', JSON.stringify(raw[0] ?? raw).slice(0, 300))
+      return null
+    }
+    return result.data
+  } catch (err) {
+    console.error('[patchParser] Plans JSON parse error:', err)
+    return null
+  }
+}
+
+/**
+ * 移除 <plans> 標籤，只保留說明文字
+ */
+export function stripPlansTag(text: string): string {
+  return text.replace(/<plans>[\s\S]*?<\/plans>/g, '').trim()
+}
