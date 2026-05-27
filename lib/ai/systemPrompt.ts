@@ -274,6 +274,81 @@ ${PATCH_SCHEMA_DOCS}
 }
 
 /**
+ * 行程調整模式（Gemini 專用）
+ * Gemini 對格式的遵循需要更明確的英文指示，特別是禁止在 <plans> 內使用 markdown
+ */
+export function buildAdjustPromptGemini(itinerary: Itinerary, numPlans: 1 | 2 | 3 = 3): string {
+  const planCountInstruction = numPlans === 1
+    ? 'Output EXACTLY 1 plan (planIndex: 1 only).'
+    : numPlans === 2
+      ? 'Output EXACTLY 2 plans (planIndex: 1 and 2 only).'
+      : 'Output EXACTLY 3 plans (planIndex: 1, 2, and 3).'
+
+  return `你是一位專業的繁體中文旅遊規劃助手。請根據使用者需求調整以下行程：
+
+<current_itinerary>
+${JSON.stringify(itinerary, null, 2)}
+</current_itinerary>
+
+== MANDATORY OUTPUT FORMAT ==
+
+Step 1: Write 2-3 sentences in 繁體中文 analyzing the user's request.
+
+Step 2: Output the <plans> block. ${planCountInstruction}
+
+CRITICAL RULES for <plans> block:
+- The content inside <plans>...</plans> must be a PURE JSON array
+- NO markdown code fences (no \`\`\`json or \`\`\`) anywhere inside <plans>
+- NO comments inside JSON
+- NO trailing commas
+- All string values must use double quotes
+- patchId must be exactly 8 alphanumeric characters (e.g. "aB3kP9xZ")
+- Activity id must be exactly 8 alphanumeric characters
+- dayIndex is 0-based (first day = 0)
+- Time format: "HH:MM" (24-hour)
+- proposedBy must be "ai"
+
+<plans>
+[
+  {
+    "planIndex": 1,
+    "title": "方案一：簡短標題",
+    "description": "具體說明調整內容（2-3句繁體中文）",
+    "rationale": "推薦原因（1-2句繁體中文）",
+    "comparison": [
+      { "item": "第1天下午", "before": "原活動名稱", "after": "新活動名稱" }
+    ],
+    "patch": {
+      "patchId": "aB3kP9xZ",
+      "description": "繁體中文摘要",
+      "ops": [
+        { "op": "add_activity", "dayIndex": 0, "payload": { "id": "cD5eF7gH", "type": "sightseeing", "title": "活動名稱", "startTime": "14:00", "endTime": "16:00", "bookingRequired": false } }
+      ],
+      "proposedBy": "ai"
+    }
+  }
+]
+</plans>
+
+== PATCH OPS REFERENCE ==
+- add_activity: { "op": "add_activity", "dayIndex": N, "payload": { Activity } }
+- remove_activity: { "op": "remove_activity", "dayIndex": N, "activityId": "id" }
+- update_activity: { "op": "update_activity", "dayIndex": N, "activityId": "id", "payload": { partial Activity } }
+- update_day: { "op": "update_day", "dayIndex": N, "payload": { "theme": "...", "activities": [...全天活動陣列] } }
+- set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } or null }
+
+Activity required fields: id(8chars), type, title, startTime, bookingRequired
+Activity optional fields: endTime, description, cost
+
+== TIME RULES ==
+- Never schedule activities with overlapping times on the same day
+- Account for travel time between locations
+- Mountain areas need extra 30-60 min up/down
+
+${PATCH_SCHEMA_DOCS}`
+}
+
+/**
  * 咨詢服務模式：AI 只提供建議文字，完全不修改行程
  */
 export function buildConsultPrompt(itinerary: Itinerary): string {

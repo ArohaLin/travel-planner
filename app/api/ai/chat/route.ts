@@ -1,6 +1,6 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
-import { buildAdjustPrompt, buildAdjustPromptMinimax, buildConsultPrompt } from '@/lib/ai/systemPrompt'
+import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
@@ -102,7 +102,9 @@ export async function POST(request: Request) {
     ? buildConsultPrompt(itinerary)
     : modelProvider === 'minimax'
       ? buildAdjustPromptMinimax(itinerary)
-      : buildAdjustPrompt(itinerary, numPlans)  // Claude & Gemini share same prompt
+      : modelProvider === 'gemini'
+        ? buildAdjustPromptGemini(itinerary, numPlans)
+        : buildAdjustPrompt(itinerary, numPlans)
 
   const historyMessages = (history ?? []).map((m: { role: string; content: string }) => ({
     role: m.role as 'user' | 'assistant',

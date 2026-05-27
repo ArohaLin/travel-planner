@@ -79,7 +79,14 @@ export function extractPlans(text: string): AIPlan[] | null {
   if (!match) return null
 
   try {
-    const cleaned = match[1].trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    let cleaned = match[1].trim()
+    // 移除整體 markdown code fence（Gemini 有時會包 ```json ... ```）
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    // 移除 JSON 內部的行尾 trailing comma（Gemini 常見問題）
+    cleaned = cleaned.replace(/,(\s*[}\]])/g, '$1')
+    // 移除 JSON 字串以外的 JavaScript 風格注解
+    cleaned = cleaned.replace(/\/\/[^\n"]*/g, '')
+
     const raw = JSON.parse(cleaned)
     console.log('[patchParser] Plans raw type:', typeof raw, Array.isArray(raw) ? 'isArray len=' + raw.length : 'notArray', 'keys:', typeof raw === 'object' && raw !== null ? Object.keys(raw).slice(0, 5) : 'n/a')
     if (Array.isArray(raw) && raw.length > 0) {
