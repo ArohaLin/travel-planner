@@ -42,6 +42,6 @@ export function getGeminiClient(): GoogleGenerativeAI {
 
 export const MODEL_CLAUDE = 'claude-sonnet-4-6'
 export const MODEL_MINIMAX = 'minimaxai/minimax-m2.7'
-export const MODEL_GEMINI = 'gemini-2.0-flash'
+export const MODEL_GEMINI = 'gemini-3.5-flash'
 
 export type ModelProvider = 'claude' | 'minimax' | 'gemini'
