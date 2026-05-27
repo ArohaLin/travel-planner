@@ -176,7 +176,7 @@ export async function POST(request: Request) {
 
           const chat = model.startChat({
             history: geminiHistory,
-            generationConfig: { maxOutputTokens: 8192 },
+            generationConfig: { maxOutputTokens: 32768 },
           })
 
           const result = await chat.sendMessageStream(userMessage)

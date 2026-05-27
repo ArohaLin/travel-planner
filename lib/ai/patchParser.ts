@@ -75,7 +75,29 @@ export function stripPatchTag(text: string): string {
  * 解析 <plans>[...]</plans> 標籤，回傳 AIPlan 陣列
  */
 export function extractPlans(text: string): AIPlan[] | null {
-  const match = text.match(/<plans>([\s\S]*?)<\/plans>/)
+  // 優先找完整的 <plans>...</plans>
+  let match = text.match(/<plans>([\s\S]*?)<\/plans>/)
+
+  // 若找不到（輸出被截斷，缺少 </plans>），嘗試從 <plans> 到結尾修復
+  if (!match && text.includes('<plans>')) {
+    const start = text.indexOf('<plans>') + '<plans>'.length
+    let partial = text.slice(start).trim()
+    // 移除 code fence
+    partial = partial.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+    // 嘗試找最後一個完整的 } 閉合位置，補上 ]
+    const lastBrace = partial.lastIndexOf('}')
+    if (lastBrace !== -1) {
+      const candidate = partial.slice(0, lastBrace + 1)
+      // 計算 [ 和 ] 數量，補齊缺少的 ]
+      const openBrackets = (candidate.match(/\[/g) || []).length
+      const closeBrackets = (candidate.match(/\]/g) || []).length
+      const missing = ']'.repeat(Math.max(0, openBrackets - closeBrackets))
+      const repaired = candidate + missing
+      match = [null as any, repaired] as RegExpMatchArray
+      console.log('[patchParser] Repaired truncated <plans>, length:', repaired.length)
+    }
+  }
+
   if (!match) return null
 
   try {
