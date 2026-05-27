@@ -12,7 +12,7 @@ export function useModelPreference() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved === 'claude' || saved === 'minimax') {
+      if (saved === 'claude' || saved === 'minimax' || saved === 'gemini') {
         setModelProviderState(saved)
       }
     } catch {

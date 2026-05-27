@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { getAnthropicClient, getNvidiaClient, MODEL_CLAUDE, MODEL_MINIMAX } from '@/lib/ai/client'
+import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
 import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
 import type { ModelProvider } from '@/lib/ai/client'
@@ -74,6 +74,19 @@ export async function POST(request: Request) {
         const delta = chunk.choices[0]?.delta?.content
         if (delta) text += delta
       }
+    } else if (modelProvider === 'gemini') {
+      // ── Gemini via Google Generative AI SDK ──────────────────────────────
+      const gemini = getGeminiClient()
+      const model = gemini.getGenerativeModel({
+        model: MODEL_GEMINI,
+        generationConfig: { maxOutputTokens: 8192 },
+      })
+      const result = await model.generateContentStream(prompt)
+      for await (const chunk of result.stream) {
+        const delta = chunk.text()
+        if (delta) text += delta
+      }
+      console.log('[generate] Gemini text_len:', text.length)
     } else {
       // ── Claude via Anthropic SDK ─────────────────────────────────────────
       const anthropic = getAnthropicClient()

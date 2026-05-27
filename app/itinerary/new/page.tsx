@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { COMMON_CURRENCIES, getCurrencyName } from '@/lib/utils/currency'
 import type { MemberProfile } from '@/lib/types/itinerary'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
+import clsx from 'clsx'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,7 @@ export default function NewItineraryPage() {
           style: selectedStyles,
           totalBudget: budget ? parseInt(budget) : undefined,
           specialRequests: specialRequests.trim() || undefined,
-          modelProvider: 'claude', // generate always uses Claude; MiniMax available in chat
+          modelProvider,
         }),
       })
       const data = await res.json()
@@ -285,17 +286,46 @@ export default function NewItineraryPage() {
             <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
           )}
 
-          {/* 模型說明 — 建立行程固定使用 Claude，對話可切換 MiniMax */}
+          {/* 模型選擇 */}
           {!loading && (
             <div className="bg-white rounded-2xl border border-gray-100 p-4">
               <p className="text-xs font-medium text-gray-500 mb-2">AI 模型</p>
-              <div className="flex items-center gap-3 px-1">
-                <span className="text-lg">✦</span>
-                <div>
-                  <p className="text-sm font-semibold text-purple-700">Claude (Anthropic Sonnet)</p>
-                  <p className="text-[10px] text-gray-400">行程建立使用 Claude；進入行程後可切換 MiniMax 進行對話調整</p>
-                </div>
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                <button
+                  onClick={() => setModelProvider('claude')}
+                  className={clsx(
+                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
+                    modelProvider === 'claude'
+                      ? 'bg-white text-purple-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  ✦ Claude
+                </button>
+                <button
+                  onClick={() => setModelProvider('gemini')}
+                  className={clsx(
+                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
+                    modelProvider === 'gemini'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  ✦ Gemini
+                </button>
+                <button
+                  onClick={() => setModelProvider('minimax')}
+                  className={clsx(
+                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
+                    modelProvider === 'minimax'
+                      ? 'bg-white text-emerald-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  ⚡ MiniMax
+                </button>
               </div>
+              <p className="text-[10px] text-gray-400 mt-2 px-1">建立行程與對話調整均使用所選模型</p>
             </div>
           )}
 

@@ -1,5 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { getAnthropicClient, getNvidiaClient, MODEL_CLAUDE, MODEL_MINIMAX } from '@/lib/ai/client'
+import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
 import type { Itinerary } from '@/lib/types/itinerary'
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     ? buildConsultPrompt(itinerary)
     : modelProvider === 'minimax'
       ? buildAdjustPromptMinimax(itinerary)
-      : buildAdjustPrompt(itinerary, numPlans)
+      : buildAdjustPrompt(itinerary, numPlans)  // Claude & Gemini share same prompt
 
   const historyMessages = (history ?? []).map((m: { role: string; content: string }) => ({
     role: m.role as 'user' | 'assistant',
@@ -134,6 +134,33 @@ export async function POST(request: Request) {
 
           for await (const chunk of openaiStream) {
             const delta = chunk.choices[0]?.delta?.content
+            if (delta) {
+              fullResponse += delta
+              controller.enqueue(enc.encode(delta))
+            }
+          }
+        } else if (modelProvider === 'gemini') {
+          // ── Gemini via Google Generative AI SDK ───────────────────────────
+          const gemini = getGeminiClient()
+          const model = gemini.getGenerativeModel({
+            model: MODEL_GEMINI,
+            systemInstruction: systemPrompt,
+          })
+
+          // Gemini 的 history 格式：role 用 'user' / 'model'
+          const geminiHistory = historyMessages.map((m: { role: string; content: string }) => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          }))
+
+          const chat = model.startChat({
+            history: geminiHistory,
+            generationConfig: { maxOutputTokens: 8192 },
+          })
+
+          const result = await chat.sendMessageStream(userMessage)
+          for await (const chunk of result.stream) {
+            const delta = chunk.text()
             if (delta) {
               fullResponse += delta
               controller.enqueue(enc.encode(delta))

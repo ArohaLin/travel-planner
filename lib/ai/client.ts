@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI from 'openai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ─── Anthropic (Claude) ──────────────────────────────────────────────────────
 
@@ -26,9 +27,21 @@ export function getNvidiaClient(): OpenAI {
   return nvidiaClient
 }
 
+// ─── Google Gemini ────────────────────────────────────────────────────────────
+
+let geminiClient: GoogleGenerativeAI | null = null
+
+export function getGeminiClient(): GoogleGenerativeAI {
+  if (!geminiClient) {
+    geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
+  }
+  return geminiClient
+}
+
 // ─── Model constants ─────────────────────────────────────────────────────────
 
 export const MODEL_CLAUDE = 'claude-sonnet-4-6'
 export const MODEL_MINIMAX = 'minimaxai/minimax-m2.7'
+export const MODEL_GEMINI = 'gemini-2.0-flash'
 
-export type ModelProvider = 'claude' | 'minimax'
+export type ModelProvider = 'claude' | 'minimax' | 'gemini'

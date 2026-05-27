@@ -272,6 +272,18 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
               >
                 ⚡ MiniMax
               </button>
+              <button
+                onClick={() => setModelProvider('gemini')}
+                disabled={isStreaming}
+                className={clsx(
+                  'px-2.5 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-50',
+                  modelProvider === 'gemini'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                )}
+              >
+                ✦ Gemini
+              </button>
             </div>
           </div>
         </div>
