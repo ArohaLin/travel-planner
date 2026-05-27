@@ -147,11 +147,30 @@ export async function POST(request: Request) {
             systemInstruction: systemPrompt,
           })
 
-          // Gemini 的 history 格式：role 用 'user' / 'model'
-          const geminiHistory = historyMessages.map((m: { role: string; content: string }) => ({
-            role: m.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: m.content }],
-          }))
+          // Gemini history 必須嚴格交替 user/model，且第一筆必須是 user、最後一筆必須是 model
+          type GeminiRole = 'user' | 'model'
+          type GeminiMsg = { role: GeminiRole; parts: { text: string }[] }
+
+          const mergedHistory: GeminiMsg[] = []
+          for (const m of historyMessages) {
+            const role: GeminiRole = m.role === 'assistant' ? 'model' : 'user'
+            const text = m.content || '...'
+            const last = mergedHistory[mergedHistory.length - 1]
+            if (last && last.role === role) {
+              // 合併連續相同 role 的訊息
+              last.parts[0].text += '\n' + text
+            } else {
+              mergedHistory.push({ role, parts: [{ text }] })
+            }
+          }
+
+          // 第一筆必須是 user；最後一筆必須是 model（否則移除）
+          const geminiHistory = mergedHistory
+            .filter((_, i) => i === 0 ? mergedHistory[0].role === 'user' : true)
+            .filter((m, i, arr) => i < arr.length - 1 || m.role === 'model')
+
+          console.log('[chat] Gemini history length:', geminiHistory.length,
+            '| roles:', geminiHistory.map(m => m.role).join(','))
 
           const chat = model.startChat({
             history: geminiHistory,
@@ -166,6 +185,9 @@ export async function POST(request: Request) {
               controller.enqueue(enc.encode(delta))
             }
           }
+          console.log('[chat] Gemini fullResponse length:', fullResponse.length,
+            '| has <plans>:', fullResponse.includes('<plans>'),
+            '| first 200:', fullResponse.slice(0, 200))
         } else {
           // ── Claude via Anthropic SDK ───────────────────────────────────────
           const anthropic = getAnthropicClient()
@@ -211,7 +233,20 @@ export async function POST(request: Request) {
       }
 
       // Display text = strip <plans> tags
-      const displayText = stripPlansTag(fullResponse)
+      // 若 fullResponse 為空（模型沒有回應），給予提示訊息
+      if (!fullResponse.trim()) {
+        fullResponse = mode === 'adjust'
+          ? '[AI 未回應，請再試一次或切換其他模型]'
+          : '[AI 未回應，請再試一次]'
+        controller.enqueue(enc.encode(fullResponse))
+      }
+
+      let displayText = stripPlansTag(fullResponse)
+
+      // 若 adjust 模式下 displayText 為空但有 plans，補上提示文字
+      if (!displayText && mode === 'adjust') {
+        displayText = '已根據您的需求生成調整方案，請從下方選擇。'
+      }
 
       // Save assistant message
       await db.from('chat_messages').insert({
