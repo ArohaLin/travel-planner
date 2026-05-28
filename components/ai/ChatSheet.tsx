@@ -170,9 +170,15 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
     showToast('已取消調整', 'info')
   }
 
-  async function handleRegenerate(supplementText: string) {
+  async function handleRegenerate(supplementText: string, prevPlan: AIPlan) {
+    // 把前次方案標題+描述一起帶給 AI，讓 AI 知道之前提供了什麼，可以更精準地調整
+    const planContext = `\n\n（上次方案：「${prevPlan.title}」— ${prevPlan.description}）`
     clearLastPlans()
-    await sendMessage(`請根據補充說明重新提供 3 個調整方案：${supplementText}`, itineraryId, modelProvider)
+    await sendMessage(
+      `請根據以下補充說明，重新提供 1 個最佳調整方案：${supplementText}${planContext}`,
+      itineraryId,
+      modelProvider,
+    )
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -389,17 +395,22 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
         )}
         </div>
 
-        {/* Plan Selector（固定在訊息區下方）*/}
+        {/* Plan Selector（固定在訊息區下方，可捲動）*/}
         {lastPlans && lastPlans.length > 0 && (
-          <PlanSelector
-            plans={lastPlans}
-            itineraryId={itineraryId}
-            onPlanSelected={handlePlanSelected}
-            onCancel={handleCancelPlans}
-            onRegenerate={handleRegenerate}
-            isApplying={isApplying}
-            applyingIndex={applyingIndex}
-          />
+          <div
+            className="overflow-y-auto flex-shrink-0 scroll-touch"
+            style={{ maxHeight: 'calc(82dvh - 220px)' }}
+          >
+            <PlanSelector
+              plans={lastPlans}
+              itineraryId={itineraryId}
+              onPlanSelected={handlePlanSelected}
+              onCancel={handleCancelPlans}
+              onRegenerate={handleRegenerate}
+              isApplying={isApplying}
+              applyingIndex={applyingIndex}
+            />
+          </div>
         )}
 
         {/* Input area */}
@@ -415,7 +426,7 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
               onKeyDown={handleKeyDown}
               placeholder={
                 chatMode === 'adjust'
-                  ? '輸入調整需求，AI 將提供 3 個方案...'
+                  ? '輸入調整需求，AI 將提供最佳方案...'
                   : '輸入旅遊問題，AI 提供建議...'
               }
               rows={1}

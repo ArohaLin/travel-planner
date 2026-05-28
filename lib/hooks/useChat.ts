@@ -69,12 +69,25 @@ export function useChat(itineraryId: string): UseChatReturn {
 
       setThreadId(tid)
 
-      const { data: msgs } = await supabase
+      // 最多載入 30 則，並以字元數為二次過濾（保留最新訊息）
+      const DISPLAY_MSG_LIMIT = 30
+      const DISPLAY_CHAR_LIMIT = 20000 // 超過就從最舊的開始丟棄
+
+      const { data: allMsgs } = await supabase
         .from('chat_messages')
         .select('*')
         .eq('thread_id', tid)
         .order('created_at', { ascending: true })
-        .limit(50)
+        .limit(DISPLAY_MSG_LIMIT)
+
+      // 字元數限制：從最新往最舊累加，超過就捨棄
+      let charSum = 0
+      const msgs = (allMsgs ?? []).slice().reverse().filter(m => {
+        const len = (m.content ?? '').length
+        if (charSum + len > DISPLAY_CHAR_LIMIT) return false
+        charSum += len
+        return true
+      }).reverse()
 
       if (cancelled) return
       const typedMsgs = (msgs as ChatMessage[]) ?? []

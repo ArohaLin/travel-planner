@@ -62,6 +62,7 @@ export function buildSystemPrompt(itinerary: Itinerary): string {
 /**
  * 行程調整模式（MiniMax 專用）：更嚴格的格式要求
  * MiniMax 需要更明確的英文格式指示才能輸出結構化 JSON
+ * 永遠只輸出 1 個最佳方案
  */
 export function buildAdjustPromptMinimax(itinerary: Itinerary): string {
   return `你是一位專業的繁體中文旅遊規劃助手，協助用戶規劃完美的旅遊行程。
@@ -74,11 +75,11 @@ ${JSON.stringify(itinerary, null, 2)}
 
 == CRITICAL OUTPUT FORMAT REQUIREMENT ==
 
-You MUST output EXACTLY 3 adjustment plans using the <plans> XML tag.
+You MUST output EXACTLY 1 best adjustment plan using the <plans> XML tag.
 Your response structure MUST be:
 
 1. Two or three sentences in Traditional Chinese (繁體中文) analyzing the user's request
-2. Then IMMEDIATELY output the <plans> block with valid JSON
+2. Then IMMEDIATELY output the <plans> block with valid JSON (array with exactly 1 object)
 
 The <plans> block format (DO NOT deviate):
 
@@ -86,9 +87,9 @@ The <plans> block format (DO NOT deviate):
 [
   {
     "planIndex": 1,
-    "title": "方案一：標題（10字內）",
+    "title": "最佳方案：標題（10字內）",
     "description": "如何調整：具體說明變更內容（2-3句）",
-    "rationale": "推薦原因：適合哪類旅客（1-2句）",
+    "rationale": "推薦原因：為何這是最佳選擇（1-2句）",
     "comparison": [
       { "item": "第1天下午", "before": "原有活動名稱 14:00–16:00", "after": "新活動名稱 14:00–16:00" }
     ],
@@ -100,37 +101,21 @@ The <plans> block format (DO NOT deviate):
       ],
       "proposedBy": "ai"
     }
-  },
-  {
-    "planIndex": 2,
-    "title": "方案二：標題",
-    "description": "...",
-    "rationale": "...",
-    "comparison": [{ "item": "...", "before": "...", "after": "..." }],
-    "patch": { "patchId": "def67890", "description": "...", "ops": [...], "proposedBy": "ai" }
-  },
-  {
-    "planIndex": 3,
-    "title": "方案三：標題",
-    "description": "...",
-    "rationale": "...",
-    "comparison": [{ "item": "...", "before": "...", "after": "..." }],
-    "patch": { "patchId": "ghi11223", "description": "...", "ops": [...], "proposedBy": "ai" }
   }
 ]
 </plans>
 
 == RULES ==
 - Output language: 繁體中文 (Traditional Chinese) for all title/description/rationale fields
-- The <plans> tag content must be VALID JSON array — no comments, no trailing commas
-- Each patch.patchId must be exactly 8 alphanumeric characters (e.g. aB3kP9xZ)
+- The <plans> tag content must be VALID JSON array with EXACTLY 1 element — no comments, no trailing commas
+- patch.patchId must be exactly 8 alphanumeric characters (e.g. aB3kP9xZ)
 - Activity id fields must be exactly 8 alphanumeric characters
 - dayIndex is 0-based (day 1 = dayIndex 0)
 - Time format: "HH:MM" (24-hour)
 - DO NOT output a single <patch> tag
 - DO NOT output the full itinerary JSON
 - DO NOT skip the <plans> block — it is MANDATORY
-- The 3 plans should offer clearly different options (e.g. relaxed vs. packed vs. special experience)
+- Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
 
 == CRITICAL: TIME CONFLICT PREVENTION ==
 Before scheduling ANY new activity on a day, you MUST:
@@ -159,15 +144,10 @@ ${PATCH_SCHEMA_DOCS}`
 }
 
 /**
- * 行程調整模式：AI 必須提供方案（<plans> 格式）
- * numPlans: server 端依修改範圍決定輸出幾個方案（1=大規模, 2=中等, 3=小調整）
+ * 行程調整模式：AI 永遠只輸出 1 個最佳方案（<plans> 格式）
  */
-export function buildAdjustPrompt(itinerary: Itinerary, numPlans: 1 | 2 | 3 = 3): string {
-  const planCountInstruction = numPlans === 1
-    ? `**你只能輸出剛好 1 個方案（planIndex: 1）。這是大規模行程重構，超過 1 個方案會超出 token 限制造成輸出不完整。**`
-    : numPlans === 2
-      ? `**你只能輸出剛好 2 個方案（planIndex: 1 和 2）。不要輸出第 3 個方案。**`
-      : `**你輸出 3 個不同方案（planIndex: 1、2、3）。**`
+export function buildAdjustPrompt(itinerary: Itinerary): string {
+  const planCountInstruction = `**你只能輸出剛好 1 個最佳方案（planIndex: 1）。不要輸出多個方案。**`
   return `你是一位專業的繁體中文旅遊規劃助手，協助用戶規劃完美的旅遊行程。
 
 目前行程資料如下：
@@ -251,9 +231,9 @@ ${PATCH_SCHEMA_DOCS}
 [
   {
     "planIndex": 1,
-    "title": "方案一：簡短標題（10字內）",
+    "title": "最佳方案：簡短標題（10字內）",
     "description": "如何調整：具體說明會做哪些變更（2-3句）",
-    "rationale": "推薦原因：適合哪類旅客，有什麼優點（1-2句）",
+    "rationale": "推薦原因：為何這是最佳選擇（1-2句）",
     "comparison": [
       { "item": "第N天 時段/項目", "before": "調整前狀態（無則寫「無」）", "after": "調整後狀態" }
     ],
@@ -268,7 +248,7 @@ ${PATCH_SCHEMA_DOCS}
 </plans>
 
 注意：
-- <plans> 標籤內只有 JSON 陣列，不要任何其他文字
+- <plans> 標籤內只有 JSON 陣列，陣列中只有 1 個物件，不要任何其他文字
 - comparison 陣列最多 6 條，列出最重要的改動（新增/移除/修改的活動）
 - before/after 用簡短文字說明（不超過 20 字）`
 }
@@ -276,13 +256,10 @@ ${PATCH_SCHEMA_DOCS}
 /**
  * 行程調整模式（Gemini 專用）
  * Gemini 對格式的遵循需要更明確的英文指示，特別是禁止在 <plans> 內使用 markdown
+ * 永遠只輸出 1 個最佳方案
  */
-export function buildAdjustPromptGemini(itinerary: Itinerary, numPlans: 1 | 2 | 3 = 3): string {
-  const planCountInstruction = numPlans === 1
-    ? 'Output EXACTLY 1 plan (planIndex: 1 only).'
-    : numPlans === 2
-      ? 'Output EXACTLY 2 plans (planIndex: 1 and 2 only).'
-      : 'Output EXACTLY 3 plans (planIndex: 1, 2, and 3).'
+export function buildAdjustPromptGemini(itinerary: Itinerary): string {
+  const planCountInstruction = 'Output EXACTLY 1 best plan (planIndex: 1 only). Do NOT output 2 or 3 plans.'
 
   return `你是一位專業的繁體中文旅遊規劃助手。請根據使用者需求調整以下行程：
 

@@ -2,11 +2,26 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
+import { logAIConversation } from '@/lib/ai/logger'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
 
+// ── 歷史記錄限制 ─────────────────────────────────────────────────────────────
+// 從 DB 最多載入幾則（粗略上限）
+const HISTORY_LIMIT = 12
+
+// 送給 AI 的 history 字元上限（依模型，避免超過 context window）
+// 1 中文字 ≈ 1.5 token；為 system prompt + 回覆保留充分空間
+const MAX_HISTORY_CHARS: Record<ModelProvider, number> = {
+  claude:   30000,  // Claude 200k context，非常寬裕
+  gemini:   30000,  // Gemini 1M context，非常寬裕
+  minimax:   6000,  // MiniMax 32k tokens，保守限制
+}
+
 export async function POST(request: Request) {
+  const startTs = Date.now()
+
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -59,32 +74,13 @@ export async function POST(request: Request) {
 
   const itinerary = row.data as Itinerary
 
-  // Determine how many plan options to request based on the scope of changes
-  // Count unique days mentioned to avoid token overflow with too many plans
-  function estimateAffectedDays(msg: string, totalDays: number): number {
-    // Count all unique day numbers mentioned: 第1天, 第2天, etc.
-    const dayMentions = (msg.match(/第\s*(\d+)\s*天/g) ?? [])
-    const uniqueDayNums = new Set(dayMentions.map(d => d.replace(/[^0-9]/g, '')))
-    if (uniqueDayNums.size > 0) return uniqueDayNums.size
-    // Keywords suggesting full restructure
-    if (/全部|整個|所有|重新規劃|大改/.test(msg)) return totalDays
-    return 1 // default: small change
-  }
-
-  const totalDays = itinerary.days?.length ?? 1
-  const affectedDays = estimateAffectedDays(userMessage, totalDays)
-  const numPlans: 1 | 2 | 3 = affectedDays >= 5 ? 1 : affectedDays >= 3 ? 2 : 3
-
-  console.log(`[chat] affectedDays: ${affectedDays}, numPlans: ${numPlans}`)
-
-  // Load recent messages for context (keep short to avoid token overflow with large itineraries)
-  const historyLimit = affectedDays >= 4 ? 6 : 14
-  const { data: history } = await db
+  // Load recent messages for context
+  const { data: historyRaw } = await db
     .from('chat_messages')
     .select('role, content')
     .eq('thread_id', threadId)
     .order('created_at', { ascending: false })
-    .limit(historyLimit)
+    .limit(HISTORY_LIMIT)
     .then((r: { data: { role: string; content: string }[] | null; error: unknown }) => ({ ...r, data: r.data?.reverse() }))
 
   // Save the user message immediately
@@ -97,25 +93,43 @@ export async function POST(request: Request) {
       content: userMessage,
     })
 
-  // Build system prompt based on mode and model
+  // Build system prompt based on mode and model (always 1 plan for adjust mode)
   const systemPrompt = mode === 'consult'
     ? buildConsultPrompt(itinerary)
     : modelProvider === 'minimax'
       ? buildAdjustPromptMinimax(itinerary)
       : modelProvider === 'gemini'
-        ? buildAdjustPromptGemini(itinerary, numPlans)
-        : buildAdjustPrompt(itinerary, numPlans)
+        ? buildAdjustPromptGemini(itinerary)
+        : buildAdjustPrompt(itinerary)
 
-  const historyMessages = (history ?? []).map((m: { role: string; content: string }) => ({
+  // ── Context-window-aware history trimming ─────────────────────────────────
+  // 將 raw history 轉為 messages，再依字元預算從最新往最舊篩選
+  const allHistory = (historyRaw ?? []).map((m: { role: string; content: string }) => ({
     role: m.role as 'user' | 'assistant',
-    content: m.content,
+    content: m.content ?? '',
   }))
+
+  const historyCharLimit = MAX_HISTORY_CHARS[modelProvider] ?? 10000
+  let usedHistoryChars = 0
+  const historyMessages = [...allHistory].reverse().filter(m => {
+    const len = m.content.length
+    if (usedHistoryChars + len > historyCharLimit) return false
+    usedHistoryChars += len
+    return true
+  }).reverse()
+
+  console.log(
+    `[chat] model=${modelProvider} mode=${mode}`,
+    `| history: ${allHistory.length} msgs → trimmed to ${historyMessages.length}`,
+    `| historyChars=${usedHistoryChars}/${historyCharLimit}`,
+  )
 
   let fullResponse = ''
 
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder()
+      let streamError: string | undefined
 
       try {
         if (modelProvider === 'minimax') {
@@ -215,6 +229,7 @@ export async function POST(request: Request) {
         }
       } catch (err) {
         console.error('[chat] Stream error:', err)
+        streamError = String(err)
         controller.enqueue(enc.encode('\n\n[發生錯誤，請再試一次]'))
       }
 
@@ -234,7 +249,6 @@ export async function POST(request: Request) {
         }
       }
 
-      // Display text = strip <plans> tags
       // 若 fullResponse 為空（模型沒有回應），給予提示訊息
       if (!fullResponse.trim()) {
         fullResponse = mode === 'adjust'
@@ -247,8 +261,25 @@ export async function POST(request: Request) {
 
       // 若 adjust 模式下 displayText 為空但有 plans，補上提示文字
       if (!displayText && mode === 'adjust') {
-        displayText = '已根據您的需求生成調整方案，請從下方選擇。'
+        displayText = '已根據您的需求生成調整方案，請確認是否套用。'
       }
+
+      // ── 寫入 AI 對話 log ────────────────────────────────────────────────────
+      logAIConversation({
+        timestamp: new Date().toISOString(),
+        mode,
+        modelProvider,
+        itineraryId,
+        systemPromptBytes: systemPrompt.length,
+        historyCount: historyMessages.length,
+        historyChars: usedHistoryChars,
+        userMessage,
+        fullResponse,
+        parsedPlans: !!(plans && plans.length > 0),
+        planCount: plans?.length ?? 0,
+        durationMs: Date.now() - startTs,
+        error: streamError,
+      })
 
       // Save assistant message
       await db.from('chat_messages').insert({

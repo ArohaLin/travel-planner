@@ -35,6 +35,9 @@ yarn-error.log*
 # Claude Code 本機設定
 .claude/
 
+# AI 對話 log（本地 debug 用，不上傳）
+/logs/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
