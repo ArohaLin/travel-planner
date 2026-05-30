@@ -22,10 +22,14 @@ import { DayTabs } from '@/components/itinerary/DayTabs'
 import { DayView } from '@/components/itinerary/DayView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
+import { AINotesSheet } from '@/components/ai/AINotesSheet'
+import { AddNoteModal } from '@/components/ai/AddNoteModal'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
 import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { MapView } from '@/components/map/MapView'
 import { useToast } from '@/components/ui/Toast'
+import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
+import { useModelPreference } from '@/lib/hooks/useModelPreference'
 
 type ViewMode = 'list' | 'map'
 
@@ -60,6 +64,9 @@ export function ItineraryClient({
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false)
+  const [addNoteFor, setAddNoteFor] = useState<Activity | null>(null)
+  const [submittingNotes, setSubmittingNotes] = useState(false)
   const [localMetadata, setLocalMetadata] = useState<TripMetadata | null>(null)
   const [modal, setModal] = useState<ModalState>({ open: false })
   const [saving, setSaving] = useState(false)
@@ -74,6 +81,8 @@ export function ItineraryClient({
 
   const onlineUsers = usePresence(itineraryId, currentUser, activeDay)
   const chat = useChat(itineraryId)
+  const aiNotes = useAINotes(itineraryId)
+  const { modelProvider } = useModelPreference()
   const { showToast } = useToast()
 
   const currentDayData = displayItinerary.days[activeDay]
@@ -82,6 +91,27 @@ export function ItineraryClient({
   const handleMetadataUpdated = useCallback((newMetadata: TripMetadata) => {
     setLocalMetadata(newMetadata)
   }, [])
+
+  // ── AI 備註：送出 → 走現有 adjust 對話 → 開啟 ChatSheet 看方案 ──────────────
+  async function handleSubmitNotes(overallThought: string) {
+    if (aiNotes.notes.length === 0 || submittingNotes) return
+    const message = composeNotesMessage(aiNotes.notes, overallThought)
+    setSubmittingNotes(true)
+    try {
+      // 確保是行程調整模式
+      if (chat.chatMode !== 'adjust') chat.setChatMode('adjust')
+      // 關閉備註 Sheet、打開對話 Sheet（讓使用者看到 AI 方案）
+      setNotesSheetOpen(false)
+      setChatOpen(true)
+      await chat.sendMessage(message, itineraryId, modelProvider)
+      // 送出成功後清空備註籃（方案套用與否由使用者在 ChatSheet 決定）
+      aiNotes.clearNotes()
+    } catch {
+      showToast('送出備註失敗，請再試一次', 'error')
+    } finally {
+      setSubmittingNotes(false)
+    }
+  }
 
   // ── Submit a patch to the server ──────────────────────────────────────────
   async function submitPatch(patch: ItineraryPatch): Promise<boolean> {
@@ -393,6 +423,8 @@ export function ItineraryClient({
               onDeleteActivity={handleDeleteActivity}
               onAddActivity={handleAddActivity}
               onActivityClick={setDetailActivity}
+              onAddNote={userCanEdit ? setAddNoteFor : undefined}
+              hasNoteFor={aiNotes.hasNoteFor}
             />
           )}
         </>
@@ -420,6 +452,24 @@ export function ItineraryClient({
         </Link>
       </div>
 
+      {/* 備註籃 FAB（在「和 AI 說」上方，有備註時才顯示）*/}
+      {canChat(role) && aiNotes.notes.length > 0 && (
+        <button
+          onClick={() => setNotesSheetOpen(true)}
+          className="fixed z-30 bg-amber-500 text-white rounded-full shadow-lg flex items-center gap-2 px-5 py-3 font-medium text-sm active:scale-95 transition-transform"
+          style={{
+            bottom: 'calc(76px + env(safe-area-inset-bottom))',
+            right: '16px',
+          }}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 14v5a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h5" />
+          </svg>
+          備註籃 {aiNotes.notes.length}
+        </button>
+      )}
+
       {/* Chat FAB */}
       {canChat(role) && (
         <button
@@ -435,6 +485,37 @@ export function ItineraryClient({
           </svg>
           和 AI 說
         </button>
+      )}
+
+      {/* 單景點備註輸入框 */}
+      {addNoteFor && (
+        <AddNoteModal
+          activityTitle={addNoteFor.title}
+          onSave={(note) => {
+            aiNotes.addNote({
+              activityId: addNoteFor.id,
+              dayIndex: activeDay,
+              activityTitle: addNoteFor.title,
+              note,
+            })
+            setAddNoteFor(null)
+            showToast('已加入備註籃', 'success')
+          }}
+          onClose={() => setAddNoteFor(null)}
+        />
+      )}
+
+      {/* 備註管理 Sheet */}
+      {notesSheetOpen && canChat(role) && (
+        <AINotesSheet
+          notes={aiNotes.notes}
+          isSubmitting={submittingNotes}
+          onUpdateNote={aiNotes.updateNote}
+          onRemoveNote={aiNotes.removeNote}
+          onClearAll={aiNotes.clearNotes}
+          onSubmit={handleSubmitNotes}
+          onClose={() => setNotesSheetOpen(false)}
+        />
       )}
 
       {/* Chat bottom sheet */}

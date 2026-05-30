@@ -141,9 +141,10 @@ export async function POST(request: Request) {
       try {
         if (isLocalAI()) {
           // ── 本機測試模式：用 claude -p 取代 API（不計費，非串流）──────────
+          // 本機模式不傳歷史（claude -p 是單次生成，歷史會讓 prompt 過大導致逾時）
           const text = await runLocalClaude({
             systemPrompt,
-            history: historyMessages,
+            history: [],
             userMessage,
           })
           fullResponse = text

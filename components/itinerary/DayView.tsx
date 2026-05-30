@@ -11,6 +11,9 @@ interface DayViewProps {
   onDeleteActivity?: (activity: Activity) => void
   onAddActivity?: (insertAfterIndex: number) => void
   onActivityClick?: (activity: Activity) => void
+  onAddNote?: (activity: Activity) => void
+  /** 判斷某活動是否已有 AI 備註 */
+  hasNoteFor?: (activityId: string) => boolean
 }
 
 /** 小型「+」插入按鈕，顯示在兩個活動之間或最後一個活動之後 */
@@ -30,7 +33,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick }: DayViewProps) {
+export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor }: DayViewProps) {
   return (
     <div className="px-4 pt-4">
       {/* Day header */}
@@ -72,6 +75,8 @@ export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivi
                 onEdit={onEditActivity}
                 onDelete={onDeleteActivity}
                 onClick={onActivityClick}
+                onAddNote={onAddNote}
+                hasNote={hasNoteFor?.(activity.id)}
               />
               {/* 在每個活動之後插入的按鈕 */}
               {canEdit && (

@@ -29,7 +29,7 @@ export function runLocalClaude(params: {
   /** 逾時毫秒，預設 120 秒 */
   timeoutMs?: number
 }): Promise<string> {
-  const { systemPrompt, history = [], userMessage, timeoutMs = 180000 } = params
+  const { systemPrompt, history = [], userMessage, timeoutMs = 240000 } = params
 
   // 將對話組合成單一 prompt 字串（claude -p 透過 stdin 讀取）
   const historyText = history

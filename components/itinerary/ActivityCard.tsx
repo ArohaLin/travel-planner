@@ -52,9 +52,13 @@ interface ActivityCardProps {
   onDelete?: (activity: Activity) => void
   /** 點擊卡片開啟詳情視窗 */
   onClick?: (activity: Activity) => void
+  /** 點擊「AI 備註」鈕 */
+  onAddNote?: (activity: Activity) => void
+  /** 此活動是否已有 AI 備註（顯示提示點） */
+  hasNote?: boolean
 }
 
-export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick }: ActivityCardProps) {
+export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick, onAddNote, hasNote }: ActivityCardProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
 
   return (
@@ -78,6 +82,21 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
         {/* Edit / Delete buttons (top-right, only when canEdit) */}
         {canEdit && (
           <div className="absolute top-2.5 right-2.5 flex gap-1">
+            {onAddNote && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onAddNote(activity) }}
+                title="AI 備註"
+                className="relative w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-amber-600 hover:bg-white shadow-sm transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 14v5a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h5" />
+                </svg>
+                {hasNote && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border border-white" />
+                )}
+              </button>
+            )}
             <button
               onClick={(e) => { e.stopPropagation(); onEdit?.(activity) }}
               title="編輯活動"
