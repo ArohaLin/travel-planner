@@ -3,6 +3,8 @@
 > 路徑：`/Users/aroha/travel-planner`
 > 語言：所有回覆、commit 訊息、UI 文字一律使用**繁體中文**
 > 最後更新：2026-05-24
+> GitHub：https://github.com/ArohaLin/travel-planner
+> 正式網址：https://travel-planner-delta-blond.vercel.app
 
 ---
 
@@ -29,9 +31,12 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `ANTHROPIC_API_KEY`
+- `APP_ANTHROPIC_KEY`        ← 注意：不是 ANTHROPIC_API_KEY
+- `NVIDIA_API_KEY`           ← 備用 AI 模型（MiniMax）
 - `INVITE_JWT_SECRET`
 - `NEXT_PUBLIC_APP_URL`
+
+以上環境變數均已同步設定至 Vercel Production 環境。
 
 ---
 
@@ -73,6 +78,16 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - `public/manifest.json`（standalone 模式）
 - Icon 設計：黃→藍漸層背景 + 地球 + 白色飛機 + 咖啡色復古行李箱 + 閃爍星星
 - 重新產生 icon：`node scripts/generate-icon-v3.mjs`
+
+### ✅ 地圖功能（Google Maps）
+- 套件：`@vis.gl/react-google-maps`，需環境變數 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`（已在 .env.local，**尚未加到 Vercel**）
+- 行程頁 `行程 / 地圖` Toggle 切換（`ItineraryClient.tsx`）
+- 預設顯示目前選中那天，頂部天數 chips 可複選看多天
+- 每個景點數字 marker（①②③…）依行程順序，連接路線折線（含方向箭頭）；住宿為「宿」方形 marker
+- 多天模式不同天用不同顏色（DAY_COLORS）
+- 座標策略：開地圖時前端用 Maps JS Geocoder 查座標 → 存回 DB 的 `location` 欄位（`/api/itinerary/[id]/geo`），下次開啟即時顯示
+- 相關檔案：`components/map/MapView.tsx`、`components/map/ItineraryMap.tsx`、`lib/maps/geocode.ts`
+- ⚠️ 部署前必須在 Vercel Production 環境新增 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`，否則地圖不顯示
 
 ---
 
@@ -281,10 +296,20 @@ npm run dev
 # 重新產生 PWA icon
 node scripts/generate-icon-v3.mjs
 
-# 部署
-vercel --prod
+# 部署（git push 即自動觸發 Vercel 重新 build）
+git add .
+git commit -m "修改說明"
+git push    # → Vercel 自動偵測 main branch push 並重新部署
 
-# Supabase schema 更新（需在 Supabase Dashboard SQL Editor 執行）
+# Supabase schema 更新（需在 Supabase Dashboard SQL Editor 手動執行）
 # supabase/migration_phase2.sql
 # supabase/migration_bug_reports.sql
 ```
+
+## 安全性紀錄
+
+| 日期 | 修正項目 |
+|------|---------|
+| 2026-05-24 | `INVITE_JWT_SECRET` 移除 fallback 預設值，缺少時直接拋錯 |
+| 2026-05-24 | `middleware.ts` matcher 移除 `api/` 排除，涵蓋所有路由 |
+| 2026-05-24 | `.claude/` 本機設定資料夾加入 `.gitignore` |

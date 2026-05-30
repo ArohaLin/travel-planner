@@ -23,7 +23,10 @@ import { DayView } from '@/components/itinerary/DayView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
+import { MapView } from '@/components/map/MapView'
 import { useToast } from '@/components/ui/Toast'
+
+type ViewMode = 'list' | 'map'
 
 interface ItineraryClientProps {
   itineraryId: string
@@ -53,6 +56,7 @@ export function ItineraryClient({
 }: ItineraryClientProps) {
   const [activeDay, setActiveDay] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [localMetadata, setLocalMetadata] = useState<TripMetadata | null>(null)
   const [modal, setModal] = useState<ModalState>({ open: false })
   const [saving, setSaving] = useState(false)
@@ -337,21 +341,55 @@ export function ItineraryClient({
         onMetadataUpdated={handleMetadataUpdated}
       />
 
-      <DayTabs
-        days={displayItinerary.days}
-        activeDay={activeDay}
-        onDayChange={setActiveDay}
-      />
+      {/* 行程 / 地圖 切換 */}
+      <div className="px-4 pt-3">
+        <div className="flex gap-1 bg-gray-100 rounded-full p-1 w-max">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+              viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            行程
+          </button>
+          <button
+            onClick={() => setViewMode('map')}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+              viewMode === 'map' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            地圖
+          </button>
+        </div>
+      </div>
 
-      {currentDayData && (
-        <DayView
-          day={currentDayData}
-          currency={displayItinerary.metadata.currency}
-          canEdit={userCanEdit}
-          onEditActivity={handleEditActivity}
-          onDeleteActivity={handleDeleteActivity}
-          onAddActivity={handleAddActivity}
-        />
+      {viewMode === 'list' ? (
+        <>
+          <DayTabs
+            days={displayItinerary.days}
+            activeDay={activeDay}
+            onDayChange={setActiveDay}
+          />
+
+          {currentDayData && (
+            <DayView
+              day={currentDayData}
+              currency={displayItinerary.metadata.currency}
+              canEdit={userCanEdit}
+              onEditActivity={handleEditActivity}
+              onDeleteActivity={handleDeleteActivity}
+              onAddActivity={handleAddActivity}
+            />
+          )}
+        </>
+      ) : (
+        <div className="mt-3" style={{ height: 'calc(100dvh - 240px)' }}>
+          <MapView
+            itinerary={displayItinerary}
+            itineraryId={itineraryId}
+            initialDayIndex={activeDay}
+          />
+        </div>
       )}
 
       {/* History link */}
