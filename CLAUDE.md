@@ -306,6 +306,30 @@ git push    # → Vercel 自動偵測 main branch push 並重新部署
 # supabase/migration_bug_reports.sql
 ```
 
+## 部署工作流程（CLI 已可用，Claude 可自動執行）
+
+**重要：`gh` 與 `vercel` CLI 皆已登入可用（vercel 帳號 `arohalin`，專案 `travel-planner`）。**
+使用者要求「部署」時，Claude 可直接執行以下流程，**無需請使用者手動操作**：
+
+1. **部署前檢查**
+   - `git branch --show-current` 確認在 `main`（若不在，先切換或建分支）
+   - 若這次有新增 `NEXT_PUBLIC_*` 環境變數 → 先確認 Vercel 已設定：
+     `vercel env ls production | grep <KEY>`（沒有才用 `printf '值' | vercel env add <KEY> production` 加入；勿重複加，重複用 `vercel env rm <KEY> production --yes` 清掉）
+2. **commit + push**
+   - `git add <相關檔案>`（勿 `git add .`，以免帶入雜物）
+   - commit（訊息用繁體中文，結尾加 `Co-Authored-By: Claude ...`）
+   - `git push origin main` → 觸發 Vercel 自動部署
+3. **觸發/確認生產部署**
+   - 若只改環境變數沒改程式碼，需 `git commit --allow-empty` 或 `vercel --prod --yes` 觸發重建
+   - `vercel ls travel-planner` 查最新部署狀態為 `● Ready`
+4. **部署後驗證**
+   - `curl -s -o /dev/null -w "%{http_code}" https://travel-planner-delta-blond.vercel.app/login`（預期 200）
+   - 若有改到 `NEXT_PUBLIC_*` → 確認已編譯進前端：
+     `curl -s "https://travel-planner-delta-blond.vercel.app/login" | grep -o "<值前綴>"`
+
+> 正式網址：https://travel-planner-delta-blond.vercel.app
+> 注意：`.vercel/` 已在 `.gitignore`，勿提交。
+
 ## 安全性紀錄
 
 | 日期 | 修正項目 |

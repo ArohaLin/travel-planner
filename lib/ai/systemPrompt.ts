@@ -449,7 +449,11 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "title": "活動名稱",
           "startTime": "HH:MM",
           "endTime": "HH:MM",
-          "bookingRequired": false
+          "bookingRequired": false,
+          "intro": "景點/活動介紹，以及為何這樣安排（2-3句）",
+          "transport": "如何前往：交通方式與大約時間（1-2句）",
+          "recommendation": "推薦重點：必看必玩、當地飲食或名產（1-2句）",
+          "tips": "貼心提醒：注意事項、最佳時段或省錢小撇步（1句，選填）"
         }
       ],
       "accommodation": {
@@ -482,6 +486,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 ## 規則
 1. dayIndex 從 0 開始（第一天=0，第二天=1，以此類推）
 2. 每天安排 4-5 個活動（含用餐），保持簡潔
+2-1. **每個活動都要填寫 intro、transport、recommendation 三個詳情欄位**（tips 選填），內容具體實用、繁體中文，作為使用者點擊卡片後查看的詳細資訊
 3. activity.id、accommodation.id、cityTransport.id 一律用 8 字元英數字（如 aB3kP9xZ）
 4. 有城市間移動（包含中途城市）才填 cityTransports，否則用空陣列 []
 5. **cityTransports 的 departureTime / arrivalTime 必須嚴格用 ISO 8601 格式，例如："2026-06-01T08:00:00.000Z"（結尾必須有 .000Z）**

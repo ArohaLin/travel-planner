@@ -21,7 +21,7 @@ export function DayTabs({ days, activeDay, onDayChange }: DayTabsProps) {
   }, [activeDay])
 
   return (
-    <div className="bg-white border-b border-gray-100 sticky top-[73px] z-10">
+    <div className="bg-white border-b border-gray-100 sticky top-[60px] z-10">
       <div
         ref={scrollRef}
         className="flex overflow-x-auto no-scrollbar scroll-touch px-4 gap-1 py-2"

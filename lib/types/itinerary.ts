@@ -44,6 +44,15 @@ export const ActivitySchema = z.object({
   }),
   tags: z.array(z.string()).optional(),
   notes: z.string().optional(),
+  // ─── 詳情欄位（選填，用於卡片點擊後的詳情視窗）───
+  /** 景點介紹 / 為何這樣安排 */
+  intro: z.string().optional(),
+  /** 交通方式與時間說明 */
+  transport: z.string().optional(),
+  /** 推薦活動 / 飲食 / 當地名產 */
+  recommendation: z.string().optional(),
+  /** 細節推薦或注意事項 */
+  tips: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

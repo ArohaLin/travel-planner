@@ -23,8 +23,9 @@ const DAY_COLORS = [
 interface MapViewProps {
   itinerary: Itinerary
   itineraryId: string
-  /** 進入地圖時預設顯示的那一天 */
-  initialDayIndex: number
+  /** 目前選取的天（受控，由父層管理以便與行程檢視同步） */
+  selectedDays: number[]
+  onSelectedDaysChange: (days: number[]) => void
 }
 
 /** 判斷 location 是否已有可用座標（非空且非 0,0） */
@@ -56,9 +57,8 @@ interface GeoUpdate {
   geo: GeoLocation
 }
 
-function MapViewInner({ itinerary, itineraryId, initialDayIndex }: MapViewProps) {
+function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChange }: MapViewProps) {
   const geocodingLib = useMapsLibrary('geocoding')
-  const [selectedDays, setSelectedDays] = useState<number[]>([initialDayIndex])
   // 本次 session geocode 得到的座標，key = `${dayIndex}:${target}`
   const [geoCache, setGeoCache] = useState<Record<string, GeoLocation>>({})
   const [geocoding, setGeocoding] = useState(false)
@@ -170,13 +170,12 @@ function MapViewInner({ itinerary, itineraryId, initialDayIndex }: MapViewProps)
   }, [sortedSelected, itinerary, getGeo])
 
   function toggleDay(dayIndex: number) {
-    setSelectedDays((prev) =>
-      prev.includes(dayIndex)
-        ? prev.length === 1
-          ? prev // 至少保留一天
-          : prev.filter((d) => d !== dayIndex)
-        : [...prev, dayIndex],
-    )
+    const next = selectedDays.includes(dayIndex)
+      ? selectedDays.length === 1
+        ? selectedDays // 至少保留一天
+        : selectedDays.filter((d) => d !== dayIndex)
+      : [...selectedDays, dayIndex]
+    onSelectedDaysChange(next)
   }
 
   const hasAnyPoint = mapDays.some((d) => d.points.length > 0)

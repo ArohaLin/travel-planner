@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Map, Marker, InfoWindow, useMap } from '@vis.gl/react-google-maps'
 
 export interface MapPoint {
@@ -25,6 +25,58 @@ interface ItineraryMapProps {
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
 
+/**
+ * 將座標極近（含完全相同，例如 geocode 落到同一個市中心）的 marker 散開，
+ * 避免完全疊住看不到數字。以群組中心為圓心，把同群的點平均分布在小圓上。
+ * 位移量約 30 公尺，不影響實際判讀但能清楚區分。
+ */
+const SAME_SPOT_EPS = 0.0006 // 約 60 公尺內視為「同一點」
+const SPREAD_RADIUS = 0.00028 // 散開半徑，約 30 公尺
+
+function spreadOverlappingPoints(days: MapDay[]): MapDay[] {
+  // 收集所有點（跨天）做整體分群
+  type Ref = { d: number; p: number }
+  const all: { lat: number; lng: number; ref: Ref }[] = []
+  days.forEach((day, d) =>
+    day.points.forEach((pt, p) => all.push({ lat: pt.lat, lng: pt.lng, ref: { d, p } })),
+  )
+
+  const used = new Array(all.length).fill(false)
+  // 複製一份可變座標
+  const moved = days.map((day) => day.points.map((pt) => ({ ...pt })))
+
+  for (let i = 0; i < all.length; i++) {
+    if (used[i]) continue
+    const group = [i]
+    used[i] = true
+    for (let j = i + 1; j < all.length; j++) {
+      if (used[j]) continue
+      if (
+        Math.abs(all[i].lat - all[j].lat) < SAME_SPOT_EPS &&
+        Math.abs(all[i].lng - all[j].lng) < SAME_SPOT_EPS
+      ) {
+        group.push(j)
+        used[j] = true
+      }
+    }
+    if (group.length < 2) continue
+    // 同群多點 → 以群中心為圓心散開
+    const cLat = group.reduce((s, k) => s + all[k].lat, 0) / group.length
+    const cLng = group.reduce((s, k) => s + all[k].lng, 0) / group.length
+    group.forEach((k, idx) => {
+      const angle = (2 * Math.PI * idx) / group.length
+      // 經度位移需依緯度修正，台灣約 cos(23°)≈0.92
+      const dLat = SPREAD_RADIUS * Math.sin(angle)
+      const dLng = (SPREAD_RADIUS * Math.cos(angle)) / Math.cos((cLat * Math.PI) / 180)
+      const { d, p } = all[k].ref
+      moved[d][p].lat = cLat + dLat
+      moved[d][p].lng = cLng + dLng
+    })
+  }
+
+  return days.map((day, d) => ({ ...day, points: moved[d] }))
+}
+
 export function ItineraryMap({ days }: ItineraryMapProps) {
   return (
     <Map
@@ -42,10 +94,11 @@ export function ItineraryMap({ days }: ItineraryMapProps) {
   )
 }
 
-function MapContent({ days }: ItineraryMapProps) {
+function MapContent({ days: rawDays }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
 
+  const days = useMemo(() => spreadOverlappingPoints(rawDays), [rawDays])
   const allPoints = days.flatMap((d) => d.points)
 
   // 自動縮放到所有可見景點

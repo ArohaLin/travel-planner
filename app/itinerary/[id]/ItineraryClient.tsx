@@ -23,6 +23,7 @@ import { DayView } from '@/components/itinerary/DayView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
+import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { MapView } from '@/components/map/MapView'
 import { useToast } from '@/components/ui/Toast'
 
@@ -57,6 +58,8 @@ export function ItineraryClient({
   const [activeDay, setActiveDay] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
+  const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
   const [localMetadata, setLocalMetadata] = useState<TripMetadata | null>(null)
   const [modal, setModal] = useState<ModalState>({ open: false })
   const [saving, setSaving] = useState(false)
@@ -341,11 +344,17 @@ export function ItineraryClient({
         onMetadataUpdated={handleMetadataUpdated}
       />
 
-      {/* 行程 / 地圖 切換 */}
-      <div className="px-4 pt-3">
+      {/* 行程 / 地圖 切換（sticky 置頂） */}
+      <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur px-4 pt-3 pb-2">
         <div className="flex gap-1 bg-gray-100 rounded-full p-1 w-max">
           <button
-            onClick={() => setViewMode('list')}
+            onClick={() => {
+              // 地圖 → 行程：聚焦到地圖目前選取的最早一天
+              if (viewMode === 'map' && mapSelectedDays.length > 0) {
+                setActiveDay(Math.min(...mapSelectedDays))
+              }
+              setViewMode('list')
+            }}
             className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
               viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
@@ -353,7 +362,11 @@ export function ItineraryClient({
             行程
           </button>
           <button
-            onClick={() => setViewMode('map')}
+            onClick={() => {
+              // 行程 → 地圖：同步到目前檢視的那一天
+              setMapSelectedDays([activeDay])
+              setViewMode('map')
+            }}
             className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
               viewMode === 'map' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
@@ -379,6 +392,7 @@ export function ItineraryClient({
               onEditActivity={handleEditActivity}
               onDeleteActivity={handleDeleteActivity}
               onAddActivity={handleAddActivity}
+              onActivityClick={setDetailActivity}
             />
           )}
         </>
@@ -387,7 +401,8 @@ export function ItineraryClient({
           <MapView
             itinerary={displayItinerary}
             itineraryId={itineraryId}
-            initialDayIndex={activeDay}
+            selectedDays={mapSelectedDays}
+            onSelectedDaysChange={setMapSelectedDays}
           />
         </div>
       )}
@@ -442,6 +457,15 @@ export function ItineraryClient({
           }
           onSave={modal.mode === 'edit' ? handleSaveEdit : handleSaveAdd}
           onClose={() => setModal({ open: false })}
+        />
+      )}
+
+      {/* Activity detail modal（點擊卡片開啟） */}
+      {detailActivity && (
+        <ActivityDetailModal
+          activity={detailActivity}
+          dayNumber={activeDay + 1}
+          onClose={() => setDetailActivity(null)}
         />
       )}
 

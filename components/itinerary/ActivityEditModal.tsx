@@ -44,6 +44,10 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
     id: initial?.id ?? nanoid(8),
   }))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // 地址欄位（對應 location.address），與座標一起管理
+  const [address, setAddress] = useState<string>(initial?.location?.address ?? '')
+  // 記住初始地址，用以判斷使用者是否真的改了地址 → 改了則清空座標以重新定位
+  const initialAddress = initial?.location?.address ?? ''
 
   // Sync if initial changes (shouldn't in normal usage, but just in case)
   useEffect(() => {
@@ -101,6 +105,19 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
 
   function handleSave() {
     if (!validate()) return
+
+    // 處理地址 / 座標：
+    // - 地址有改 → 清空舊座標，留下新地址，讓地圖下次自動重新 geocode
+    // - 地址沒改 → 保留原本的 location（含座標）
+    const trimmedAddress = address.trim()
+    const addressChanged = trimmedAddress !== initialAddress.trim()
+    let location = form.location
+    if (addressChanged) {
+      location = trimmedAddress
+        ? { lat: 0, lng: 0, address: trimmedAddress } // 座標歸零 → 觸發重新定位
+        : undefined
+    }
+
     // Clean up empty optional fields
     const cleaned: Activity = {
       ...form,
@@ -108,6 +125,11 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
       description: form.description?.trim() || undefined,
       notes: form.notes?.trim() || undefined,
       endTime: form.endTime?.trim() || undefined,
+      intro: form.intro?.trim() || undefined,
+      transport: form.transport?.trim() || undefined,
+      recommendation: form.recommendation?.trim() || undefined,
+      tips: form.tips?.trim() || undefined,
+      location,
     }
     onSave(cleaned)
   }
@@ -222,6 +244,63 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
               placeholder="活動說明（可省略）"
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
+          </div>
+
+          {/* 詳情欄位 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">介紹 / 安排理由</label>
+            <textarea
+              rows={2}
+              value={form.intro ?? ''}
+              onChange={(e) => set('intro', e.target.value || undefined)}
+              placeholder="景點介紹或為何這樣安排（可省略）"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">交通方式</label>
+            <textarea
+              rows={2}
+              value={form.transport ?? ''}
+              onChange={(e) => set('transport', e.target.value || undefined)}
+              placeholder="如何前往、交通時間（可省略）"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">推薦 / 名產</label>
+            <textarea
+              rows={2}
+              value={form.recommendation ?? ''}
+              onChange={(e) => set('recommendation', e.target.value || undefined)}
+              placeholder="推薦活動、飲食或當地名產（可省略）"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">貼心提醒</label>
+            <textarea
+              rows={2}
+              value={form.tips ?? ''}
+              onChange={(e) => set('tips', e.target.value || undefined)}
+              placeholder="注意事項、最佳時段或小撇步（可省略）"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+
+          {/* Address */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">地點 / 地址</label>
+            <input
+              type="text"
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              placeholder="例：台東縣台東市中山路 100 號（可省略）"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            {address.trim() !== initialAddress.trim() && (
+              <p className="text-xs text-amber-600 mt-1">📍 地址已變更，地圖將自動重新定位</p>
+            )}
           </div>
 
           {/* Notes */}

@@ -1,6 +1,15 @@
 import type { Activity } from '@/lib/types/itinerary'
-import { formatMoney } from '@/lib/utils/currency'
 import { clsx } from 'clsx'
+import { formatDuration } from './ActivityDetailModal'
+
+/** 計算時長（分鐘），無 endTime 回 null */
+function durationMinutes(start: string, end?: string): number | null {
+  if (!end) return null
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const diff = eh * 60 + em - (sh * 60 + sm)
+  return diff > 0 ? diff : null
+}
 
 const TYPE_ICONS: Record<string, string> = {
   sightseeing: '🏛️',
@@ -41,9 +50,13 @@ interface ActivityCardProps {
   canEdit?: boolean
   onEdit?: (activity: Activity) => void
   onDelete?: (activity: Activity) => void
+  /** 點擊卡片開啟詳情視窗 */
+  onClick?: (activity: Activity) => void
 }
 
-export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete }: ActivityCardProps) {
+export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick }: ActivityCardProps) {
+  const dur = durationMinutes(activity.startTime, activity.endTime)
+
   return (
     <div className="flex gap-3">
       {/* Timeline line */}
@@ -52,10 +65,13 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete }: Ac
         {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1" />}
       </div>
 
-      {/* Card */}
+      {/* Card（點擊開詳情） */}
       <div
+        role="button"
+        tabIndex={0}
+        onClick={() => onClick?.(activity)}
         className={clsx(
-          'flex-1 rounded-2xl border p-3 mb-3 relative',
+          'flex-1 rounded-2xl border p-3 mb-3 relative cursor-pointer transition-shadow hover:shadow-md active:scale-[0.99]',
           TYPE_COLORS[activity.type] ?? TYPE_COLORS.other,
         )}
       >
@@ -63,7 +79,7 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete }: Ac
         {canEdit && (
           <div className="absolute top-2.5 right-2.5 flex gap-1">
             <button
-              onClick={() => onEdit?.(activity)}
+              onClick={(e) => { e.stopPropagation(); onEdit?.(activity) }}
               title="編輯活動"
               className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-purple-600 hover:bg-white shadow-sm transition-colors"
             >
@@ -72,7 +88,7 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete }: Ac
               </svg>
             </button>
             <button
-              onClick={() => onDelete?.(activity)}
+              onClick={(e) => { e.stopPropagation(); onDelete?.(activity) }}
               title="刪除活動"
               className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-red-500 hover:bg-white shadow-sm transition-colors"
             >
@@ -83,63 +99,34 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete }: Ac
           </div>
         )}
 
-        {/* Time & Type */}
-        <div className={clsx('flex items-center gap-2 mb-2', canEdit && 'pr-16')}>
+        {/* Time · Duration · Type */}
+        <div className={clsx('flex items-center gap-2 mb-1.5 flex-wrap', canEdit && 'pr-16')}>
           <span className="text-sm font-semibold text-gray-700">
             {activity.startTime}
             {activity.endTime && ` — ${activity.endTime}`}
           </span>
+          {dur !== null && (
+            <span className="text-xs text-purple-500 bg-white/70 px-1.5 py-0.5 rounded-full">
+              {formatDuration(dur)}
+            </span>
+          )}
           <span className="text-xs text-gray-400">{TYPE_LABELS[activity.type]}</span>
         </div>
 
-        {/* Title */}
+        {/* Title + 地點（精簡，其餘移至詳情視窗） */}
         <div className="flex items-start gap-2">
           <span className="text-xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 leading-snug">{activity.title}</h3>
-            {activity.description && (
-              <p className="text-sm text-gray-500 mt-1 leading-relaxed">{activity.description}</p>
-            )}
             {activity.location?.address && (
-              <p className="text-xs text-gray-400 mt-1">📍 {activity.location.address}</p>
+              <p className="text-xs text-gray-400 mt-1 truncate">📍 {activity.location.address}</p>
             )}
           </div>
+          {/* 詳情指示箭頭 */}
+          <svg className="w-4 h-4 text-gray-300 flex-shrink-0 mt-1" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+          </svg>
         </div>
-
-        {/* Tags & Cost */}
-        <div className="flex flex-wrap items-center gap-2 mt-2">
-          {activity.tags?.map((tag) => (
-            <span key={tag} className="text-xs text-gray-500 bg-white/70 px-2 py-0.5 rounded-full">
-              {tag}
-            </span>
-          ))}
-          {activity.cost && (
-            <span className="text-xs text-gray-600 font-medium ml-auto">
-              {formatMoney(activity.cost)}
-            </span>
-          )}
-        </div>
-
-        {/* Booking indicator */}
-        {activity.bookingRequired && (
-          <p className="text-xs text-amber-600 mt-2 flex items-center gap-1">
-            ⚠️ 需要預訂
-            {activity.bookingUrl && (
-              <a
-                href={activity.bookingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                預訂連結
-              </a>
-            )}
-          </p>
-        )}
-
-        {activity.notes && (
-          <p className="text-xs text-gray-400 mt-2 italic">{activity.notes}</p>
-        )}
       </div>
     </div>
   )
