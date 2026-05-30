@@ -306,6 +306,17 @@ git push    # → Vercel 自動偵測 main branch push 並重新部署
 # supabase/migration_bug_reports.sql
 ```
 
+## 本機 AI 測試模式（免費，不走 API）
+
+本機測試時可用 Claude Code 訂閱制取代付費 AI API：
+- `.env.local` 設 `LOCAL_AI=1` → `/api/ai/chat` 與 `/api/ai/generate` 改用 `claude -p`（子程序）生成，不呼叫 Claude/Gemini/MiniMax API、不計費
+- Vercel **未設** `LOCAL_AI` → 自動走原本 API（已確認 production 無此變數）
+- 實作：`lib/ai/localClaude.ts`（`spawn('claude', ['-p','--tools','','--system-prompt', systemPrompt])`，cwd=/tmp）
+- 注意事項：
+  - **不可加 `--bare`**：bare 模式只接受 ANTHROPIC_API_KEY，無法用訂閱制 OAuth 認證
+  - `claude -p` 為非串流，生成完整 JSON 較慢（chat/generate 約 110–120 秒），本機測試可接受
+  - 部署到 Vercel 前無需改任何程式碼（靠環境變數自動切換）；`.env.local` 已在 .gitignore 不會外洩
+
 ## 部署工作流程（CLI 已可用，Claude 可自動執行）
 
 **重要：`gh` 與 `vercel` CLI 皆已登入可用（vercel 帳號 `arohalin`，專案 `travel-planner`）。**

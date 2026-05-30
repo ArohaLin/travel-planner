@@ -3,6 +3,7 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
 import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
+import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import type { ModelProvider } from '@/lib/ai/client'
 
 export async function POST(request: Request) {
@@ -59,7 +60,11 @@ export async function POST(request: Request) {
   try {
     let text = ''
 
-    if (modelProvider === 'minimax') {
+    if (isLocalAI()) {
+      // ── 本機測試模式：用 claude -p 取代 API（不計費）──────────────────────
+      text = await runLocalClaude({ systemPrompt: prompt, userMessage: '請依上述規格輸出完整行程 JSON。' })
+      console.log('[generate] LOCAL_AI text_len:', text.length)
+    } else if (modelProvider === 'minimax') {
       // ── MiniMax via NVIDIA OpenAI-compatible endpoint (streaming to avoid timeout) ──
       const nvidia = getNvidiaClient()
       const stream = await nvidia.chat.completions.create({

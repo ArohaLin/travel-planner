@@ -3,6 +3,7 @@ import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MOD
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
+import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
@@ -130,9 +131,24 @@ export async function POST(request: Request) {
     async start(controller) {
       const enc = new TextEncoder()
       let streamError: string | undefined
+      let closed = false
+      // 安全 enqueue：client 斷線後 controller 已關閉，避免拋 ERR_INVALID_STATE
+      const safeEnqueue = (s: string) => {
+        if (closed) return
+        try { controller.enqueue(enc.encode(s)) } catch { closed = true }
+      }
 
       try {
-        if (modelProvider === 'minimax') {
+        if (isLocalAI()) {
+          // ── 本機測試模式：用 claude -p 取代 API（不計費，非串流）──────────
+          const text = await runLocalClaude({
+            systemPrompt,
+            history: historyMessages,
+            userMessage,
+          })
+          fullResponse = text
+          safeEnqueue(text)
+        } else if (modelProvider === 'minimax') {
           // ── MiniMax via NVIDIA OpenAI-compatible endpoint ──────────────────
           const nvidia = getNvidiaClient()
           const openaiStream = await nvidia.chat.completions.create({
@@ -152,7 +168,7 @@ export async function POST(request: Request) {
             const delta = chunk.choices[0]?.delta?.content
             if (delta) {
               fullResponse += delta
-              controller.enqueue(enc.encode(delta))
+              safeEnqueue(delta)
             }
           }
         } else if (modelProvider === 'gemini') {
@@ -198,7 +214,7 @@ export async function POST(request: Request) {
             const delta = chunk.text()
             if (delta) {
               fullResponse += delta
-              controller.enqueue(enc.encode(delta))
+              safeEnqueue(delta)
             }
           }
           console.log('[chat] Gemini fullResponse length:', fullResponse.length,
@@ -223,14 +239,14 @@ export async function POST(request: Request) {
               event.delta.type === 'text_delta'
             ) {
               fullResponse += event.delta.text
-              controller.enqueue(enc.encode(event.delta.text))
+              safeEnqueue(event.delta.text)
             }
           }
         }
       } catch (err) {
         console.error('[chat] Stream error:', err)
         streamError = String(err)
-        controller.enqueue(enc.encode('\n\n[發生錯誤，請再試一次]'))
+        safeEnqueue('\n\n[發生錯誤，請再試一次]')
       }
 
       // After stream ends: parse plans (adjust mode) or just save (consult mode)
@@ -254,7 +270,7 @@ export async function POST(request: Request) {
         fullResponse = mode === 'adjust'
           ? '[AI 未回應，請再試一次或切換其他模型]'
           : '[AI 未回應，請再試一次]'
-        controller.enqueue(enc.encode(fullResponse))
+        safeEnqueue(fullResponse)
       }
 
       let displayText = stripPlansTag(fullResponse)
@@ -291,10 +307,10 @@ export async function POST(request: Request) {
       })
 
       // Append a marker so the client knows the stream is done
-      controller.enqueue(
-        enc.encode(`\n\n__DONE__${JSON.stringify({ mode, plans })}`)
-      )
-      controller.close()
+      safeEnqueue(`\n\n__DONE__${JSON.stringify({ mode, plans })}`)
+      if (!closed) {
+        try { controller.close() } catch { /* already closed */ }
+      }
     },
   })
 
