@@ -14,7 +14,7 @@ import {
   detectOverlaps,
   type ShiftWarning,
 } from '@/lib/utils/activityTime'
-import type { Itinerary, TripMetadata, Activity } from '@/lib/types/itinerary'
+import type { Itinerary, TripMetadata, Activity, Accommodation } from '@/lib/types/itinerary'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
 import { ItineraryHeader } from '@/components/itinerary/ItineraryHeader'
@@ -26,8 +26,12 @@ import { AINotesSheet } from '@/components/ai/AINotesSheet'
 import { AddNoteModal } from '@/components/ai/AddNoteModal'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
 import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
+import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
 import { MapView } from '@/components/map/MapView'
 import { useToast } from '@/components/ui/Toast'
+import { APIProvider } from '@vis.gl/react-google-maps'
+
+const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 
@@ -64,6 +68,7 @@ export function ItineraryClient({
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
+  const [editAccommodation, setEditAccommodation] = useState<Accommodation | null>(null)
   const [notesSheetOpen, setNotesSheetOpen] = useState(false)
   const [addNoteFor, setAddNoteFor] = useState<Activity | null>(null)
   const [submittingNotes, setSubmittingNotes] = useState(false)
@@ -91,6 +96,21 @@ export function ItineraryClient({
   const handleMetadataUpdated = useCallback((newMetadata: TripMetadata) => {
     setLocalMetadata(newMetadata)
   }, [])
+
+  // ── 住宿編輯 ─────────────────────────────────────────────────────────────────
+  async function handleSaveAccommodation(updated: Accommodation) {
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `手動編輯住宿：${updated.name}`,
+      proposedBy: 'user',
+      ops: [{ op: 'set_day_accommodation', dayIndex: activeDay, payload: updated }],
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      setEditAccommodation(null)
+      showToast(`住宿「${updated.name}」已更新`, 'success')
+    }
+  }
 
   // ── AI 備註：送出 → 走現有 adjust 對話 → 開啟 ChatSheet 看方案 ──────────────
   async function handleSubmitNotes(overallThought: string) {
@@ -357,7 +377,7 @@ export function ItineraryClient({
     return '12:00'
   }
 
-  return (
+  const inner = (
     <div className="min-h-screen bg-gray-50 pb-6">
       <ItineraryHeader
         itinerary={displayItinerary}
@@ -425,6 +445,9 @@ export function ItineraryClient({
               onActivityClick={setDetailActivity}
               onAddNote={userCanEdit ? setAddNoteFor : undefined}
               hasNoteFor={aiNotes.hasNoteFor}
+              onEditAccommodation={userCanEdit ? setEditAccommodation : undefined}
+              onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+              hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
             />
           )}
         </>
@@ -541,6 +564,15 @@ export function ItineraryClient({
         />
       )}
 
+      {/* Accommodation edit modal */}
+      {editAccommodation && (
+        <AccommodationEditModal
+          accommodation={editAccommodation}
+          onSave={handleSaveAccommodation}
+          onClose={() => setEditAccommodation(null)}
+        />
+      )}
+
       {/* Activity detail modal（點擊卡片開啟） */}
       {detailActivity && (
         <ActivityDetailModal
@@ -639,4 +671,8 @@ export function ItineraryClient({
       )}
     </div>
   )
+  // APIProvider 包裹全頁，讓 AddressAutocomplete / MapView 都能用 useMapsLibrary
+  return MAPS_KEY ? (
+    <APIProvider apiKey={MAPS_KEY}>{inner}</APIProvider>
+  ) : inner
 }

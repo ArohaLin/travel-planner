@@ -166,7 +166,10 @@ export async function POST(request: Request) {
           })
 
           for await (const chunk of openaiStream) {
-            const delta = chunk.choices[0]?.delta?.content
+            const choice = chunk.choices[0]
+            // MiniMax M2.7 是推理模型，最終回答在 content；思考過程在 reasoning_content（不輸出）
+            const delta = choice?.delta?.content
+              ?? (choice?.delta as Record<string, unknown>)?.reasoning_content as string | undefined
             if (delta) {
               fullResponse += delta
               safeEnqueue(delta)

@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid'
 import type { Activity, ActivityType } from '@/lib/types/itinerary'
 import { ActivityTypeValues } from '@/lib/types/itinerary'
 import { timeToMinutes, minutesToTime } from '@/lib/utils/activityTime'
+import { AddressAutocomplete } from '@/components/ui/AddressAutocomplete'
 
 const TYPE_LABELS: Record<ActivityType, string> = {
   sightseeing: '🏛️ 觀光',
@@ -291,16 +292,12 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
           {/* Address */}
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">地點 / 地址</label>
-            <input
-              type="text"
+            <AddressAutocomplete
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="例：台東縣台東市中山路 100 號（可省略）"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              onChange={setAddress}
+              placeholder="搜尋地點或輸入地址（可省略）"
+              initialValue={initialAddress}
             />
-            {address.trim() !== initialAddress.trim() && (
-              <p className="text-xs text-amber-600 mt-1">📍 地址已變更，地圖將自動重新定位</p>
-            )}
           </div>
 
           {/* Notes */}

@@ -1,4 +1,4 @@
-import type { ItineraryDay, Activity } from '@/lib/types/itinerary'
+import type { ItineraryDay, Activity, Accommodation } from '@/lib/types/itinerary'
 import { ActivityCard } from './ActivityCard'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
@@ -14,6 +14,9 @@ interface DayViewProps {
   onAddNote?: (activity: Activity) => void
   /** 判斷某活動是否已有 AI 備註 */
   hasNoteFor?: (activityId: string) => boolean
+  onEditAccommodation?: (acc: Accommodation) => void
+  onAddNoteAccommodation?: (acc: Accommodation) => void
+  hasNoteForAccommodation?: boolean
 }
 
 /** 小型「+」插入按鈕，顯示在兩個活動之間或最後一個活動之後 */
@@ -33,7 +36,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor }: DayViewProps) {
+export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation }: DayViewProps) {
   return (
     <div className="px-4 pt-4">
       {/* Day header */}
@@ -92,7 +95,13 @@ export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivi
 
       {/* Accommodation */}
       {day.accommodation && (
-        <AccommodationCard accommodation={day.accommodation} />
+        <AccommodationCard
+          accommodation={day.accommodation}
+          canEdit={canEdit}
+          hasNote={hasNoteForAccommodation}
+          onEdit={onEditAccommodation}
+          onAddNote={onAddNoteAccommodation}
+        />
       )}
 
       {/* Cost summary */}

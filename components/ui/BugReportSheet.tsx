@@ -632,13 +632,13 @@ export function BugReportSheet({ globalRole }: BugReportSheetProps) {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/30 z-[200] backdrop-blur-sm"
             onClick={handleClose}
           />
 
           {/* Bottom sheet */}
           <div
-            className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
+            className="fixed left-0 right-0 bottom-0 z-[210] bg-white rounded-t-3xl shadow-2xl flex flex-col"
             style={{
               height: 'calc(96dvh - env(safe-area-inset-top))',
               maxHeight: 'calc(96dvh - env(safe-area-inset-top))',

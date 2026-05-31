@@ -76,7 +76,9 @@ export async function POST(request: Request) {
         stream: true,
       })
       for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content
+        const choice = chunk.choices[0]
+        const delta = choice?.delta?.content
+          ?? (choice?.delta as Record<string, unknown>)?.reasoning_content as string | undefined
         if (delta) text += delta
       }
     } else if (modelProvider === 'gemini') {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback } from 'react'
-import { APIProvider, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
 import { ItineraryMap, type MapDay, type MapPoint } from './ItineraryMap'
@@ -44,11 +44,8 @@ export function MapView(props: MapViewProps) {
       </div>
     )
   }
-  return (
-    <APIProvider apiKey={MAPS_KEY}>
-      <MapViewInner {...props} />
-    </APIProvider>
-  )
+  // APIProvider 由 ItineraryClient 父層提供，這裡直接使用
+  return <MapViewInner {...props} />
 }
 
 interface GeoUpdate {
