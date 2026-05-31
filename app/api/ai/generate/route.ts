@@ -76,9 +76,8 @@ export async function POST(request: Request) {
         stream: true,
       })
       for await (const chunk of stream) {
-        const choice = chunk.choices[0]
-        const delta = choice?.delta?.content
-          ?? (choice?.delta as Record<string, unknown>)?.reasoning_content as string | undefined
+        const delta = chunk.choices[0]?.delta?.content
+        // MiniMax M2.7：reasoning_content 是思考過程，實際回答在 content
         if (delta) text += delta
       }
     } else if (modelProvider === 'gemini') {

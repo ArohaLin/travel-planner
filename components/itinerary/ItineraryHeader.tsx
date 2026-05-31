@@ -33,7 +33,7 @@ export function ItineraryHeader({
 
   return (
     <div
-      className="bg-white sticky top-0 z-20 border-b border-gray-100 shadow-sm"
+      className="bg-white sticky top-0 z-[50] border-b border-gray-100 shadow-sm"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       <div className="px-4 py-3 flex items-center gap-3">

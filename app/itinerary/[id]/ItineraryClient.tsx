@@ -394,8 +394,8 @@ export function ItineraryClient({
         onMetadataUpdated={handleMetadataUpdated}
       />
 
-      {/* 行程 / 地圖 切換（sticky 置頂） */}
-      <div className="sticky top-0 z-20 bg-gray-50/95 backdrop-blur px-4 pt-3 pb-2">
+      {/* 行程 / 地圖 切換（sticky 置頂，z-20 低於 ItineraryHeader z-50，不影響 BugReportSheet） */}
+      <div className="sticky top-0 z-20 bg-gray-50 px-4 pt-3 pb-2">
         <div className="flex gap-1 bg-gray-100 rounded-full p-1 w-max">
           <button
             onClick={() => {

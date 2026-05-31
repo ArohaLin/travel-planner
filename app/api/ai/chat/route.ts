@@ -167,9 +167,9 @@ export async function POST(request: Request) {
 
           for await (const chunk of openaiStream) {
             const choice = chunk.choices[0]
-            // MiniMax M2.7 是推理模型，最終回答在 content；思考過程在 reasoning_content（不輸出）
             const delta = choice?.delta?.content
-              ?? (choice?.delta as Record<string, unknown>)?.reasoning_content as string | undefined
+            // MiniMax M2.7 是推理模型，前段 streaming 是 reasoning_content（思考過程），
+            // 最終回答才在 content。reasoning 期間不輸出任何文字，讓前端 loading 動畫維持顯示。
             if (delta) {
               fullResponse += delta
               safeEnqueue(delta)
