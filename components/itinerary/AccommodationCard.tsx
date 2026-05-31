@@ -26,8 +26,7 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
                 className="relative w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-amber-600 hover:bg-white shadow-sm transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 14v5a2 2 0 01-2 2H7a2 2 0 01-2-2V9a2 2 0 012-2h5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10.5h8M8 14h5m-5 6.5l-3 1.5v-4.5A2.5 2.5 0 014.5 15h-.25A2.25 2.25 0 012 12.75v-6.5A2.25 2.25 0 014.25 4h15.5A2.25 2.25 0 0122 6.25v6.5A2.25 2.25 0 0119.75 15H11l-3 2.5z" />
                 </svg>
                 {hasNote && (
                   <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full border border-white" />
