@@ -25,52 +25,74 @@ interface ItineraryMapProps {
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
 
-/**
- * 將座標極近（含完全相同，例如 geocode 落到同一個市中心）的 marker 散開，
- * 避免完全疊住看不到數字。以群組中心為圓心，把同群的點平均分布在小圓上。
- * 位移量約 30 公尺，不影響實際判讀但能清楚區分。
- */
-const SAME_SPOT_EPS = 0.0006 // 約 60 公尺內視為「同一點」
-const SPREAD_RADIUS = 0.00028 // 散開半徑，約 30 公尺
+// marker 直徑約 31px（半徑 scale 13 + 邊框）；中心需相距 ≥ COLLIDE_PX 才不重疊
+const COLLIDE_PX = 38
 
-function spreadOverlappingPoints(days: MapDay[]): MapDay[] {
-  // 收集所有點（跨天）做整體分群
+/**
+ * 像素級散開：把在「當前 zoom 的螢幕投影」下會重疊的 marker 散開，
+ * 隨 zoom 動態重算 —— 放大時點還原真實位置、縮小時自動散開，永不重疊。
+ *
+ * 原理：用 Google Maps 投影把經緯度 → 世界座標（0~256），乘 2^zoom 得螢幕像素。
+ * 同群（像素距離 < COLLIDE_PX）的點以群中心為圓心、用足夠像素半徑排成圓圈，再轉回經緯度。
+ */
+function spreadByPixels(
+  days: MapDay[],
+  projection: google.maps.Projection,
+  zoom: number,
+): MapDay[] {
+  const scale = Math.pow(2, zoom) // 1 世界座標單位 = scale 像素
   type Ref = { d: number; p: number }
-  const all: { lat: number; lng: number; ref: Ref }[] = []
+  // 轉成像素座標
+  const all: { px: number; py: number; ref: Ref }[] = []
   days.forEach((day, d) =>
-    day.points.forEach((pt, p) => all.push({ lat: pt.lat, lng: pt.lng, ref: { d, p } })),
+    day.points.forEach((pt, p) => {
+      const world = projection.fromLatLngToPoint(new google.maps.LatLng(pt.lat, pt.lng))
+      if (!world) return
+      all.push({ px: world.x * scale, py: world.y * scale, ref: { d, p } })
+    }),
   )
 
-  const used = new Array(all.length).fill(false)
-  // 複製一份可變座標
   const moved = days.map((day) => day.points.map((pt) => ({ ...pt })))
+  const used = new Array(all.length).fill(false)
 
   for (let i = 0; i < all.length; i++) {
     if (used[i]) continue
     const group = [i]
     used[i] = true
-    for (let j = i + 1; j < all.length; j++) {
-      if (used[j]) continue
-      if (
-        Math.abs(all[i].lat - all[j].lat) < SAME_SPOT_EPS &&
-        Math.abs(all[i].lng - all[j].lng) < SAME_SPOT_EPS
-      ) {
+    // 用「擴張式」分群：任何與群內某點過近的點都納入
+    for (let j = 0; j < all.length; j++) {
+      if (used[j] || j === i) continue
+      const tooClose = group.some((k) => {
+        const dx = all[k].px - all[j].px
+        const dy = all[k].py - all[j].py
+        return Math.hypot(dx, dy) < COLLIDE_PX
+      })
+      if (tooClose) {
         group.push(j)
         used[j] = true
+        j = -1 // 重新掃描，讓鏈式相鄰都納入同群
       }
     }
     if (group.length < 2) continue
-    // 同群多點 → 以群中心為圓心散開
-    const cLat = group.reduce((s, k) => s + all[k].lat, 0) / group.length
-    const cLng = group.reduce((s, k) => s + all[k].lng, 0) / group.length
+
+    // 群中心（像素）
+    const cx = group.reduce((s, k) => s + all[k].px, 0) / group.length
+    const cy = group.reduce((s, k) => s + all[k].py, 0) / group.length
+    // 圓圈半徑：讓相鄰 marker 間距 ≥ COLLIDE_PX
+    const n = group.length
+    const radiusPx = Math.max(COLLIDE_PX / (2 * Math.sin(Math.PI / n)), COLLIDE_PX * 0.6)
+
     group.forEach((k, idx) => {
-      const angle = (2 * Math.PI * idx) / group.length
-      // 經度位移需依緯度修正，台灣約 cos(23°)≈0.92
-      const dLat = SPREAD_RADIUS * Math.sin(angle)
-      const dLng = (SPREAD_RADIUS * Math.cos(angle)) / Math.cos((cLat * Math.PI) / 180)
+      const angle = (2 * Math.PI * idx) / n
+      const npx = cx + radiusPx * Math.cos(angle)
+      const npy = cy + radiusPx * Math.sin(angle)
+      // 像素 → 世界座標 → 經緯度
+      const world = new google.maps.Point(npx / scale, npy / scale)
+      const latLng = projection.fromPointToLatLng(world)
+      if (!latLng) return
       const { d, p } = all[k].ref
-      moved[d][p].lat = cLat + dLat
-      moved[d][p].lng = cLng + dLng
+      moved[d][p].lat = latLng.lat()
+      moved[d][p].lng = latLng.lng()
     })
   }
 
@@ -97,23 +119,44 @@ export function ItineraryMap({ days }: ItineraryMapProps) {
 function MapContent({ days: rawDays }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
+  // 當前 zoom，用來觸發像素級散開重算
+  const [zoom, setZoom] = useState<number | null>(null)
 
-  const days = useMemo(() => spreadOverlappingPoints(rawDays), [rawDays])
+  // 原始座標（未散開），用於 fitBounds
+  const rawPoints = useMemo(() => rawDays.flatMap((d) => d.points), [rawDays])
+
+  // 監聽 zoom 變化 → 重算散開
+  useEffect(() => {
+    if (!map) return
+    const update = () => setZoom(map.getZoom() ?? null)
+    update()
+    const listener = map.addListener('zoom_changed', update)
+    return () => listener.remove()
+  }, [map])
+
+  // 依當前 zoom 做像素級散開（投影需要 map 已就緒）
+  const days = useMemo(() => {
+    if (!map || zoom == null) return rawDays
+    const projection = map.getProjection()
+    if (!projection) return rawDays
+    return spreadByPixels(rawDays, projection, zoom)
+  }, [map, zoom, rawDays])
+
   const allPoints = days.flatMap((d) => d.points)
 
-  // 自動縮放到所有可見景點
+  // 自動縮放到所有可見景點（用原始座標）
   useEffect(() => {
-    if (!map || allPoints.length === 0) return
-    if (allPoints.length === 1) {
-      map.setCenter({ lat: allPoints[0].lat, lng: allPoints[0].lng })
+    if (!map || rawPoints.length === 0) return
+    if (rawPoints.length === 1) {
+      map.setCenter({ lat: rawPoints[0].lat, lng: rawPoints[0].lng })
       map.setZoom(14)
       return
     }
     const bounds = new google.maps.LatLngBounds()
-    for (const p of allPoints) bounds.extend({ lat: p.lat, lng: p.lng })
+    for (const p of rawPoints) bounds.extend({ lat: p.lat, lng: p.lng })
     map.fitBounds(bounds, 64)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, JSON.stringify(allPoints.map((p) => [p.lat, p.lng]))])
+  }, [map, JSON.stringify(rawPoints.map((p) => [p.lat, p.lng]))])
 
   return (
     <>

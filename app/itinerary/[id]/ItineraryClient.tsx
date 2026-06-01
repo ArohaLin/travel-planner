@@ -113,24 +113,17 @@ export function ItineraryClient({
   }
 
   // ── AI 備註：送出 → 走現有 adjust 對話 → 開啟 ChatSheet 看方案 ──────────────
-  async function handleSubmitNotes(overallThought: string) {
-    if (aiNotes.notes.length === 0 || submittingNotes) return
+  function handleSubmitNotes(overallThought: string) {
+    if (aiNotes.notes.length === 0) return
     const message = composeNotesMessage(aiNotes.notes, overallThought)
-    setSubmittingNotes(true)
-    try {
-      // 確保是行程調整模式
-      if (chat.chatMode !== 'adjust') chat.setChatMode('adjust')
-      // 關閉備註 Sheet、打開對話 Sheet（讓使用者看到 AI 方案）
-      setNotesSheetOpen(false)
-      setChatOpen(true)
-      await chat.sendMessage(message, itineraryId, modelProvider)
-      // 送出成功後清空備註籃（方案套用與否由使用者在 ChatSheet 決定）
-      aiNotes.clearNotes()
-    } catch {
-      showToast('送出備註失敗，請再試一次', 'error')
-    } finally {
-      setSubmittingNotes(false)
-    }
+    // 關閉備註 Sheet、打開對話 Sheet（讓使用者看到 AI 方案）
+    setNotesSheetOpen(false)
+    setChatOpen(true)
+    // 用佇列送出：不論 threadId 是否已就緒，ready 後會自動送出（避免時機問題導致沒下文）
+    chat.queueMessage(message, modelProvider)
+    // 清空備註籃（方案套用與否由使用者在 ChatSheet 決定）
+    aiNotes.clearNotes()
+    showToast('已送出給 AI，請在對話視窗查看方案', 'success')
   }
 
   // ── Submit a patch to the server ──────────────────────────────────────────

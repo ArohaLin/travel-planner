@@ -23,6 +23,7 @@ interface UseChatReturn {
   markPlanApplied: (messageId: string, planIndex: number, planTitle: string) => void
   markPlanCancelled: (messageId: string) => void
   sendMessage: (text: string, itineraryId: string, modelProvider?: ModelProvider) => Promise<void>
+  queueMessage: (text: string, modelProvider?: ModelProvider) => void
   cancelStreaming: () => void
 }
 
@@ -36,6 +37,8 @@ export function useChat(itineraryId: string): UseChatReturn {
   const [lastPlans, setLastPlans] = useState<AIPlan[] | null>(null)
   const [lastPlansMessageId, setLastPlansMessageId] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // 待送訊息佇列：threadId 尚未就緒時先暫存，ready 後自動送出（給 AI 備註籃用）
+  const [pendingMessage, setPendingMessage] = useState<{ text: string; model: ModelProvider } | null>(null)
 
   // Helper to extract plans array regardless of patch format (raw array or wrapped object)
   function extractPlansFromPatch(patch: unknown): AIPlan[] | null {
@@ -269,6 +272,20 @@ export function useChat(itineraryId: string): UseChatReturn {
     abortRef.current?.abort()
   }, [])
 
+  // 佇列一則訊息（不論 threadId 是否就緒）；ready 後由下方 effect 自動送出
+  const queueMessage = useCallback((text: string, model: ModelProvider = 'claude') => {
+    setChatMode('adjust')
+    setPendingMessage({ text, model })
+  }, [])
+
+  // threadId 就緒且非串流中時，自動送出待送訊息
+  useEffect(() => {
+    if (!pendingMessage || !threadId || isStreaming) return
+    const { text, model } = pendingMessage
+    setPendingMessage(null)
+    sendMessage(text, itineraryId, model)
+  }, [pendingMessage, threadId, isStreaming, sendMessage, itineraryId])
+
   // When the Realtime INSERT fires for the assistant message, capture its ID as lastPlansMessageId
   // We do this by watching messages for a new pending_selection message after streaming
   useEffect(() => {
@@ -329,6 +346,7 @@ export function useChat(itineraryId: string): UseChatReturn {
     markPlanApplied,
     markPlanCancelled,
     sendMessage,
+    queueMessage,
     cancelStreaming,
   }
 }
