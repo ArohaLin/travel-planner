@@ -4,6 +4,7 @@ import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MOD
 import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
+import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { ModelProvider } from '@/lib/ai/client'
 
 export async function POST(request: Request) {
@@ -57,6 +58,9 @@ export async function POST(request: Request) {
   })
 
 
+  const startTs = Date.now()
+  let usage: AIUsage | null = null
+
   try {
     let text = ''
 
@@ -74,11 +78,19 @@ export async function POST(request: Request) {
         top_p: 0.95,
         max_tokens: 8192,
         stream: true,
+        stream_options: { include_usage: true },
       })
       for await (const chunk of stream) {
         const delta = chunk.choices[0]?.delta?.content
         // MiniMax M2.7：reasoning_content 是思考過程，實際回答在 content
         if (delta) text += delta
+        if (chunk.usage) {
+          usage = {
+            inputTokens: chunk.usage.prompt_tokens ?? 0,
+            outputTokens: chunk.usage.completion_tokens ?? 0,
+            totalTokens: chunk.usage.total_tokens ?? 0,
+          }
+        }
       }
     } else if (modelProvider === 'gemini') {
       // ── Gemini via Google Generative AI SDK ──────────────────────────────
@@ -91,6 +103,15 @@ export async function POST(request: Request) {
       for await (const chunk of result.stream) {
         const delta = chunk.text()
         if (delta) text += delta
+      }
+      const gemResp = await result.response
+      const um = gemResp.usageMetadata
+      if (um) {
+        usage = {
+          inputTokens: um.promptTokenCount ?? 0,
+          outputTokens: um.candidatesTokenCount ?? 0,
+          totalTokens: um.totalTokenCount ?? 0,
+        }
       }
       console.log('[generate] Gemini text_len:', text.length)
     } else {
@@ -105,6 +126,13 @@ export async function POST(request: Request) {
         .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
         .map((c) => c.text)
         .join('')
+      if (message.usage) {
+        usage = {
+          inputTokens: message.usage.input_tokens ?? 0,
+          outputTokens: message.usage.output_tokens ?? 0,
+          totalTokens: (message.usage.input_tokens ?? 0) + (message.usage.output_tokens ?? 0),
+        }
+      }
 
       console.log('[generate] Claude stop_reason:', (message as { stop_reason?: string }).stop_reason, 'text_len:', text.length)
     }
@@ -114,10 +142,29 @@ export async function POST(request: Request) {
       console.log('[generate] MiniMax raw text (first 1000):', text.slice(0, 1000))
     }
 
+    // 組裝 AI 回傳資訊（成功情境）
+    const costUSD = computeCostUSD(modelProvider, usage)
+    const buildInfo = (success: boolean, errorCode: string | null, errorMeaning: string | null): AIResultInfo => ({
+      timestamp: new Date().toISOString(),
+      scene: 'generate',
+      provider: isLocalAI() ? 'local' : modelProvider,
+      model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING[modelProvider].label,
+      success,
+      errorCode,
+      errorMeaning,
+      usage,
+      costUSD: success ? costUSD : null,
+      costTWD: success ? usdToTwd(costUSD) : null,
+      durationMs: Date.now() - startTs,
+    })
+
     const itinerary = extractItinerary(text)
     if (!itinerary) {
       console.error('[generate] Failed to parse. text snippet:', text.slice(0, 800))
-      return NextResponse.json({ error: 'AI 回應格式異常，請再試一次' }, { status: 500 })
+      return NextResponse.json(
+        { error: 'AI 回應格式異常，請再試一次', aiInfo: buildInfo(false, 'PARSE_ERROR', 'AI 回應格式異常，無法解析') },
+        { status: 500 },
+      )
     }
 
     // Create the itinerary record
@@ -154,9 +201,23 @@ export async function POST(request: Request) {
       itinerary_id: row.id,
     })
 
-    return NextResponse.json({ itineraryId: row.id })
+    return NextResponse.json({ itineraryId: row.id, aiInfo: buildInfo(true, null, null) })
   } catch (err) {
     console.error('[generate] AI error:', err)
-    return NextResponse.json({ error: '呼叫 AI 失敗，請稍後再試' }, { status: 500 })
+    const { code, meaning } = classifyError(err)
+    const errInfo: AIResultInfo = {
+      timestamp: new Date().toISOString(),
+      scene: 'generate',
+      provider: isLocalAI() ? 'local' : modelProvider,
+      model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING[modelProvider].label,
+      success: false,
+      errorCode: code,
+      errorMeaning: meaning,
+      usage,
+      costUSD: null,
+      costTWD: null,
+      durationMs: Date.now() - startTs,
+    }
+    return NextResponse.json({ error: '呼叫 AI 失敗，請稍後再試', aiInfo: errInfo }, { status: 500 })
   }
 }

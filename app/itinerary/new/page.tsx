@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/Input'
 import { COMMON_CURRENCIES, getCurrencyName } from '@/lib/utils/currency'
 import type { MemberProfile } from '@/lib/types/itinerary'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
+import { useLastAIInfo, saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
+import { AIInfoBar } from '@/components/ai/AIInfoBar'
 import clsx from 'clsx'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -64,6 +66,7 @@ export default function NewItineraryPage() {
 
   // ── Model preference ─────────────────────────────────────────────────────────
   const { modelProvider, setModelProvider } = useModelPreference()
+  const lastAIInfo = useLastAIInfo()
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -150,6 +153,8 @@ export default function NewItineraryPage() {
         }),
       })
       const data = await res.json()
+      // 記錄最近一次 AI 回傳資訊（成功/失敗都記）
+      if (data.aiInfo) saveLastAIInfo(data.aiInfo)
       if (!res.ok) { setError(data.error ?? '生成失敗，請再試一次'); setLoading(false); return }
       router.push(`/itinerary/${data.itineraryId}`)
     } catch {
@@ -284,6 +289,13 @@ export default function NewItineraryPage() {
 
           {error && (
             <p className="text-sm text-red-500 bg-red-50 rounded-xl px-4 py-3">{error}</p>
+          )}
+
+          {/* AI 回傳資訊（生成失敗時最有用，成功會跳轉到行程頁）*/}
+          {lastAIInfo && (
+            <div className="rounded-xl overflow-hidden border border-gray-100">
+              <AIInfoBar info={lastAIInfo} />
+            </div>
           )}
 
           {/* 模型選擇 */}

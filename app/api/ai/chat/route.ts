@@ -4,6 +4,7 @@ import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, b
 import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
+import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
@@ -131,6 +132,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const enc = new TextEncoder()
       let streamError: string | undefined
+      let usage: AIUsage | null = null
       let closed = false
       // 安全 enqueue：client 斷線後 controller 已關閉，避免拋 ERR_INVALID_STATE
       const safeEnqueue = (s: string) => {
@@ -163,6 +165,7 @@ export async function POST(request: Request) {
             top_p: 0.95,
             max_tokens: 8192,
             stream: true,
+            stream_options: { include_usage: true },
           })
 
           for await (const chunk of openaiStream) {
@@ -173,6 +176,14 @@ export async function POST(request: Request) {
             if (delta) {
               fullResponse += delta
               safeEnqueue(delta)
+            }
+            // usage 通常在最後一個 chunk（choices 為空）
+            if (chunk.usage) {
+              usage = {
+                inputTokens: chunk.usage.prompt_tokens ?? 0,
+                outputTokens: chunk.usage.completion_tokens ?? 0,
+                totalTokens: chunk.usage.total_tokens ?? 0,
+              }
             }
           }
         } else if (modelProvider === 'gemini') {
@@ -221,6 +232,16 @@ export async function POST(request: Request) {
               safeEnqueue(delta)
             }
           }
+          // Gemini usage 在 aggregated response 的 usageMetadata
+          const gemResp = await result.response
+          const um = gemResp.usageMetadata
+          if (um) {
+            usage = {
+              inputTokens: um.promptTokenCount ?? 0,
+              outputTokens: um.candidatesTokenCount ?? 0,
+              totalTokens: um.totalTokenCount ?? 0,
+            }
+          }
           console.log('[chat] Gemini fullResponse length:', fullResponse.length,
             '| has <plans>:', fullResponse.includes('<plans>'),
             '| first 200:', fullResponse.slice(0, 200))
@@ -244,6 +265,15 @@ export async function POST(request: Request) {
             ) {
               fullResponse += event.delta.text
               safeEnqueue(event.delta.text)
+            }
+          }
+          // Claude usage 在 finalMessage
+          const finalMsg = await claudeStream.finalMessage()
+          if (finalMsg.usage) {
+            usage = {
+              inputTokens: finalMsg.usage.input_tokens ?? 0,
+              outputTokens: finalMsg.usage.output_tokens ?? 0,
+              totalTokens: (finalMsg.usage.input_tokens ?? 0) + (finalMsg.usage.output_tokens ?? 0),
             }
           }
         }
@@ -310,8 +340,26 @@ export async function POST(request: Request) {
         patch_status: patchStatus,
       })
 
+      // ── 組裝 AI 回傳資訊（記錄最近一次）────────────────────────────────────
+      const success = !streamError && !!fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')
+      const errInfo = streamError ? classifyError(streamError) : null
+      const costUSD = computeCostUSD(modelProvider, usage)
+      const aiInfo: AIResultInfo = {
+        timestamp: new Date().toISOString(),
+        scene: mode,
+        provider: isLocalAI() ? 'local' : modelProvider,
+        model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING[modelProvider].label,
+        success,
+        errorCode: errInfo?.code ?? (success ? null : 'EMPTY'),
+        errorMeaning: errInfo?.meaning ?? (success ? null : 'AI 沒有回應內容'),
+        usage,
+        costUSD,
+        costTWD: usdToTwd(costUSD),
+        durationMs: Date.now() - startTs,
+      }
+
       // Append a marker so the client knows the stream is done
-      safeEnqueue(`\n\n__DONE__${JSON.stringify({ mode, plans })}`)
+      safeEnqueue(`\n\n__DONE__${JSON.stringify({ mode, plans, aiInfo })}`)
       if (!closed) {
         try { controller.close() } catch { /* already closed */ }
       }

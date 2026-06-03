@@ -6,8 +6,10 @@ import type { useChat } from '@/lib/hooks/useChat'
 import type { AIPlan } from '@/lib/types/patch'
 import { ChatMessage } from './ChatMessage'
 import { PlanSelector } from './PlanSelector'
+import { AIInfoBar } from './AIInfoBar'
 import { useToast } from '@/components/ui/Toast'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
+import { useLastAIInfo } from '@/lib/hooks/useLastAIInfo'
 
 interface ChatSheetProps {
   itineraryId: string
@@ -43,6 +45,7 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const { showToast } = useToast()
   const { modelProvider, setModelProvider } = useModelPreference()
+  const lastAIInfo = useLastAIInfo()
 
   const {
     messages, streamingText, isStreaming, isGeneratingPlans,
@@ -412,6 +415,11 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
             />
           </div>
         )}
+
+        {/* AI 回傳資訊列（最近一次） */}
+        <div className="flex-shrink-0">
+          <AIInfoBar info={lastAIInfo} />
+        </div>
 
         {/* Input area */}
         <div

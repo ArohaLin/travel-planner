@@ -5,6 +5,8 @@ import { getSupabaseBrowserClient } from '@/lib/supabase/client'
 import type { ChatMessage } from '@/lib/types/collaboration'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
+import { saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
+import type { AIResultInfo } from '@/lib/ai/pricing'
 
 export type ChatMode = 'adjust' | 'consult'
 export type { ModelProvider }
@@ -225,12 +227,14 @@ export function useChat(itineraryId: string): UseChatReturn {
             setIsGeneratingPlans(false)
 
             try {
-              const meta = JSON.parse(metaStr) as { mode: string; plans: AIPlan[] | null }
+              const meta = JSON.parse(metaStr) as { mode: string; plans: AIPlan[] | null; aiInfo?: AIResultInfo }
               if (meta.plans && Array.isArray(meta.plans) && meta.plans.length > 0) {
                 setLastPlans(meta.plans)
                 // messageId will be set when the Realtime INSERT event arrives
                 // for now set to null; the INSERT handler will update it if needed
               }
+              // 記錄最近一次 AI 回傳資訊
+              if (meta.aiInfo) saveLastAIInfo(meta.aiInfo)
             } catch {
               // ignore meta parse errors
             }
