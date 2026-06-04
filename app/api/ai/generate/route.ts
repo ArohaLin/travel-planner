@@ -76,7 +76,7 @@ export async function POST(request: Request) {
         messages: [{ role: 'user', content: prompt }],
         temperature: 1,
         top_p: 0.95,
-        max_tokens: 8192,
+        max_tokens: 32768,
         stream: true,
         stream_options: { include_usage: true },
       })
@@ -97,7 +97,8 @@ export async function POST(request: Request) {
       const gemini = getGeminiClient()
       const model = gemini.getGenerativeModel({
         model: MODEL_GEMINI,
-        generationConfig: { maxOutputTokens: 8192 },
+        // 詳情欄位（intro/transport/recommendation/tips）讓輸出變長，需提高上限避免 JSON 被截斷
+        generationConfig: { maxOutputTokens: 32768 },
       })
       const result = await model.generateContentStream(prompt)
       for await (const chunk of result.stream) {
@@ -119,7 +120,7 @@ export async function POST(request: Request) {
       const anthropic = getAnthropicClient()
       const message = await anthropic.messages.create({
         model: MODEL_CLAUDE,
-        max_tokens: 16000,
+        max_tokens: 32000,
         messages: [{ role: 'user', content: prompt }],
       })
       text = message.content
