@@ -53,6 +53,21 @@ export const ActivitySchema = z.object({
   recommendation: z.string().optional(),
   /** 細節推薦或注意事項 */
   tips: z.string().optional(),
+  // ─── 卡片精簡格式用的結構化欄位（選填，依類型組裝外層卡片顯示）───
+  /** 地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它用） */
+  placeLabel: z.string().optional(),
+  /** 交通起點簡稱（type=transport 用） */
+  fromLabel: z.string().optional(),
+  /** 交通終點簡稱（type=transport 用） */
+  toLabel: z.string().optional(),
+  /** 交通方式，如「自駕」「步行」「船」（type=transport 用） */
+  transportMode: z.string().optional(),
+  /** 餐別，如「早餐」「午餐」「晚餐」「下午茶」（type=food 用） */
+  mealType: z.string().optional(),
+  /** 飲食項目，如「臭豆腐、米苔目」（type=food 用） */
+  foodItems: z.string().optional(),
+  /** 特別需強調注意的簡短註解，顯示在卡片下一行（全部類型） */
+  highlight: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

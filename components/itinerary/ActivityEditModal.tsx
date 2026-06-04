@@ -235,6 +235,64 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
             </div>
           </div>
 
+          {/* 卡片精簡欄位（依類型顯示）*/}
+          {form.type === 'transport' ? (
+            <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-500">交通資訊（用於卡片精簡顯示）</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">起點</label>
+                  <input type="text" value={form.fromLabel ?? ''} onChange={(e) => set('fromLabel', e.target.value || undefined)}
+                    placeholder="例：台東市" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">終點</label>
+                  <input type="text" value={form.toLabel ?? ''} onChange={(e) => set('toLabel', e.target.value || undefined)}
+                    placeholder="例：富岡漁港" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">交通方式</label>
+                <input type="text" value={form.transportMode ?? ''} onChange={(e) => set('transportMode', e.target.value || undefined)}
+                  placeholder="例：自駕、步行、船" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+            </div>
+          ) : form.type === 'food' ? (
+            <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-gray-500">餐飲資訊（用於卡片精簡顯示）</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">餐別</label>
+                  <input type="text" value={form.mealType ?? ''} onChange={(e) => set('mealType', e.target.value || undefined)}
+                    placeholder="例：午餐" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-gray-500 mb-1 block">地點</label>
+                  <input type="text" value={form.placeLabel ?? ''} onChange={(e) => set('placeLabel', e.target.value || undefined)}
+                    placeholder="例：台東市" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">飲食項目</label>
+                <input type="text" value={form.foodItems ?? ''} onChange={(e) => set('foodItems', e.target.value || undefined)}
+                  placeholder="例：臭豆腐、米苔目" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">地點簡稱（用於卡片顯示）</label>
+              <input type="text" value={form.placeLabel ?? ''} onChange={(e) => set('placeLabel', e.target.value || undefined)}
+                placeholder="例：太魯閣、台東市" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+            </div>
+          )}
+
+          {/* 特別強調（卡片下一行）*/}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">特別提醒（卡片強調，選填）</label>
+            <input type="text" value={form.highlight ?? ''} onChange={(e) => set('highlight', e.target.value || undefined)}
+              placeholder="例：山路18:30前需下山" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
+          </div>
+
           {/* Description */}
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1 block">說明</label>

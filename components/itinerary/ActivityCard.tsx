@@ -11,6 +11,38 @@ function durationMinutes(start: string, end?: string): number | null {
   return diff > 0 ? diff : null
 }
 
+/**
+ * 依活動類型組裝卡片主標題的精簡格式（使用者需求）：
+ * - 景點：景點名稱（地點）
+ * - 交通：A → B（交通方式）
+ * - 餐飲：餐別：店名（地點）（飲食項目）
+ * - 其它：名稱（地點）
+ * 若無結構化欄位（舊行程），退回顯示原 title。
+ */
+function formatCardMain(activity: Activity): string {
+  const t = activity.type
+  const paren = (s?: string) => (s && s.trim() ? `（${s.trim()}）` : '')
+
+  if (t === 'transport') {
+    const from = activity.fromLabel?.trim()
+    const to = activity.toLabel?.trim()
+    if (from && to) {
+      return `${from} → ${to}${paren(activity.transportMode)}`
+    }
+    // 無 from/to → 原 title + 交通方式
+    return `${activity.title}${paren(activity.transportMode)}`
+  }
+
+  if (t === 'food') {
+    const meal = activity.mealType?.trim()
+    const prefix = meal ? `${meal}：` : ''
+    return `${prefix}${activity.title}${paren(activity.placeLabel)}${paren(activity.foodItems)}`
+  }
+
+  // 景點 / 其它：名稱（地點）
+  return `${activity.title}${paren(activity.placeLabel)}`
+}
+
 const TYPE_ICONS: Record<string, string> = {
   sightseeing: '🏛️',
   food: '🍽️',
@@ -131,13 +163,13 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
           <span className="text-xs text-gray-400">{TYPE_LABELS[activity.type]}</span>
         </div>
 
-        {/* Title + 地點（精簡，其餘移至詳情視窗） */}
+        {/* 精簡主標題（依類型組裝）+ 特別註解 */}
         <div className="flex items-start gap-2">
           <span className="text-xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-gray-900 leading-snug">{activity.title}</h3>
-            {activity.location?.address && (
-              <p className="text-xs text-gray-400 mt-1 truncate">📍 {activity.location.address}</p>
+            <h3 className="font-semibold text-gray-900 leading-snug">{formatCardMain(activity)}</h3>
+            {activity.highlight && activity.highlight.trim() && (
+              <p className="text-xs text-amber-600 mt-1 leading-relaxed">（{activity.highlight.trim()}）</p>
             )}
           </div>
           {/* 詳情指示箭頭 */}

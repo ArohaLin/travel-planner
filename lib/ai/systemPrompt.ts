@@ -139,6 +139,7 @@ The <plans> block format (DO NOT deviate):
 - DO NOT skip the <plans> block — it is MANDATORY
 - Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
 - 卡片資訊分層：title 只放簡短名稱、description 留空或極短；詳細介紹寫進 intro/transport/recommendation/tips，不要全塞進 description
+- 卡片精簡欄位（依類型填）：景點填 placeLabel（地點）；交通 transport 填 fromLabel/toLabel/transportMode；餐飲 food 填 mealType/placeLabel/foodItems；特別注意處填 highlight
 - 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位
 - 每天從住宿出發：每天第一個景點前若有住宿，先安排 type:"transport" 從住宿出發的交通
 
@@ -244,6 +245,13 @@ ${buildMemorySection(itinerary)}
 - **recommendation**：推薦重點、必看必玩、當地飲食或名產（1-2 句）
 - **tips**：注意事項、最佳時段（選填，1 句）
 - ⚠️ 詳細介紹一律寫進 intro/transport/recommendation/tips，**絕對不要全部塞進 description**，否則卡片會太長
+
+**⚠️ 卡片精簡欄位（必須依類型填好）**：
+- 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱，如「太魯閣」）
+- 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（如「自駕」「船」）
+- 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
+- 任何活動有特別需注意處：填 highlight（簡短幾字）
+- title 保持簡短純名稱，地點/項目放對應欄位，不要全擠進 title
 
 **⚠️ 地址/地點正確性（必須遵守）**：
 - 當你「更換」一個活動成不同地點時（例如把「知本溫泉」改成「正氣路夜市」），
@@ -360,6 +368,13 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 - title 只放簡短名稱；description 留空或極短
 - 詳細介紹寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒）
 - 絕對不要把一大段介紹全塞進 description
+
+== 卡片精簡欄位（依類型填好）==
+- 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）
+- 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（交通方式）
+- 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
+- 任何活動有特別需注意處：填 highlight（簡短幾字）
+- title 保持簡短純名稱，地點/項目放對應欄位
 
 == 地址正確性（重要）==
 - 更換活動成不同地點時，絕對不要保留舊 location 座標。請省略 location 欄位讓系統重新定位，或在 location.address 填正確新地址。
@@ -503,7 +518,14 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "intro": "景點/活動介紹，以及為何這樣安排（2-3句）",
           "transport": "如何前往：交通方式與大約時間（1-2句）",
           "recommendation": "推薦重點：必看必玩、當地飲食或名產（1-2句）",
-          "tips": "貼心提醒：注意事項、最佳時段或省錢小撇步（1句，選填）"
+          "tips": "貼心提醒：注意事項、最佳時段或省錢小撇步（1句，選填）",
+          "placeLabel": "地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它填，交通免）",
+          "fromLabel": "交通起點簡稱（僅 type=transport 填，如「台東市」）",
+          "toLabel": "交通終點簡稱（僅 type=transport 填，如「富岡漁港」）",
+          "transportMode": "交通方式（僅 type=transport 填，如「自駕」「步行」「船」）",
+          "mealType": "餐別（僅 type=food 填，如「早餐」「午餐」「晚餐」「下午茶」）",
+          "foodItems": "飲食項目（僅 type=food 填，如「臭豆腐、米苔目」）",
+          "highlight": "特別需強調注意的簡短幾字（選填，如「山路18:30前下山」）"
         }
       ],
       "accommodation": {
@@ -538,6 +560,12 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 2. 每天安排 4-5 個活動（含用餐），保持簡潔
 2-1. **卡片資訊分層**：title 只放簡短名稱、description 留空或極短；詳細介紹一律寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒，選填）。**絕對不要把一大段介紹塞進 description**，否則行程表卡片會太長
 2-2. **每天從住宿出發**：每天第一個景點之前，若該天有住宿，必須先安排一段 type:"transport" 從住宿出發的交通（排好出發時間與路程），不要讓當天第一站沒有交通規劃
+2-3. **卡片精簡欄位（重要，用於行程表卡片精簡顯示）**：每個活動依類型填好對應欄位：
+   - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）
+   - 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（交通方式）
+   - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
+   - 任何活動若有特別需注意處，填 highlight（簡短幾字）
+   title 保持簡短（純名稱／店名），地點與項目放對應欄位，不要全擠進 title
 3. activity.id、accommodation.id、cityTransport.id 一律用 8 字元英數字（如 aB3kP9xZ）
 4. 有城市間移動（包含中途城市）才填 cityTransports，否則用空陣列 []
 5. **cityTransports 的 departureTime / arrivalTime 必須嚴格用 ISO 8601 格式，例如："2026-06-01T08:00:00.000Z"（結尾必須有 .000Z）**
