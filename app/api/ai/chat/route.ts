@@ -1,7 +1,7 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
-import { extractPlans, stripPlansTag } from '@/lib/ai/patchParser'
+import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
@@ -307,7 +307,22 @@ export async function POST(request: Request) {
         safeEnqueue(fullResponse)
       }
 
-      let displayText = stripPlansTag(fullResponse)
+      // #15：擷取並更新行程記憶，並從顯示文字移除 <memory> 區塊
+      const newMemory = extractMemory(fullResponse)
+      let displayText = stripMemoryTag(stripPlansTag(fullResponse))
+
+      if (newMemory && newMemory !== itinerary.metadata.aiMemory) {
+        try {
+          const updatedData = {
+            ...itinerary,
+            metadata: { ...itinerary.metadata, aiMemory: newMemory },
+          }
+          await db.from('itineraries').update({ data: updatedData }).eq('id', itineraryId)
+          console.log('[chat] aiMemory updated, length:', newMemory.length)
+        } catch (e) {
+          console.error('[chat] aiMemory update failed:', e)
+        }
+      }
 
       // 若 adjust 模式下 displayText 為空但有 plans，補上提示文字
       if (!displayText && mode === 'adjust') {

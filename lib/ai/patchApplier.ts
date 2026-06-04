@@ -56,7 +56,15 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       if (!day) throw new PatchError(`找不到第 ${op.dayIndex + 1} 天`)
       const idx = day.activities.findIndex((a) => a.id === op.activityId)
       if (idx === -1) throw new PatchError(`找不到活動 ID "${op.activityId}"`)
-      Object.assign(day.activities[idx], op.payload)
+      const target = day.activities[idx]
+      const oldTitle = target.title
+      Object.assign(target, op.payload)
+      // #13：若活動換成不同地點（title 改變）但 payload 沒帶新的 location，
+      // 清掉舊座標，避免「正氣路夜市卻顯示知本溫泉座標」這類錯誤；地圖會自動重新定位。
+      const payloadHasLocation = (op.payload as { location?: unknown }).location !== undefined
+      if (op.payload.title && op.payload.title !== oldTitle && !payloadHasLocation) {
+        target.location = undefined
+      }
       // Re-sort if time changed
       day.activities.sort((a, b) => a.startTime.localeCompare(b.startTime))
       break

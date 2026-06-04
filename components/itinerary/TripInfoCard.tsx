@@ -36,6 +36,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
     transitCities: metadata.transitCities ?? [],
     preferredTransport: metadata.preferredTransport ?? [],
     memberProfiles: metadata.memberProfiles ?? ([] as MemberProfile[]),
+    aiMemory: metadata.aiMemory ?? '',
   })
   const [transitInput, setTransitInput] = useState('')
 
@@ -47,6 +48,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
       transitCities: metadata.transitCities ?? [],
       preferredTransport: metadata.preferredTransport ?? [],
       memberProfiles: metadata.memberProfiles ?? [],
+      aiMemory: metadata.aiMemory ?? '',
     })
     setTransitInput('')
     setEditing(true)
@@ -91,6 +93,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
         transitCities: form.transitCities.length > 0 ? form.transitCities : undefined,
         preferredTransport: form.preferredTransport.length > 0 ? form.preferredTransport : undefined,
         memberProfiles: form.memberProfiles.some((m) => m.age || m.gender) ? form.memberProfiles : undefined,
+        aiMemory: form.aiMemory.trim() || undefined,
       }
 
       const res = await fetch(`/api/itinerary/${itineraryId}`, {
@@ -197,6 +200,20 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
                 {metadata.totalBudget.amount.toLocaleString()} {metadata.totalBudget.currency}
               </span>
             </InfoRow>
+          )}
+
+          {/* AI 記憶（#15）*/}
+          {metadata.aiMemory && metadata.aiMemory.trim() && (
+            <div className="pt-2 mt-1 border-t border-gray-50">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-sm">🧠</span>
+                <span className="text-xs font-medium text-purple-600">AI 記憶</span>
+                <span className="text-[10px] text-gray-400">（AI 會在每次討論時參考，可點編輯修改）</span>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-purple-50/50 rounded-xl px-3 py-2">
+                {metadata.aiMemory}
+              </p>
+            </div>
           )}
         </div>
       </div>
@@ -352,6 +369,21 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
             </div>
           </div>
         )}
+
+        {/* AI 記憶（#15）*/}
+        <div>
+          <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1">
+            🧠 AI 記憶
+            <span className="text-[10px] text-gray-400 font-normal">（AI 每次討論會參考並自動更新；你也可手動編輯）</span>
+          </label>
+          <textarea
+            value={form.aiMemory}
+            onChange={(e) => setForm((p) => ({ ...p, aiMemory: e.target.value }))}
+            rows={4}
+            placeholder="例：・偏好步調輕鬆，不要太早起　・小孩會暈船，避免長時間搭船　・喜歡在地小吃勝過餐廳"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
       </div>
 
       <div className="px-4 pb-4 flex gap-3">

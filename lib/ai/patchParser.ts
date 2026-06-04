@@ -133,3 +133,19 @@ export function extractPlans(text: string): AIPlan[] | null {
 export function stripPlansTag(text: string): string {
   return text.replace(/<plans>[\s\S]*?<\/plans>/g, '').trim()
 }
+
+/** 從 AI 回應擷取 <memory>...</memory> 內容（#15 行程記憶）。無則回 null。 */
+export function extractMemory(text: string): string | null {
+  const m = text.match(/<memory>([\s\S]*?)<\/memory>/)
+  if (!m) return null
+  const content = m[1].trim()
+  return content.length > 0 ? content : null
+}
+
+/** 移除 <memory>...</memory>（含未閉合的殘段），避免顯示給使用者。 */
+export function stripMemoryTag(text: string): string {
+  return text
+    .replace(/<memory>[\s\S]*?<\/memory>/g, '')
+    .replace(/<memory>[\s\S]*/g, '')
+    .trim()
+}

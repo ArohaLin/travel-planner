@@ -507,6 +507,9 @@ function TrackerList() {
                     </div>
                   )}
 
+                  {/* 回饋留言串（#16）*/}
+                  <BugCommentThread bugId={r.id} onReopen={() => updateReport(r.id, { status: 'open' })} />
+
                   {/* 刪除按鈕 */}
                   <div className="pt-1 border-t border-gray-100">
                     <button
@@ -725,5 +728,103 @@ export function BugReportSheet({ globalRole }: BugReportSheetProps) {
         </>
       )}
     </>
+  )
+}
+
+// ── 回饋留言串（#16）────────────────────────────────────────────────────────
+interface BugComment {
+  id: string
+  author_name: string | null
+  body: string
+  kind: 'feedback' | 'reply' | 'status'
+  created_at: string
+}
+
+function BugCommentThread({ bugId, onReopen }: { bugId: string; onReopen: () => void }) {
+  const [comments, setComments] = useState<BugComment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [reopen, setReopen] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/bug-reports/${bugId}/comments`)
+      if (res.ok) {
+        const d = await res.json()
+        setComments(d.comments ?? [])
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [bugId])
+
+  useEffect(() => { load() }, [load])
+
+  async function send() {
+    const text = input.trim()
+    if (!text || sending) return
+    setSending(true)
+    try {
+      const res = await fetch(`/api/bug-reports/${bugId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body: text, kind: 'feedback', reopenStatus: reopen ? 'open' : undefined }),
+      })
+      if (res.ok) {
+        const d = await res.json()
+        setComments((prev) => [...prev, d.comment])
+        setInput('')
+        if (reopen) { onReopen(); setReopen(false) }
+      }
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="border-t border-gray-100 pt-2.5">
+      <p className="text-xs font-semibold text-gray-500 mb-2">💬 回饋與處理紀錄</p>
+
+      {loading ? (
+        <p className="text-xs text-gray-400 py-2">載入中...</p>
+      ) : comments.length === 0 ? (
+        <p className="text-xs text-gray-400 py-1">尚無回饋，可在下方補充驗證結果或新問題</p>
+      ) : (
+        <div className="flex flex-col gap-2 mb-2">
+          {comments.map((c) => (
+            <div key={c.id} className="bg-gray-50 rounded-xl px-3 py-2">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-xs font-medium text-gray-700">{c.author_name ?? '使用者'}</span>
+                <span className="text-[10px] text-gray-400">
+                  {new Date(c.created_at).toLocaleString('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <p className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{c.body}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <textarea
+        rows={2}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        placeholder="補充驗證結果、回饋意見或新發現的問題..."
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-gray-400 bg-white"
+      />
+      <label className="flex items-center gap-1.5 mt-1.5 text-[11px] text-gray-500">
+        <input type="checkbox" checked={reopen} onChange={(e) => setReopen(e.target.checked)} className="rounded" />
+        驗證未通過，重新開啟此問題（狀態改回「未處理」）
+      </label>
+      <button
+        onClick={send}
+        disabled={!input.trim() || sending}
+        className="mt-1.5 w-full py-2 text-xs font-medium bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-40"
+      >
+        {sending ? '送出中...' : '送出回饋'}
+      </button>
+    </div>
   )
 }

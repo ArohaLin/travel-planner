@@ -244,13 +244,16 @@ export function useChat(itineraryId: string): UseChatReturn {
           }
 
           // ── Live streaming display ───────────────────────────────────────
+          // <memory> 區塊（#15）不顯示給使用者，從 <memory> 起截斷
+          const memStart = accumulated.indexOf('<memory>')
           const plansStart = accumulated.indexOf('<plans>')
           if (plansStart !== -1) {
             const textBeforePlans = accumulated.slice(0, plansStart).trim()
             setStreamingText(textBeforePlans)
             setIsGeneratingPlans(true)
           } else {
-            setStreamingText(accumulated.trim())
+            const cut = memStart !== -1 ? accumulated.slice(0, memStart) : accumulated
+            setStreamingText(cut.trim())
             setIsGeneratingPlans(false)
           }
         }

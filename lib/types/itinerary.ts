@@ -137,6 +137,8 @@ export const TripMetadataSchema = z.object({
   currency: z.string().length(3),
   totalBudget: MoneySchema.optional(),
   style: z.array(z.string()).optional(),
+  /** 行程專屬 AI 記憶：記錄與 AI 討論過的喜好、厭惡、特別需求；AI 每次對話前 recap，使用者也可手動編輯 */
+  aiMemory: z.string().optional(),
   language: z.literal('zh-TW'),
 })
 

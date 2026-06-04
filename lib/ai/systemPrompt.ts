@@ -1,5 +1,27 @@
 import type { Itinerary } from '@/lib/types/itinerary'
 
+/**
+ * 行程專屬 AI 記憶 recap + 更新指示（#15）。
+ * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
+ * <memory>更新後的記憶</memory>，由後端解析後存回 metadata.aiMemory。
+ */
+function buildMemorySection(itinerary: Itinerary): string {
+  const mem = itinerary.metadata.aiMemory?.trim()
+  return `
+## 🧠 行程專屬記憶（每次討論前必讀）
+
+${mem
+  ? `這是先前與使用者討論累積的重點（喜好、厭惡、特別需求），請務必遵守：\n<trip_memory>\n${mem}\n</trip_memory>`
+  : '（目前尚無記憶內容）'}
+
+**記憶更新規則（必須遵守）**：
+- 在你的回應「最後」，輸出一段 <memory>...</memory>，內容是「更新後的完整記憶」（不是只有新增的部分）。
+- 把這次討論中浮現的喜好、厭惡、特別需求、已確認的決定整併進去，用簡短條列（每條一行，以「・」開頭）。
+- 若這次沒有新資訊，就原樣輸出既有記憶。記憶請精簡（最多約 10 條），保留最重要的。
+- <memory> 區塊放在所有其他輸出（包含 <plans>）之後。
+`
+}
+
 const PATCH_SCHEMA_DOCS = `
 ## ItineraryPatch JSON Schema
 
@@ -72,7 +94,7 @@ export function buildAdjustPromptMinimax(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(itinerary, null, 2)}
 </current_itinerary>
-
+${buildMemorySection(itinerary)}
 == CRITICAL OUTPUT FORMAT REQUIREMENT ==
 
 You MUST output EXACTLY 1 best adjustment plan using the <plans> XML tag.
@@ -116,6 +138,9 @@ The <plans> block format (DO NOT deviate):
 - DO NOT output the full itinerary JSON
 - DO NOT skip the <plans> block — it is MANDATORY
 - Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
+- 卡片資訊分層：title 只放簡短名稱、description 留空或極短；詳細介紹寫進 intro/transport/recommendation/tips，不要全塞進 description
+- 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位
+- 每天從住宿出發：每天第一個景點前若有住宿，先安排 type:"transport" 從住宿出發的交通
 
 == CRITICAL: TIME CONFLICT PREVENTION ==
 Before scheduling ANY new activity on a day, you MUST:
@@ -155,7 +180,7 @@ export function buildAdjustPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(itinerary, null, 2)}
 </current_itinerary>
-
+${buildMemorySection(itinerary)}
 ## 核心規則
 
 1. **永遠以繁體中文回覆**
@@ -204,17 +229,31 @@ ${JSON.stringify(itinerary, null, 2)}
 4. 確認 endTime → startTime 的間隔 ≥ 交通時間 + 10 分鐘緩衝
 5. 若不足，調整新活動的時間，或在兩活動之間插入交通 op
 
-## ⚡ 輸出精簡規則（必須遵守，避免超出長度限制）
+## ⚡ 輸出規則（必須遵守）
 
 **整天重構時，使用 update_day 操作（最重要！）**
 - 若某天的活動需要大幅更換（超過一半的活動都要改），使用 **update_day** 並在 payload 中直接提供完整的 activities 陣列，取代個別的 add/remove ops
 - 格式：\`{ "op": "update_day", "dayIndex": N, "payload": { "theme": "...", "activities": [...完整活動陣列...] } }\`
 - 這樣每天只需 1 個 op，而非 N 個 add_activity + M 個 remove_activity
 
-**Activity 欄位精簡**：只填寫下列必要欄位，**省略所有選填欄位**除非使用者有特別要求：
-- 必填：id（8字元）、type、title、startTime、bookingRequired
-- 選填（只在有意義時填）：endTime、description（簡短）、cost（有具體費用時）、bookingUrl
-- **省略**：location的lat/lng（除非知道精確座標）、duration、tags、notes
+**⚠️ Activity 卡片資訊分層（必須遵守）**：
+- **title**：簡短的景點/活動名稱（例如「七星潭踏浪」），不要把介紹塞進 title
+- **description**：留空或一句話以內（卡片外層只顯示精簡資訊）
+- **intro**：景點介紹與為何這樣安排（2-3 句，放詳情視窗用）
+- **transport**：如何前往、交通方式與時間（1-2 句）
+- **recommendation**：推薦重點、必看必玩、當地飲食或名產（1-2 句）
+- **tips**：注意事項、最佳時段（選填，1 句）
+- ⚠️ 詳細介紹一律寫進 intro/transport/recommendation/tips，**絕對不要全部塞進 description**，否則卡片會太長
+
+**⚠️ 地址/地點正確性（必須遵守）**：
+- 當你「更換」一個活動成不同地點時（例如把「知本溫泉」改成「正氣路夜市」），
+  **絕對不要保留舊的 location 座標**。請省略 location 欄位（系統會自動重新定位到新地點），
+  或在 location.address 填入正確的新地址。**嚴禁讓新景點沿用舊景點的座標**。
+
+**⚠️ 每天從住宿出發（必須遵守）**：
+- 每天的第一個「景點」活動之前，若該天有住宿，必須先安排一段從住宿出發的交通
+  （type:"transport"，title 例如「從○○飯店出發前往第一站」），並排好出發時間與路程。
+- 不要讓使用者當天第一站沒有出發時間與交通規劃。
 
 ## 互動風格
 
@@ -266,7 +305,7 @@ export function buildAdjustPromptGemini(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(itinerary, null, 2)}
 </current_itinerary>
-
+${buildMemorySection(itinerary)}
 == MANDATORY OUTPUT FORMAT ==
 
 Step 1: Write 2-3 sentences in 繁體中文 analyzing the user's request.
@@ -315,7 +354,18 @@ CRITICAL RULES for <plans> block:
 - set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } or null }
 
 Activity required fields: id(8chars), type, title, startTime, bookingRequired
-Activity optional fields: endTime, description, cost
+Activity optional fields: endTime, intro, transport, recommendation, tips, cost
+
+== 卡片資訊分層（重要）==
+- title 只放簡短名稱；description 留空或極短
+- 詳細介紹寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒）
+- 絕對不要把一大段介紹全塞進 description
+
+== 地址正確性（重要）==
+- 更換活動成不同地點時，絕對不要保留舊 location 座標。請省略 location 欄位讓系統重新定位，或在 location.address 填正確新地址。
+
+== 每天從住宿出發（重要）==
+- 每天第一個景點前，若有住宿，先安排一段 type:"transport" 從住宿出發的交通，排好時間。
 
 == TIME RULES ==
 - Never schedule activities with overlapping times on the same day
@@ -336,7 +386,7 @@ export function buildConsultPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(itinerary, null, 2)}
 </current_itinerary>
-
+${buildMemorySection(itinerary)}
 ## 重要限制
 
 1. **你只能提供建議、資訊和諮詢，不能修改行程**
@@ -486,7 +536,8 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 ## 規則
 1. dayIndex 從 0 開始（第一天=0，第二天=1，以此類推）
 2. 每天安排 4-5 個活動（含用餐），保持簡潔
-2-1. **每個活動都要填寫 intro、transport、recommendation 三個詳情欄位**（tips 選填），內容具體實用、繁體中文，作為使用者點擊卡片後查看的詳細資訊
+2-1. **卡片資訊分層**：title 只放簡短名稱、description 留空或極短；詳細介紹一律寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒，選填）。**絕對不要把一大段介紹塞進 description**，否則行程表卡片會太長
+2-2. **每天從住宿出發**：每天第一個景點之前，若該天有住宿，必須先安排一段 type:"transport" 從住宿出發的交通（排好出發時間與路程），不要讓當天第一站沒有交通規劃
 3. activity.id、accommodation.id、cityTransport.id 一律用 8 字元英數字（如 aB3kP9xZ）
 4. 有城市間移動（包含中途城市）才填 cityTransports，否則用空陣列 []
 5. **cityTransports 的 departureTime / arrivalTime 必須嚴格用 ISO 8601 格式，例如："2026-06-01T08:00:00.000Z"（結尾必須有 .000Z）**

@@ -61,11 +61,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const looksLikeRawJson = rawContent.startsWith('[{') || rawContent.startsWith('[\n{') ||
     (rawContent.startsWith('{') && rawContent.includes('"planIndex"'))
 
-  // For pending/applied/cancelled assistant messages: don't show raw content.
-  // Also suppress content that looks like raw plan JSON (legacy messages).
-  const showRawContent = isUser || (
-    (message.patch_status === 'none' || !message.patch_status) && !looksLikeRawJson
-  )
+  // 顯示 AI 的分析文字（plans 標籤已被 strip 掉），即使有方案也保留，
+  // 讓使用者看得到 AI 的分析說明（#12：回應不該消失）。
+  // 僅當內容看起來是 raw plan JSON（舊資料 bug）時才隱藏。
+  const showRawContent = isUser || !looksLikeRawJson
 
   return (
     <div className={clsx('flex gap-2', isUser ? 'flex-row-reverse' : 'flex-row')}>
