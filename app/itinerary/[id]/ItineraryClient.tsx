@@ -893,6 +893,6 @@ export function ItineraryClient({
   )
   // APIProvider 包裹全頁，讓 AddressAutocomplete / MapView 都能用 useMapsLibrary
   return MAPS_KEY ? (
-    <APIProvider apiKey={MAPS_KEY}>{inner}</APIProvider>
+    <APIProvider apiKey={MAPS_KEY} language="zh-TW" region="TW">{inner}</APIProvider>
   ) : inner
 }
