@@ -62,9 +62,8 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
 export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
   // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找，顯示在卡片之間
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
-  const lastActivity = day.activities[day.activities.length - 1]
-  const accommodationLeg =
-    lastActivity && lastActivity.type !== 'transport' ? legByTo.get('accommodation') : undefined
+  // 住宿前的連接器：只要有「最後一站 → 住宿」的路段就顯示（交通卡後面也顯示）
+  const accommodationLeg = legByTo.get('accommodation')
 
   return (
     <div className="px-4 pt-4">
@@ -112,13 +111,11 @@ export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivi
           )}
 
           {day.activities.map((activity, idx) => {
-            // 連接器：抵達本站相對「前一站」的開車距離/時間。
-            // 僅當前一站與本站都是實際地點（非交通類、相鄰）時顯示，避免與交通卡重複。
-            const prev = idx > 0 ? day.activities[idx - 1] : undefined
+            // 連接器：抵達本站相對「前一個實際地點」的開車距離/時間。
+            // 本身是交通卡、或第一站（出發地→此站）不顯示；交通卡後面的景點卡會顯示
+            // （該段距離正是交通卡描述的旅程，補上實際公里數/時間）。
             const arriveLeg =
-              prev && prev.type !== 'transport' && activity.type !== 'transport'
-                ? legByTo.get(activity.id)
-                : undefined
+              idx > 0 && activity.type !== 'transport' ? legByTo.get(activity.id) : undefined
             return (
               <div key={activity.id}>
                 {arriveLeg && <TravelConnector leg={arriveLeg} />}

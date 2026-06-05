@@ -36,6 +36,8 @@ interface Props {
 export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
   const geocodingLib = useMapsLibrary('geocoding')
   const routesLib = useMapsLibrary('routes')
+  // 載入 geometry：逐段計算（跨海日）需用它把路徑編碼成折線存 DB
+  const geometryLib = useMapsLibrary('geometry')
   const onSavedRef = useRef(onSaved)
   useEffect(() => {
     onSavedRef.current = onSaved
@@ -44,7 +46,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
   const doneRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    if (!itinerary || !geocodingLib || !routesLib) return
+    if (!itinerary || !geocodingLib || !routesLib || !geometryLib) return
     let cancelled = false
 
     const run = async () => {
@@ -162,7 +164,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itinerary, geocodingLib, routesLib, itineraryId])
+  }, [itinerary, geocodingLib, routesLib, geometryLib, itineraryId])
 
   return null
 }

@@ -140,45 +140,101 @@ export function signatureFor(points: { id: string; lat: number; lng: number }[])
 // 以 signature 為鍵的記憶體快取：地圖與 prefetch 共用，同 session 同一條路線只打一次 Directions
 const memCache = new Map<string, ComputedRoute>()
 
-/** 呼叫 Directions 取得整天開車路線；同簽章已算過則直接回快取（不打 API） */
+/** 由 Directions 的單一 leg 組成內部 leg（含道路中點當標籤位置） */
+function buildLeg(leg: google.maps.DirectionsLeg, toId: string): ComputedRoute['legs'][number] {
+  const lp: google.maps.LatLng[] = []
+  leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
+  const m = lp.length ? lp[Math.floor(lp.length / 2)] : null
+  const pos = m
+    ? { lat: m.lat(), lng: m.lng() }
+    : {
+        lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
+        lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
+      }
+  const meters = leg.distance?.value ?? 0
+  const seconds = leg.duration?.value ?? 0
+  return { toId, meters, seconds, text: legText(meters, seconds), pos }
+}
+
+/** 編碼折線（需 geometry library 已載入；未載入則回空字串，地圖會在 session 內以快取重畫） */
+function encodePolyline(path: google.maps.LatLng[]): string {
+  try {
+    if (typeof google !== 'undefined' && google.maps?.geometry?.encoding) {
+      return google.maps.geometry.encoding.encodePath(path)
+    }
+  } catch {
+    /* ignore */
+  }
+  return ''
+}
+
+/**
+ * 取得整天開車路線；同簽章已算過則直接回快取（不打 API）。
+ * 策略：先用「整天一次」請求（效率最好）；若整天失敗（例如含跨海/無法開車的段，
+ * Google 會整批回 ZERO_RESULTS），改「逐段計算」——能開車的段保留距離/時間，
+ * 不能開車的段（船/跨海）自動略過，避免一段拖累整天。
+ */
 export async function getOrComputeRoute(
   routesLib: google.maps.RoutesLibrary,
   points: RoutePoint[],
 ): Promise<ComputedRoute | null> {
-  if (points.length < 2 || points.length > 25) return null
+  if (points.length < 2) return null
   const sig = signatureFor(points)
   const hit = memCache.get(sig)
   if (hit) return hit
 
   const service = new routesLib.DirectionsService()
-  const res = await service.route({
-    origin: { lat: points[0].lat, lng: points[0].lng },
-    destination: { lat: points[points.length - 1].lat, lng: points[points.length - 1].lng },
-    waypoints: points.slice(1, -1).map((p) => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
-    travelMode: google.maps.TravelMode.DRIVING,
-  })
-  const r = res.routes[0]
-  if (!r) return null
 
-  const legs: ComputedRoute['legs'] = r.legs.map((leg, i) => {
-    const lp: google.maps.LatLng[] = []
-    leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
-    const m = lp.length ? lp[Math.floor(lp.length / 2)] : null
-    const pos = m
-      ? { lat: m.lat(), lng: m.lng() }
-      : {
-          lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
-          lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
+  // 1) 先試整天一次（waypoint 上限約 25）
+  if (points.length <= 25) {
+    try {
+      const res = await service.route({
+        origin: { lat: points[0].lat, lng: points[0].lng },
+        destination: { lat: points[points.length - 1].lat, lng: points[points.length - 1].lng },
+        waypoints: points.slice(1, -1).map((p) => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
+        travelMode: google.maps.TravelMode.DRIVING,
+      })
+      const r = res.routes[0]
+      if (r) {
+        const computed: ComputedRoute = {
+          legs: r.legs.map((leg, i) => buildLeg(leg, points[i + 1]?.id ?? '')),
+          path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
+          polyline: r.overview_polyline ?? '',
+          sig,
         }
-    const meters = leg.distance?.value ?? 0
-    const seconds = leg.duration?.value ?? 0
-    return { toId: points[i + 1]?.id ?? '', meters, seconds, text: legText(meters, seconds), pos }
-  })
+        memCache.set(sig, computed)
+        return computed
+      }
+    } catch {
+      /* 整天失敗 → 落到逐段 */
+    }
+  }
+
+  // 2) 逐段計算：跨海/無法開車的段自動略過
+  const legs: ComputedRoute['legs'] = []
+  const pathLatLngs: google.maps.LatLng[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    try {
+      const res = await service.route({
+        origin: { lat: points[i].lat, lng: points[i].lng },
+        destination: { lat: points[i + 1].lat, lng: points[i + 1].lng },
+        travelMode: google.maps.TravelMode.DRIVING,
+      })
+      const r = res.routes[0]
+      const leg = r?.legs?.[0]
+      if (!r || !leg) continue
+      legs.push(buildLeg(leg, points[i + 1].id))
+      r.overview_path.forEach((pt) => pathLatLngs.push(pt))
+    } catch {
+      /* 該段無法開車（例如跨海），略過 */
+    }
+  }
+  if (legs.length === 0) return null
 
   const computed: ComputedRoute = {
     legs,
-    path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
-    polyline: r.overview_polyline ?? '',
+    path: pathLatLngs.map((p) => ({ lat: p.lat(), lng: p.lng() })),
+    polyline: encodePolyline(pathLatLngs),
     sig,
   }
   memCache.set(sig, computed)
