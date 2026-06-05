@@ -18,7 +18,7 @@ function TravelConnector({ leg }: { leg: TravelLeg }) {
   return (
     <div className="flex justify-center -mt-1 mb-2">
       <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 rounded-full px-2.5 py-0.5">
-        🚗 {formatLeg(leg.meters, leg.seconds)}
+        從前一站到這裡：🚗 {formatLeg(leg.meters, leg.seconds)}
       </span>
     </div>
   )
