@@ -23,6 +23,22 @@ function hasCoords(loc?: GeoLocation | null): boolean {
   return !!loc && (loc.lat !== 0 || loc.lng !== 0)
 }
 
+/**
+ * 合併 geocode 結果：只補座標，保留 AI 原本提供的地址（權威來源）。
+ *
+ * 為什麼？AI 生成的 address 含正確縣市（例如太魯閣在花蓮），
+ * 但 geocode 可能因查詢偏差落到別處（台東市中心），若直接覆寫整個
+ * location，會把正確地址換成錯誤的 formatted_address。
+ * 故原本已有 address 時只更新 lat/lng；原本沒地址才採用 geocode 回傳的。
+ */
+function mergeGeo(prev: GeoLocation | null | undefined, geo: GeoLocation): GeoLocation {
+  return {
+    lat: geo.lat,
+    lng: geo.lng,
+    address: prev?.address?.trim() ? prev.address : geo.address,
+  }
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -84,14 +100,14 @@ export async function POST(
     for (const u of dayUpdates) {
       if (u.target === 'accommodation') {
         if (accommodation && !hasCoords(accommodation.location)) {
-          accommodation = { ...accommodation, location: u.geo }
+          accommodation = { ...accommodation, location: mergeGeo(accommodation.location, u.geo) }
           dayChanged = true
         }
       } else {
         const idx = activities.findIndex((a) => a.id === u.target)
         if (idx >= 0 && !hasCoords(activities[idx].location)) {
           activities = activities.map((a, i) =>
-            i === idx ? { ...a, location: u.geo } : a
+            i === idx ? { ...a, location: mergeGeo(a.location, u.geo) } : a
           )
           dayChanged = true
         }

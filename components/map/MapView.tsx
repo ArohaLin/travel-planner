@@ -61,6 +61,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
   const [geocoding, setGeocoding] = useState(false)
 
   const destination = itinerary.metadata?.destination
+  const originCity = itinerary.metadata?.originCity
 
   const getGeo = useCallback(
     (dayIndex: number, target: string, existing?: GeoLocation | null): GeoLocation | undefined => {
@@ -77,25 +78,62 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
 
     const inputs: GeocodeInput[] = []
     const refs: { dayIndex: number; target: string }[] = []
+    const seen = new Set<string>()
+
+    // 排入一筆 geocode；自動去重、且已有座標就跳過。
+    // 重點：query 帶完整地址（含縣市）時「不可」再附加 destination，
+    // 否則像「太魯閣 台東」會把花蓮景點誤定位到台東。
+    const enqueue = (
+      di: number,
+      target: string,
+      existing: GeoLocation | null | undefined,
+      fullAddress: string | undefined,
+      fallbackQuery: string | undefined,
+    ) => {
+      const key = `${di}:${target}`
+      if (seen.has(key)) return
+      if (getGeo(di, target, existing)) return
+      const addr = fullAddress?.trim()
+      const query = addr || fallbackQuery
+      if (!query) return
+      seen.add(key)
+      inputs.push({ query, region: addr ? undefined : destination })
+      refs.push({ dayIndex: di, target })
+    }
 
     for (const dayIndex of selectedDays) {
       const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
       if (!day) continue
+
+      // Issue B 起點：第一天用出發地，後續天用「前一晚住宿」（需先有座標）
+      if (dayIndex === 0) {
+        // 出發城市本身即縣市，query 直接用城市名、不附加 destination
+        enqueue(0, 'origin', undefined, originCity, originCity)
+      } else {
+        const prevDay = itinerary.days.find((d) => d.dayIndex === dayIndex - 1)
+        if (prevDay?.accommodation) {
+          enqueue(
+            dayIndex - 1,
+            'accommodation',
+            prevDay.accommodation.location,
+            prevDay.accommodation.location?.address,
+            prevDay.accommodation.name,
+          )
+        }
+      }
+
       for (const a of day.activities) {
         if (a.type === 'transport') continue // 交通類不標在地圖上，免 geocode
-        if (getGeo(dayIndex, a.id, a.location)) continue
-        // 用地點簡稱 / 地址 / 標題查座標（placeLabel 通常較精準）
-        const query = a.placeLabel || a.location?.address || a.title
-        if (!query) continue
-        inputs.push({ query, region: destination })
-        refs.push({ dayIndex, target: a.id })
+        enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title)
       }
-      if (day.accommodation && !getGeo(dayIndex, 'accommodation', day.accommodation.location)) {
-        const query = day.accommodation.location?.address || day.accommodation.name
-        if (query) {
-          inputs.push({ query, region: destination })
-          refs.push({ dayIndex, target: 'accommodation' })
-        }
+      if (day.accommodation) {
+        enqueue(
+          dayIndex,
+          'accommodation',
+          day.accommodation.location,
+          day.accommodation.location?.address,
+          day.accommodation.name,
+        )
       }
     }
 
@@ -138,6 +176,36 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
         if (!day) return null
         const points: MapPoint[] = []
+
+        // Issue B 起點：路線從「出發地 / 前一晚住宿」開始，而非第一個景點。
+        if (dayIndex === 0) {
+          const geo = getGeo(0, 'origin', undefined)
+          if (geo && originCity) {
+            points.push({
+              lat: geo.lat,
+              lng: geo.lng,
+              label: '出',
+              title: `出發：${originCity}`,
+              kind: 'origin',
+            })
+          }
+        } else {
+          const prevDay = itinerary.days.find((d) => d.dayIndex === dayIndex - 1)
+          const prevAcc = prevDay?.accommodation
+          if (prevAcc) {
+            const geo = getGeo(dayIndex - 1, 'accommodation', prevAcc.location)
+            if (geo) {
+              points.push({
+                lat: geo.lat,
+                lng: geo.lng,
+                label: '宿',
+                title: `${prevAcc.name}（前晚住宿）`,
+                kind: 'origin',
+              })
+            }
+          }
+        }
+
         // 只標「實際地點」：排除交通類（transport 是兩點間移動，不是地圖上的點），
         // 並連續編號（①②③…不跳號），與行程表上的景點順序一致。
         const placeActivities = day.activities.filter((a) => a.type !== 'transport')
@@ -169,7 +237,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         return { dayIndex, color: DAY_COLORS[colorIdx % DAY_COLORS.length], points }
       })
       .filter((d): d is MapDay => d !== null && d.points.length > 0)
-  }, [sortedSelected, itinerary, getGeo])
+  }, [sortedSelected, itinerary, getGeo, originCity])
 
   function toggleDay(dayIndex: number) {
     const next = selectedDays.includes(dayIndex)

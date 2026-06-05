@@ -10,7 +10,8 @@ export interface MapPoint {
   label: string
   title: string
   time?: string
-  kind: 'activity' | 'accommodation'
+  /** activity=圓形景點；accommodation=當晚住宿方形；origin=當天路線起點（出發地/前晚住宿）菱形 */
+  kind: 'activity' | 'accommodation' | 'origin'
 }
 
 export interface MapDay {
@@ -174,9 +175,13 @@ function MapContent({ days: rawDays }: ItineraryMapProps) {
             <div style={{ fontWeight: 600, fontSize: 14, color: '#111827' }}>
               {selected.point.title}
             </div>
-            {selected.point.time && (
+            {(selected.point.time || selected.point.kind !== 'activity') && (
               <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                {selected.point.kind === 'accommodation' ? '住宿' : selected.point.time}
+                {selected.point.kind === 'accommodation'
+                  ? '住宿'
+                  : selected.point.kind === 'origin'
+                    ? '路線起點'
+                    : selected.point.time}
               </div>
             )}
           </div>
@@ -233,16 +238,19 @@ function DayRoute({
               point.kind === 'accommodation'
                 ? // 住宿用方形標記
                   'M -12 -12 H 12 V 12 H -12 Z'
-                : google.maps.SymbolPath.CIRCLE,
-            scale: point.kind === 'accommodation' ? 1 : 13,
+                : point.kind === 'origin'
+                  ? // 起點（出發地 / 前晚住宿）用菱形標記
+                    'M 0 -13 L 13 0 L 0 13 L -13 0 Z'
+                  : google.maps.SymbolPath.CIRCLE,
+            scale: point.kind === 'activity' ? 13 : 1,
             fillColor: day.color,
-            fillOpacity: 1,
+            fillOpacity: point.kind === 'origin' ? 0.9 : 1,
             strokeColor: '#ffffff',
             strokeWeight: 2.5,
             labelOrigin:
-              point.kind === 'accommodation'
-                ? new google.maps.Point(0, 0)
-                : undefined,
+              point.kind === 'activity'
+                ? undefined
+                : new google.maps.Point(0, 0),
           }}
         />
       ))}
