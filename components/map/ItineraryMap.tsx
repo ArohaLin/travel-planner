@@ -392,20 +392,32 @@ function DayRoute({
         { lat: b.lat, lng: b.lng },
       ]
       const leg = byTo.get(b.id)
+      let path: { lat: number; lng: number }[]
+      let distText: string
+      let meters: number
+      let pos: { lat: number; lng: number }
       if (leg && leg.polyline && geometryLib) {
-        const path = geometryLib.encoding.decodePath(leg.polyline).map((p) => ({ lat: p.lat(), lng: p.lng() }))
-        segs.push({
-          path: path.length >= 2 ? path : straight,
-          label: { text: leg.text, meters: leg.meters, pos: leg.pos ?? mid },
-        })
+        const decoded = geometryLib.encoding.decodePath(leg.polyline).map((p) => ({ lat: p.lat(), lng: p.lng() }))
+        path = decoded.length >= 2 ? decoded : straight
+        distText = leg.text
+        meters = leg.meters
+        pos = leg.pos ?? mid
       } else if (leg) {
         // 有開車距離但沒折線 → 直線 + 開車距離文字
-        segs.push({ path: straight, label: { text: leg.text, meters: leg.meters, pos: leg.pos ?? mid } })
+        path = straight
+        distText = leg.text
+        meters = leg.meters
+        pos = leg.pos ?? mid
       } else {
-        // 無開車路線（跨海/無法開車）→ 直線箭頭 + 直線距離
+        // 無開車路線（跨海/無法開車）→ 直線 + 直線距離
+        path = straight
         const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
-        segs.push({ path: straight, label: { text: formatKm(km), meters: km * 1000, pos: mid } })
+        distText = formatKm(km)
+        meters = km * 1000
+        pos = mid
       }
+      // 標籤前綴目的地編號（與 marker 上的編號一致）→「前往該點」的距離/時間
+      segs.push({ path, label: { text: `→${b.label} ${distText}`, meters, pos } })
     }
     return segs
   }, [legs, geometryLib, rawDay])
