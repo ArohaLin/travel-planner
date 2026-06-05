@@ -12,7 +12,6 @@ import type { ItineraryDay, TravelLeg } from '@/lib/types/itinerary'
 interface DayPayload {
   dayIndex: number
   legs: TravelLeg[]
-  polyline?: string
   sig?: string
 }
 
@@ -21,13 +20,14 @@ function sanitizeLegs(legs: unknown): TravelLeg[] {
   const out: TravelLeg[] = []
   for (const l of legs) {
     if (!l || typeof l !== 'object') continue
-    const { toId, meters, seconds, midLat, midLng } = l as Record<string, unknown>
+    const { toId, meters, seconds, midLat, midLng, polyline } = l as Record<string, unknown>
     if (typeof toId !== 'string' || !toId) continue
     if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) continue
     if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) continue
     const leg: TravelLeg = { toId, meters, seconds }
     if (typeof midLat === 'number' && Number.isFinite(midLat)) leg.midLat = midLat
     if (typeof midLng === 'number' && Number.isFinite(midLng)) leg.midLng = midLng
+    if (typeof polyline === 'string' && polyline) leg.polyline = polyline
     out.push(leg)
   }
   return out
@@ -62,13 +62,12 @@ export async function POST(
     return NextResponse.json({ error: '無更新內容' }, { status: 400 })
   }
 
-  interface DayUpdate { legs: TravelLeg[]; polyline?: string; sig?: string }
+  interface DayUpdate { legs: TravelLeg[]; sig?: string }
   const byDay = new Map<number, DayUpdate>()
   for (const d of rawDays as DayPayload[]) {
     if (typeof d?.dayIndex !== 'number') continue
     byDay.set(d.dayIndex, {
       legs: sanitizeLegs(d.legs),
-      polyline: typeof d.polyline === 'string' ? d.polyline : undefined,
       sig: typeof d.sig === 'string' ? d.sig : undefined,
     })
   }
@@ -95,12 +94,10 @@ export async function POST(
     const upd = byDay.get(day.dayIndex)
     if (!upd) return day
     changed = true
-    return {
-      ...day,
-      travelLegs: upd.legs,
-      routePolyline: upd.polyline ?? day.routePolyline,
-      travelSig: upd.sig ?? day.travelSig,
-    }
+    // 逐段折線存在每段 leg 內；不再使用日層級 routePolyline（清掉舊欄位）
+    const { routePolyline, ...rest } = day
+    void routePolyline
+    return { ...rest, travelLegs: upd.legs, travelSig: upd.sig ?? day.travelSig }
   })
 
   if (!changed) {

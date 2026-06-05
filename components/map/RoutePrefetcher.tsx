@@ -138,14 +138,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              days: [
-                {
-                  dayIndex: day.dayIndex,
-                  legs: toPersistLegs(route),
-                  polyline: route.polyline,
-                  sig: route.sig,
-                },
-              ],
+              days: [{ dayIndex: day.dayIndex, legs: toPersistLegs(route), sig: route.sig }],
             }),
           })
           if (res.ok) anySaved = true

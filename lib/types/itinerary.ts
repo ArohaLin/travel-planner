@@ -129,6 +129,8 @@ export const TravelLegSchema = z.object({
   /** 地圖上距離標籤的位置（道路中點）；行程卡不需要、可選 */
   midLat: z.number().optional(),
   midLng: z.number().optional(),
+  /** 該段道路編碼折線（地圖逐段畫線用）；無 = 該段沒有開車路線，地圖改畫直線 */
+  polyline: z.string().optional(),
 })
 
 export const ItineraryDaySchema = z.object({

@@ -24,11 +24,10 @@ export interface MapPoint {
   id: string
 }
 
-/** 寫回 DB 用的整天路線（距離/時間 + 編碼折線 + 簽章） */
+/** 寫回 DB 用的整天路線（逐段距離/時間/折線 + 簽章） */
 export interface PersistDayRoute {
   dayIndex: number
   legs: PersistLeg[]
-  polyline: string
   sig: string
 }
 
@@ -37,7 +36,7 @@ export interface MapDay {
   color: string
   points: MapPoint[]
   /** DB 已存的路線資料（sig 相符即可直接重用，免打 Directions） */
-  stored?: { sig?: string; polyline?: string; legs?: TravelLeg[] }
+  stored?: { sig?: string; legs?: TravelLeg[] }
 }
 
 /** 距離/時間標籤的層級模式：置頂（蓋在 marker 上）/ 下層（在 marker 下）/ 隱藏 */
@@ -73,19 +72,6 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 function formatKm(km: number): string {
   return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(km * 1000)} m`
-}
-
-/** 直線距離標籤（Directions 失敗時的退回方案，例如無法開車到達） */
-function straightLabels(points: MapPoint[]): { text: string; pos: { lat: number; lng: number } }[] {
-  const out: { text: string; pos: { lat: number; lng: number } }[] = []
-  for (let i = 0; i < points.length - 1; i++) {
-    const a = points[i]
-    const b = points[i + 1]
-    const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
-    if (km < MIN_LABEL_KM) continue
-    out.push({ text: formatKm(km), pos: { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 } })
-  }
-  return out
 }
 
 /**
@@ -296,10 +282,19 @@ function MapContent({ days: rawDays, distanceMode, onRoute }: ItineraryMapProps)
   )
 }
 
-/** 給 polyline/labels 渲染用的整天路線（不論來自 DB 重用或現算） */
-interface RenderRoute {
+/** 已解析的開車路段（以 toId 對應終點站）；pos=標籤位置，polyline=該段道路折線 */
+interface RenderLeg {
+  toId: string
+  meters: number
+  text: string
+  pos: { lat: number; lng: number } | null
+  polyline: string
+}
+
+/** 逐段渲染資料：path=該段要畫的線（真實道路或直線兩點），label=距離標籤 */
+interface RenderSegment {
   path: { lat: number; lng: number }[]
-  labels: { text: string; meters: number; pos: { lat: number; lng: number } }[]
+  label: { text: string; meters: number; pos: { lat: number; lng: number } } | null
 }
 
 function DayRoute({
@@ -318,66 +313,60 @@ function DayRoute({
   const map = useMap()
   const routesLib = useMapsLibrary('routes')
   const geometryLib = useMapsLibrary('geometry')
-  const [route, setRoute] = useState<RenderRoute | null>(null)
-  const [failed, setFailed] = useState(false)
+  // 已解析的開車路段（以 toId 對應）；null=載入中，[]=已算但無任何開車段（全走直線）
+  const [legs, setLegs] = useState<RenderLeg[] | null>(null)
 
-  // 取得整天開車路線：優先重用 DB（sig 相符 → 解碼折線、不打 API），否則呼叫 Directions。
+  // 取得開車路段：優先重用 DB（sig 相符），否則呼叫 Directions（逐段，跨海段會缺）。
   // 以原始座標為基準，zoom in/out 不會觸發重抓。
   useEffect(() => {
     if (rawDay.points.length < 2) {
-      setRoute(null)
-      setFailed(false)
+      setLegs([])
       return
     }
     const currentSig = signatureFor(rawDay.points)
-
-    // 1) DB 已有且新鮮 → 解碼直接用
     const stored = rawDay.stored
-    if (stored?.sig && stored.sig === currentSig && stored.polyline && geometryLib) {
-      const path = geometryLib.encoding
-        .decodePath(stored.polyline)
-        .map((p) => ({ lat: p.lat(), lng: p.lng() }))
-      const labels = (stored.legs ?? [])
-        .filter((l) => typeof l.midLat === 'number' && typeof l.midLng === 'number')
-        .map((l) => ({
-          text: legText(l.meters, l.seconds),
+
+    // 1) DB 已新鮮 → 直接用 stored.legs（每段含自己的折線）
+    if (stored?.sig && stored.sig === currentSig && stored.legs) {
+      setLegs(
+        stored.legs.map((l) => ({
+          toId: l.toId,
           meters: l.meters,
-          pos: { lat: l.midLat as number, lng: l.midLng as number },
-        }))
-      setRoute({ path, labels })
-      setFailed(false)
+          text: legText(l.meters, l.seconds),
+          pos:
+            typeof l.midLat === 'number' && typeof l.midLng === 'number'
+              ? { lat: l.midLat, lng: l.midLng }
+              : null,
+          polyline: l.polyline ?? '',
+        })),
+      )
       return
     }
 
-    // 2) 否則呼叫 Directions（同 session 同簽章會命中共用快取，不重複打）
-    if (!routesLib) return
+    // 2) 否則算（需 geometry 才能把每段道路編碼存起來）
+    if (!routesLib || !geometryLib) return
     let cancelled = false
-    setRoute(null)
-    setFailed(false)
+    setLegs(null)
     getOrComputeRoute(routesLib, rawDay.points)
       .then((computed) => {
         if (cancelled) return
         if (!computed) {
-          setFailed(true)
+          setLegs([]) // 全部無法開車 → 全走直線
           return
         }
-        setRoute({
-          path: computed.path,
-          labels: computed.legs.map((l) => ({ text: l.text, meters: l.meters, pos: l.pos })),
-        })
-        setFailed(false)
-        onRoute?.({
-          dayIndex: rawDay.dayIndex,
-          legs: toPersistLegs(computed),
-          polyline: computed.polyline,
-          sig: computed.sig,
-        })
+        setLegs(
+          computed.legs.map((l) => ({
+            toId: l.toId,
+            meters: l.meters,
+            text: l.text,
+            pos: l.pos,
+            polyline: l.polyline,
+          })),
+        )
+        onRoute?.({ dayIndex: rawDay.dayIndex, legs: toPersistLegs(computed), sig: computed.sig })
       })
       .catch(() => {
-        if (!cancelled) {
-          setRoute(null)
-          setFailed(true)
-        }
+        if (!cancelled) setLegs([])
       })
     return () => {
       cancelled = true
@@ -386,51 +375,84 @@ function DayRoute({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routesLib, geometryLib, rawDay])
 
-  // 路線折線：有路線就畫；Directions 失敗才退回直線。載入中先不畫線，等結果。
+  // 逐段渲染：每段「有開車路線→真實道路」「無→直線箭頭」。載入中（null）不畫，等結果。
+  const segments = useMemo<RenderSegment[] | null>(() => {
+    if (legs === null) return null
+    const pts = rawDay.points
+    if (pts.length < 2) return []
+    // 注意：本檔 `Map` 名稱被 @vis.gl 地圖元件佔用，用 globalThis.Map 取原生 Map
+    const byTo = new globalThis.Map(legs.map((l) => [l.toId, l]))
+    const segs: RenderSegment[] = []
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
+      const straight = [
+        { lat: a.lat, lng: a.lng },
+        { lat: b.lat, lng: b.lng },
+      ]
+      const leg = byTo.get(b.id)
+      if (leg && leg.polyline && geometryLib) {
+        const path = geometryLib.encoding.decodePath(leg.polyline).map((p) => ({ lat: p.lat(), lng: p.lng() }))
+        segs.push({
+          path: path.length >= 2 ? path : straight,
+          label: { text: leg.text, meters: leg.meters, pos: leg.pos ?? mid },
+        })
+      } else if (leg) {
+        // 有開車距離但沒折線 → 直線 + 開車距離文字
+        segs.push({ path: straight, label: { text: leg.text, meters: leg.meters, pos: leg.pos ?? mid } })
+      } else {
+        // 無開車路線（跨海/無法開車）→ 直線箭頭 + 直線距離
+        const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
+        segs.push({ path: straight, label: { text: formatKm(km), meters: km * 1000, pos: mid } })
+      }
+    }
+    return segs
+  }, [legs, geometryLib, rawDay])
+
+  // 折線：逐段畫（真實道路或直線，樣式一致 + 方向箭頭）
   useEffect(() => {
-    if (!map) return
-    const path = route
-      ? route.path
-      : failed && rawDay.points.length >= 2
-        ? rawDay.points.map((p) => ({ lat: p.lat, lng: p.lng }))
-        : null
-    if (!path || path.length < 2) return
-    const polyline = new google.maps.Polyline({
-      path,
-      strokeColor: day.color,
-      strokeOpacity: 0.85,
-      strokeWeight: 3,
-      icons: [
-        {
-          icon: {
-            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-            scale: 2.4,
-            fillOpacity: 1,
-            strokeWeight: 0,
-            fillColor: day.color,
-          },
-          offset: '50%',
-          repeat: '120px',
-        },
-      ],
-    })
-    polyline.setMap(map)
-    return () => polyline.setMap(null)
-  }, [map, route, failed, rawDay, day.color])
+    if (!map || !segments) return
+    const polylines = segments
+      .filter((s) => s.path.length >= 2)
+      .map((s) => {
+        const pl = new google.maps.Polyline({
+          path: s.path,
+          strokeColor: day.color,
+          strokeOpacity: 0.85,
+          strokeWeight: 3,
+          icons: [
+            {
+              icon: {
+                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                scale: 2.4,
+                fillOpacity: 1,
+                strokeWeight: 0,
+                fillColor: day.color,
+              },
+              offset: '50%',
+              repeat: '120px',
+            },
+          ],
+        })
+        pl.setMap(map)
+        return pl
+      })
+    return () => polylines.forEach((p) => p.setMap(null))
+  }, [map, segments, day.color])
 
   // 距離/時間標籤：層級依 distanceMode；該段 < MIN_LABEL_KM 公里不顯示。
   useEffect(() => {
-    if (!map || distanceMode === 'hidden') return
+    if (!map || !segments || distanceMode === 'hidden') return
     const pane = distanceMode === 'top' ? 'floatPane' : 'overlayLayer'
-    const labels = route
-      ? route.labels.filter((l) => l.meters >= MIN_LABEL_KM * 1000)
-      : failed
-        ? straightLabels(rawDay.points)
-        : []
-    if (labels.length === 0) return
-    const overlays = labels.map((l) => makeDistancePill(map, l.text, l.pos, day.color, pane))
+    const overlays = segments
+      .map((s) => s.label)
+      .filter((l): l is { text: string; meters: number; pos: { lat: number; lng: number } } =>
+        !!l && l.meters >= MIN_LABEL_KM * 1000,
+      )
+      .map((l) => makeDistancePill(map, l.text, l.pos, day.color, pane))
     return () => overlays.forEach((o) => o.setMap(null))
-  }, [map, route, failed, rawDay, day.color, distanceMode])
+  }, [map, segments, day.color, distanceMode])
 
   return (
     <>

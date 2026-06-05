@@ -31,9 +31,11 @@ export interface PersistLeg {
   seconds: number
   midLat?: number
   midLng?: number
+  /** 該段道路編碼折線（地圖畫線用）；無 = 該段沒有開車路線，地圖改畫直線 */
+  polyline?: string
 }
 
-/** Directions 算完的整天路線（記憶體用） */
+/** Directions 算完的整天路線（記憶體用）：逐段，每段含自己的道路折線 */
 export interface ComputedRoute {
   legs: {
     toId: string
@@ -41,10 +43,9 @@ export interface ComputedRoute {
     seconds: number
     text: string
     pos: { lat: number; lng: number }
+    /** 該段道路編碼折線 */
+    polyline: string
   }[]
-  path: { lat: number; lng: number }[]
-  /** 編碼折線（存 DB 用） */
-  polyline: string
   /** 輸入指紋 */
   sig: string
 }
@@ -132,9 +133,10 @@ export function buildDayPoints(
   return points
 }
 
-/** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變 */
+/** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變。
+ *  前綴 v2：路線格式改成「逐段折線」，遞增版本讓舊資料簽章不符而自動重算。 */
 export function signatureFor(points: { id: string; lat: number; lng: number }[]): string {
-  return points.map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
+  return 'v2|' + points.map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
 }
 
 // 以 signature 為鍵的記憶體快取：地圖與 prefetch 共用，同 session 同一條路線只打一次 Directions
@@ -153,7 +155,7 @@ function buildLeg(leg: google.maps.DirectionsLeg, toId: string): ComputedRoute['
       }
   const meters = leg.distance?.value ?? 0
   const seconds = leg.duration?.value ?? 0
-  return { toId, meters, seconds, text: legText(meters, seconds), pos }
+  return { toId, meters, seconds, text: legText(meters, seconds), pos, polyline: encodePolyline(lp) }
 }
 
 /** 編碼折線（需 geometry library 已載入；未載入則回空字串，地圖會在 session 內以快取重畫） */
@@ -198,8 +200,6 @@ export async function getOrComputeRoute(
       if (r) {
         const computed: ComputedRoute = {
           legs: r.legs.map((leg, i) => buildLeg(leg, points[i + 1]?.id ?? '')),
-          path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
-          polyline: r.overview_polyline ?? '',
           sig,
         }
         memCache.set(sig, computed)
@@ -210,9 +210,8 @@ export async function getOrComputeRoute(
     }
   }
 
-  // 2) 逐段計算：跨海/無法開車的段自動略過
+  // 2) 逐段計算：跨海/無法開車的段自動略過（地圖會對這些段改畫直線）
   const legs: ComputedRoute['legs'] = []
-  const pathLatLngs: google.maps.LatLng[] = []
   for (let i = 0; i < points.length - 1; i++) {
     try {
       const res = await service.route({
@@ -220,30 +219,30 @@ export async function getOrComputeRoute(
         destination: { lat: points[i + 1].lat, lng: points[i + 1].lng },
         travelMode: google.maps.TravelMode.DRIVING,
       })
-      const r = res.routes[0]
-      const leg = r?.legs?.[0]
-      if (!r || !leg) continue
+      const leg = res.routes[0]?.legs?.[0]
+      if (!leg) continue
       legs.push(buildLeg(leg, points[i + 1].id))
-      r.overview_path.forEach((pt) => pathLatLngs.push(pt))
     } catch {
       /* 該段無法開車（例如跨海），略過 */
     }
   }
   if (legs.length === 0) return null
 
-  const computed: ComputedRoute = {
-    legs,
-    path: pathLatLngs.map((p) => ({ lat: p.lat(), lng: p.lng() })),
-    polyline: encodePolyline(pathLatLngs),
-    sig,
-  }
+  const computed: ComputedRoute = { legs, sig }
   memCache.set(sig, computed)
   return computed
 }
 
-/** 把 ComputedRoute 轉成寫回 DB 的路段陣列（排除起點本身、保留中點供地圖標籤定位） */
+/** 把 ComputedRoute 轉成寫回 DB 的路段陣列（排除起點本身、保留中點與該段折線） */
 export function toPersistLegs(route: ComputedRoute): PersistLeg[] {
   return route.legs
     .filter((l) => l.toId && l.toId !== 'origin')
-    .map((l) => ({ toId: l.toId, meters: l.meters, seconds: l.seconds, midLat: l.pos.lat, midLng: l.pos.lng }))
+    .map((l) => ({
+      toId: l.toId,
+      meters: l.meters,
+      seconds: l.seconds,
+      midLat: l.pos.lat,
+      midLng: l.pos.lng,
+      polyline: l.polyline,
+    }))
 }

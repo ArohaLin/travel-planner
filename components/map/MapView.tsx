@@ -204,7 +204,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         dayIndex,
         color: DAY_COLORS[colorIdx % DAY_COLORS.length],
         points,
-        stored: { sig: day.travelSig, polyline: day.routePolyline, legs: day.travelLegs },
+        stored: { sig: day.travelSig, legs: day.travelLegs },
       })
     })
     return out
@@ -332,14 +332,7 @@ async function persistDayRoute(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        days: [
-          {
-            dayIndex: payload.dayIndex,
-            legs: payload.legs,
-            polyline: payload.polyline,
-            sig: payload.sig,
-          },
-        ],
+        days: [{ dayIndex: payload.dayIndex, legs: payload.legs, sig: payload.sig }],
       }),
     })
     if (!res.ok) return false
