@@ -1,10 +1,16 @@
 'use client'
 
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
-import { ItineraryMap, type MapDay, type MapPoint, type DistanceMode } from './ItineraryMap'
+import {
+  ItineraryMap,
+  type MapDay,
+  type MapPoint,
+  type DistanceMode,
+  type PersistLeg,
+} from './ItineraryMap'
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 
@@ -39,6 +45,8 @@ interface MapViewProps {
   /** 目前選取的天（受控，由父層管理以便與行程檢視同步） */
   selectedDays: number[]
   onSelectedDaysChange: (days: number[]) => void
+  /** 路段距離/時間寫回 DB 後呼叫（讓行程卡即時刷新顯示連接器） */
+  onLegsSaved?: () => void
 }
 
 /** 判斷 location 是否已有可用座標（非空且非 0,0） */
@@ -67,7 +75,7 @@ interface GeoUpdate {
   geo: GeoLocation
 }
 
-function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChange }: MapViewProps) {
+function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChange, onLegsSaved }: MapViewProps) {
   const geocodingLib = useMapsLibrary('geocoding')
   // 本次 session geocode 得到的座標，key = `${dayIndex}:${target}`
   const [geoCache, setGeoCache] = useState<Record<string, GeoLocation>>({})
@@ -202,6 +210,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
               label: '出',
               title: `出發：${originCity}`,
               kind: 'origin',
+              id: 'origin',
             })
           }
         } else {
@@ -216,6 +225,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
                 label: '出',
                 title: `出發：${prevAcc.name}（前晚住宿）`,
                 kind: 'origin',
+                id: 'origin',
               })
             }
           }
@@ -235,6 +245,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
             title: a.title,
             time,
             kind: 'activity',
+            id: a.id,
           })
         })
         if (day.accommodation) {
@@ -246,6 +257,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
               label: '宿',
               title: day.accommodation.name,
               kind: 'accommodation',
+              id: 'accommodation',
             })
           }
         }
@@ -262,6 +274,36 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       : [...selectedDays, dayIndex]
     onSelectedDaysChange(next)
   }
+
+  // onLegsSaved 以 ref 保存，避免 handleLegs 依賴變動；去抖動把多天的儲存合併成一次刷新
+  const onLegsSavedRef = useRef(onLegsSaved)
+  useEffect(() => {
+    onLegsSavedRef.current = onLegsSaved
+  }, [onLegsSaved])
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 地圖算出某天開車路段後，寫回 DB（供行程卡顯示）。handleLegs 身分穩定，不會觸發重抓。
+  // 成功後去抖動觸發一次行程刷新 → 行程卡即時出現連接器（座標快取命中時不會重新 persist，故無迴圈）。
+  const handleLegs = useCallback(
+    (dayIndex: number, legs: PersistLeg[]) => {
+      if (legs.length === 0) return
+      persistLegs(itineraryId, dayIndex, legs).then((saved) => {
+        if (!saved) return
+        if (refreshTimer.current) clearTimeout(refreshTimer.current)
+        refreshTimer.current = setTimeout(() => {
+          onLegsSavedRef.current?.()
+        }, 1200)
+      })
+    },
+    [itineraryId],
+  )
+
+  // 卸載時清掉去抖動計時器
+  useEffect(() => {
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current)
+    }
+  }, [])
 
   const hasAnyPoint = mapDays.some((d) => d.points.length > 0)
 
@@ -321,7 +363,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       )}
 
-      <ItineraryMap days={mapDays} distanceMode={distanceMode} />
+      <ItineraryMap days={mapDays} distanceMode={distanceMode} onLegs={handleLegs} />
     </div>
   )
 }
@@ -335,5 +377,25 @@ async function persistGeo(itineraryId: string, updates: GeoUpdate[]) {
     })
   } catch {
     // 持久化失敗不影響地圖顯示（session 內已有 cache）
+  }
+}
+
+async function persistLegs(
+  itineraryId: string,
+  dayIndex: number,
+  legs: PersistLeg[],
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/itinerary/${itineraryId}/legs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ days: [{ dayIndex, legs }] }),
+    })
+    if (!res.ok) return false
+    const json = await res.json().catch(() => null)
+    return !!json?.updated // 有實際寫入才需要刷新
+  } catch {
+    // 持久化失敗不影響地圖顯示
+    return false
   }
 }

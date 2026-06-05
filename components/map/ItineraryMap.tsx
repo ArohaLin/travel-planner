@@ -12,6 +12,15 @@ export interface MapPoint {
   time?: string
   /** activity=圓形景點；accommodation=當晚住宿方形；origin=當天路線起點（出發地/前晚住宿）菱形 */
   kind: 'activity' | 'accommodation' | 'origin'
+  /** 對應的識別碼：activity.id、'accommodation' 或 'origin'（用於把路段距離存回對應卡片） */
+  id: string
+}
+
+/** 一段路（給上層寫回 DB 用）：抵達 toId 這站，相對前一站的距離/時間 */
+export interface PersistLeg {
+  toId: string
+  meters: number
+  seconds: number
 }
 
 export interface MapDay {
@@ -27,6 +36,8 @@ interface ItineraryMapProps {
   days: MapDay[]
   /** 距離/時間標籤層級：置頂 / 下層 / 隱藏（地圖上可即時輪替，不重打 API） */
   distanceMode: DistanceMode
+  /** 某天算出開車路段後回呼（供上層寫回 DB，給行程卡顯示） */
+  onLegs?: (dayIndex: number, legs: PersistLeg[]) => void
 }
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -71,7 +82,14 @@ const MIN_LABEL_KM = 5
 /** 一天的開車路線：真實道路路徑 + 每段（leg）的距離/時間標籤 */
 interface DrivingRoute {
   path: { lat: number; lng: number }[]
-  legs: { text: string; meters: number; pos: { lat: number; lng: number } }[]
+  legs: {
+    text: string
+    meters: number
+    seconds: number
+    /** 該段終點站識別碼（activity.id / 'accommodation' / 'origin'），用於寫回卡片 */
+    toId: string
+    pos: { lat: number; lng: number }
+  }[]
 }
 
 // 開車路線快取（以「原始座標」為鍵，與 zoom 無關 → 縮放、切換天數來回都不會重打 Directions API）
@@ -221,7 +239,7 @@ function spreadByPixels(
   return days.map((day, d) => ({ ...day, points: moved[d] }))
 }
 
-export function ItineraryMap({ days, distanceMode }: ItineraryMapProps) {
+export function ItineraryMap({ days, distanceMode, onLegs }: ItineraryMapProps) {
   return (
     <Map
       defaultCenter={TAIWAN_CENTER}
@@ -233,12 +251,12 @@ export function ItineraryMap({ days, distanceMode }: ItineraryMapProps) {
       fullscreenControl={false}
       style={{ width: '100%', height: '100%' }}
     >
-      <MapContent days={days} distanceMode={distanceMode} />
+      <MapContent days={days} distanceMode={distanceMode} onLegs={onLegs} />
     </Map>
   )
 }
 
-function MapContent({ days: rawDays, distanceMode }: ItineraryMapProps) {
+function MapContent({ days: rawDays, distanceMode, onLegs }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
   // 當前 zoom，用來觸發像素級散開重算
@@ -291,6 +309,7 @@ function MapContent({ days: rawDays, distanceMode }: ItineraryMapProps) {
             day={day}
             rawDay={rawDay}
             distanceMode={distanceMode}
+            onLegs={onLegs}
             onSelect={(point) => setSelected({ point, color: day.color })}
           />
         )
@@ -326,11 +345,13 @@ function DayRoute({
   day,
   rawDay,
   distanceMode,
+  onLegs,
   onSelect,
 }: {
   day: MapDay
   rawDay: MapDay
   distanceMode: DistanceMode
+  onLegs?: (dayIndex: number, legs: PersistLeg[]) => void
   onSelect: (point: MapPoint) => void
 }) {
   const map = useMap()
@@ -382,7 +403,8 @@ function DayRoute({
           setFailed(true)
           return
         }
-        const legs: DrivingRoute['legs'] = r.legs.map((leg) => {
+        // leg[i] 連接 points[i] → points[i+1]（未開啟 optimizeWaypoints，順序與點一致）
+        const legs: DrivingRoute['legs'] = r.legs.map((leg, i) => {
           // 取該段道路路徑的中點當標籤位置（落在實際道路上，而非兩端直線中點）
           const lp: google.maps.LatLng[] = []
           leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
@@ -394,9 +416,16 @@ function DayRoute({
                 lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
               }
           const meters = leg.distance?.value ?? 0
+          const seconds = leg.duration?.value ?? 0
           const dist = formatMeters(meters)
-          const dur = formatSeconds(leg.duration?.value ?? 0)
-          return { text: `${dist}・約 ${dur}`, meters, pos }
+          const dur = formatSeconds(seconds)
+          return {
+            text: `${dist}・約 ${dur}`,
+            meters,
+            seconds,
+            toId: pts[i + 1]?.id ?? '',
+            pos,
+          }
         })
         const drv: DrivingRoute = {
           path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
@@ -405,6 +434,13 @@ function DayRoute({
         routeCache.set(key, drv)
         setRoute(drv)
         setFailed(false)
+        // 把該天路段距離/時間寫回 DB（供行程卡顯示）；只在實際抓到路線時送一次
+        onLegs?.(
+          rawDay.dayIndex,
+          legs
+            .filter((l) => l.toId && l.toId !== 'origin')
+            .map((l) => ({ toId: l.toId, meters: l.meters, seconds: l.seconds })),
+        )
       })
       .catch(() => {
         if (!cancelled) {
@@ -415,6 +451,9 @@ function DayRoute({
     return () => {
       cancelled = true
     }
+    // onLegs 故意不列入依賴：它只在「實際抓取路線」時於 .then 內呼叫一次，
+    // 不應因為上層重繪導致重抓；快取命中時也不會再呼叫。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routesLib, rawDay])
 
   // 路線折線：有開車路線就畫真實道路；Directions 失敗才退回直線連接。

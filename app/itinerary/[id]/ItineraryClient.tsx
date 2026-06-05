@@ -581,6 +581,7 @@ export function ItineraryClient({
             itineraryId={itineraryId}
             selectedDays={mapSelectedDays}
             onSelectedDaysChange={setMapSelectedDays}
+            onLegsSaved={refreshItinerary}
           />
         </div>
       )}

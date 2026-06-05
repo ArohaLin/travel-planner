@@ -1,7 +1,28 @@
-import type { ItineraryDay, Activity, Accommodation } from '@/lib/types/itinerary'
+import type { ItineraryDay, Activity, Accommodation, TravelLeg } from '@/lib/types/itinerary'
 import { ActivityCard } from './ActivityCard'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
+
+/** 把公尺/秒組成「23.4 km・約 35 分」 */
+function formatLeg(meters: number, seconds: number): string {
+  const dist = meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`
+  const min = Math.round(seconds / 60)
+  const time =
+    min < 60 ? `${min} 分` : min % 60 ? `${Math.floor(min / 60)} 時 ${min % 60} 分` : `${Math.floor(min / 60)} 時`
+  return `${dist}・約 ${time}`
+}
+
+/** 兩張卡片之間的開車距離/時間連接器（置中小膠囊）；太近（< 50m）不顯示 */
+function TravelConnector({ leg }: { leg: TravelLeg }) {
+  if (leg.meters < 50) return null
+  return (
+    <div className="flex justify-center -mt-1 mb-2">
+      <span className="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-100 rounded-full px-2.5 py-0.5">
+        🚗 {formatLeg(leg.meters, leg.seconds)}
+      </span>
+    </div>
+  )
+}
 
 interface DayViewProps {
   day: ItineraryDay
@@ -39,6 +60,12 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
+  // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找，顯示在卡片之間
+  const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
+  const lastActivity = day.activities[day.activities.length - 1]
+  const accommodationLeg =
+    lastActivity && lastActivity.type !== 'transport' ? legByTo.get('accommodation') : undefined
+
   return (
     <div className="px-4 pt-4">
       {/* Day header（每日簡介，可編輯）*/}
@@ -84,39 +111,52 @@ export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivi
             <AddButton label="在開始插入" onClick={() => onAddActivity?.(-1)} />
           )}
 
-          {day.activities.map((activity, idx) => (
-            <div key={activity.id}>
-              <ActivityCard
-                activity={activity}
-                isLast={idx === day.activities.length - 1 && !canEdit}
-                canEdit={canEdit}
-                onEdit={onEditActivity}
-                onDelete={onDeleteActivity}
-                onClick={onActivityClick}
-                onAddNote={onAddNote}
-                hasNote={hasNoteFor?.(activity.id)}
-              />
-              {/* 在每個活動之後插入的按鈕 */}
-              {canEdit && (
-                <AddButton
-                  label={idx === day.activities.length - 1 ? '在結尾新增' : '在此之後插入'}
-                  onClick={() => onAddActivity?.(idx)}
+          {day.activities.map((activity, idx) => {
+            // 連接器：抵達本站相對「前一站」的開車距離/時間。
+            // 僅當前一站與本站都是實際地點（非交通類、相鄰）時顯示，避免與交通卡重複。
+            const prev = idx > 0 ? day.activities[idx - 1] : undefined
+            const arriveLeg =
+              prev && prev.type !== 'transport' && activity.type !== 'transport'
+                ? legByTo.get(activity.id)
+                : undefined
+            return (
+              <div key={activity.id}>
+                {arriveLeg && <TravelConnector leg={arriveLeg} />}
+                <ActivityCard
+                  activity={activity}
+                  isLast={idx === day.activities.length - 1 && !canEdit}
+                  canEdit={canEdit}
+                  onEdit={onEditActivity}
+                  onDelete={onDeleteActivity}
+                  onClick={onActivityClick}
+                  onAddNote={onAddNote}
+                  hasNote={hasNoteFor?.(activity.id)}
                 />
-              )}
-            </div>
-          ))}
+                {/* 在每個活動之後插入的按鈕 */}
+                {canEdit && (
+                  <AddButton
+                    label={idx === day.activities.length - 1 ? '在結尾新增' : '在此之後插入'}
+                    onClick={() => onAddActivity?.(idx)}
+                  />
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
-      {/* Accommodation */}
+      {/* Accommodation（前面顯示「最後一站 → 住宿」的開車距離/時間） */}
       {day.accommodation && (
-        <AccommodationCard
-          accommodation={day.accommodation}
-          canEdit={canEdit}
-          hasNote={hasNoteForAccommodation}
-          onEdit={onEditAccommodation}
-          onAddNote={onAddNoteAccommodation}
-        />
+        <>
+          {accommodationLeg && <TravelConnector leg={accommodationLeg} />}
+          <AccommodationCard
+            accommodation={day.accommodation}
+            canEdit={canEdit}
+            hasNote={hasNoteForAccommodation}
+            onEdit={onEditAccommodation}
+            onAddNote={onAddNoteAccommodation}
+          />
+        </>
       )}
 
       {/* Cost summary */}

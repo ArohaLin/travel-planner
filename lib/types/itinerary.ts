@@ -118,6 +118,16 @@ const LenientAccommodationSchema = z.preprocess((v) => {
   return a
 }, AccommodationSchema.optional())
 
+/**
+ * 開車路段（由地圖的 Directions 結果存回）：表示「抵達某站」相對前一站的距離與時間。
+ * toId = 目的地（activity.id 或 'accommodation'）；資料由地圖開啟時計算並寫回，供行程卡顯示。
+ */
+export const TravelLegSchema = z.object({
+  toId: z.string(),
+  meters: z.number().nonnegative(),
+  seconds: z.number().nonnegative(),
+})
+
 export const ItineraryDaySchema = z.object({
   dayIndex: z.number().int().nonnegative(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -126,6 +136,8 @@ export const ItineraryDaySchema = z.object({
   activities: z.array(ActivitySchema),
   accommodation: LenientAccommodationSchema,
   notes: z.string().optional(),
+  /** 開車路段距離/時間（地圖計算後寫回，供行程卡顯示；可選） */
+  travelLegs: z.array(TravelLegSchema).optional(),
 })
 
 export const MemberGenderValues = ['male', 'female', 'other'] as const
@@ -173,6 +185,7 @@ export type Money = z.infer<typeof MoneySchema>
 export type Activity = z.infer<typeof ActivitySchema>
 export type Accommodation = z.infer<typeof AccommodationSchema>
 export type CityTransport = z.infer<typeof CityTransportSchema>
+export type TravelLeg = z.infer<typeof TravelLegSchema>
 export type ItineraryDay = z.infer<typeof ItineraryDaySchema>
 export type TripMetadata = z.infer<typeof TripMetadataSchema>
 export type Itinerary = z.infer<typeof ItinerarySchema>
