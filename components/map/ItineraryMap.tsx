@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Map, Marker, InfoWindow, useMap } from '@vis.gl/react-google-maps'
+import { Map, Marker, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
 
 export interface MapPoint {
   lat: number
@@ -44,6 +44,98 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 /** 距離文字：≥1km 顯示「6.2 km」，否則「800 m」 */
 function formatKm(km: number): string {
   return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(km * 1000)} m`
+}
+
+/** 公尺 → 距離文字：≥1km 顯示「23.4 km」，否則「850 m」 */
+function formatMeters(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
+}
+
+/** 秒 → 時間文字：「35 分」或「1 時 5 分」 */
+function formatSeconds(s: number): string {
+  const min = Math.round(s / 60)
+  if (min < 60) return `${min} 分`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m ? `${h} 時 ${m} 分` : `${h} 時`
+}
+
+/** 一天的開車路線：真實道路路徑 + 每段（leg）的距離/時間標籤 */
+interface DrivingRoute {
+  path: { lat: number; lng: number }[]
+  legs: { text: string; pos: { lat: number; lng: number } }[]
+}
+
+// 開車路線快取（以「原始座標」為鍵，與 zoom 無關 → 縮放、切換天數來回都不會重打 Directions API）
+// 注意：本檔案的 `Map` 名稱被 @vis.gl 的地圖元件佔用，這裡用 globalThis.Map 取原生 Map。
+const routeCache = new globalThis.Map<string, DrivingRoute>()
+
+function routeKey(points: MapPoint[]): string {
+  return points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
+}
+
+/** 直線距離標籤（Directions 失敗時的退回方案，例如無法開車到達） */
+function straightLabels(
+  points: MapPoint[],
+): { text: string; pos: { lat: number; lng: number } }[] {
+  const out: { text: string; pos: { lat: number; lng: number } }[] = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i]
+    const b = points[i + 1]
+    const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
+    if (km < 0.05) continue
+    out.push({
+      text: formatKm(km),
+      pos: { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 },
+    })
+  }
+  return out
+}
+
+/** 建立一個距離/時間膠囊 overlay（白底圓角，隨地圖平移/縮放跟著動） */
+function makeDistancePill(
+  map: google.maps.Map,
+  text: string,
+  pos: { lat: number; lng: number },
+  color: string,
+): google.maps.OverlayView {
+  let div: HTMLDivElement | null = null
+  const ov = new google.maps.OverlayView()
+  ov.onAdd = () => {
+    div = document.createElement('div')
+    div.textContent = text
+    div.style.cssText = [
+      'position:absolute',
+      'transform:translate(-50%,-50%)',
+      'background:rgba(255,255,255,0.95)',
+      `color:${color}`,
+      `border:1px solid ${color}`,
+      'border-radius:9999px',
+      'padding:1px 6px',
+      'font-size:11px',
+      'font-weight:700',
+      'line-height:1.4',
+      'white-space:nowrap',
+      'box-shadow:0 1px 3px rgba(0,0,0,0.25)',
+      'pointer-events:none',
+    ].join(';')
+    ov.getPanes()?.floatPane.appendChild(div)
+  }
+  ov.draw = () => {
+    const proj = ov.getProjection()
+    if (!proj || !div) return
+    const p = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng))
+    if (p) {
+      div.style.left = `${p.x}px`
+      div.style.top = `${p.y}px`
+    }
+  }
+  ov.onRemove = () => {
+    div?.remove()
+    div = null
+  }
+  ov.setMap(map)
+  return ov
 }
 
 /**
@@ -178,9 +270,18 @@ function MapContent({ days: rawDays }: ItineraryMapProps) {
 
   return (
     <>
-      {days.map((day) => (
-        <DayRoute key={day.dayIndex} day={day} onSelect={(point) => setSelected({ point, color: day.color })} />
-      ))}
+      {days.map((day) => {
+        // 路線/距離以「原始座標」計算（rawDays），marker 顯示用散開後座標（day）。
+        const rawDay = rawDays.find((d) => d.dayIndex === day.dayIndex) ?? day
+        return (
+          <DayRoute
+            key={day.dayIndex}
+            day={day}
+            rawDay={rawDay}
+            onSelect={(point) => setSelected({ point, color: day.color })}
+          />
+        )
+      })}
 
       {selected && (
         <InfoWindow
@@ -210,24 +311,120 @@ function MapContent({ days: rawDays }: ItineraryMapProps) {
 
 function DayRoute({
   day,
+  rawDay,
   onSelect,
 }: {
   day: MapDay
+  rawDay: MapDay
   onSelect: (point: MapPoint) => void
 }) {
   const map = useMap()
+  const routesLib = useMapsLibrary('routes')
+  const [route, setRoute] = useState<DrivingRoute | null>(null)
+  const [failed, setFailed] = useState(false)
 
-  // 路線折線（依順序連接景點）
+  // 取得開車路線（真實道路 + 每段距離/時間）。以「原始座標」為快取鍵，
+  // 故 zoom in/out 不會觸發新的 Directions 請求、不產生費用。
   useEffect(() => {
-    if (!map || day.points.length < 2) return
+    if (!routesLib || rawDay.points.length < 2) {
+      setRoute(null)
+      setFailed(false)
+      return
+    }
+    // origin + destination + waypoints 數量上限約 25，超過就退回直線
+    if (rawDay.points.length > 25) {
+      setRoute(null)
+      setFailed(true)
+      return
+    }
+    const key = routeKey(rawDay.points)
+    const cached = routeCache.get(key)
+    if (cached) {
+      setRoute(cached)
+      setFailed(false)
+      return
+    }
+
+    let cancelled = false
+    setRoute(null)
+    setFailed(false)
+    const service = new routesLib.DirectionsService()
+    const pts = rawDay.points
+    service
+      .route({
+        origin: { lat: pts[0].lat, lng: pts[0].lng },
+        destination: { lat: pts[pts.length - 1].lat, lng: pts[pts.length - 1].lng },
+        waypoints: pts.slice(1, -1).map((p) => ({
+          location: { lat: p.lat, lng: p.lng },
+          stopover: true,
+        })),
+        travelMode: google.maps.TravelMode.DRIVING,
+      })
+      .then((res) => {
+        if (cancelled) return
+        const r = res.routes[0]
+        if (!r) {
+          setFailed(true)
+          return
+        }
+        const legs: DrivingRoute['legs'] = r.legs.map((leg) => {
+          // 取該段道路路徑的中點當標籤位置（落在實際道路上，而非兩端直線中點）
+          const lp: google.maps.LatLng[] = []
+          leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
+          const m = lp.length ? lp[Math.floor(lp.length / 2)] : null
+          const pos = m
+            ? { lat: m.lat(), lng: m.lng() }
+            : {
+                lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
+                lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
+              }
+          const dist = formatMeters(leg.distance?.value ?? 0)
+          const dur = formatSeconds(leg.duration?.value ?? 0)
+          return { text: `${dist}・約 ${dur}`, pos }
+        })
+        const drv: DrivingRoute = {
+          path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
+          legs,
+        }
+        routeCache.set(key, drv)
+        setRoute(drv)
+        setFailed(false)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRoute(null)
+          setFailed(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [routesLib, rawDay])
+
+  // 路線折線：有開車路線就畫真實道路；Directions 失敗才退回直線連接。
+  // 載入中（route 尚未回來且未失敗）先不畫線，等結果一次顯示。
+  useEffect(() => {
+    if (!map) return
+    const path = route
+      ? route.path
+      : failed && rawDay.points.length >= 2
+        ? rawDay.points.map((p) => ({ lat: p.lat, lng: p.lng }))
+        : null
+    if (!path || path.length < 2) return
     const polyline = new google.maps.Polyline({
-      path: day.points.map((p) => ({ lat: p.lat, lng: p.lng })),
+      path,
       strokeColor: day.color,
       strokeOpacity: 0.85,
       strokeWeight: 3,
       icons: [
         {
-          icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.4, fillOpacity: 1, strokeWeight: 0, fillColor: day.color },
+          icon: {
+            path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+            scale: 2.4,
+            fillOpacity: 1,
+            strokeWeight: 0,
+            fillColor: day.color,
+          },
           offset: '50%',
           repeat: '120px',
         },
@@ -235,59 +432,16 @@ function DayRoute({
     })
     polyline.setMap(map)
     return () => polyline.setMap(null)
-  }, [map, day])
+  }, [map, route, failed, rawDay, day.color])
 
-  // 相鄰兩點間的直線距離標籤（顯示在線段中點的小膠囊）
+  // 距離/時間標籤：有開車路線顯示「23.4 km・約 35 分」；失敗退回直線距離。
   useEffect(() => {
-    if (!map || day.points.length < 2) return
-    const overlays: google.maps.OverlayView[] = []
-    for (let i = 0; i < day.points.length - 1; i++) {
-      const a = day.points[i]
-      const b = day.points[i + 1]
-      const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
-      if (km < 0.05) continue // 太近就不標，避免擁擠
-      const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
-      const text = formatKm(km)
-      const ov = new google.maps.OverlayView()
-      ov.onAdd = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
-        const div = document.createElement('div')
-        div.textContent = text
-        div.style.cssText = [
-          'position:absolute',
-          'transform:translate(-50%,-50%)',
-          'background:rgba(255,255,255,0.95)',
-          `color:${day.color}`,
-          `border:1px solid ${day.color}`,
-          'border-radius:9999px',
-          'padding:1px 6px',
-          'font-size:11px',
-          'font-weight:700',
-          'line-height:1.4',
-          'white-space:nowrap',
-          'box-shadow:0 1px 3px rgba(0,0,0,0.25)',
-          'pointer-events:none',
-        ].join(';')
-        this._div = div
-        this.getPanes()?.floatPane.appendChild(div)
-      }
-      ov.draw = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
-        const proj = this.getProjection()
-        if (!proj || !this._div) return
-        const pos = proj.fromLatLngToDivPixel(new google.maps.LatLng(mid.lat, mid.lng))
-        if (pos) {
-          this._div.style.left = `${pos.x}px`
-          this._div.style.top = `${pos.y}px`
-        }
-      }
-      ov.onRemove = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
-        this._div?.remove()
-        this._div = undefined
-      }
-      ov.setMap(map)
-      overlays.push(ov)
-    }
+    if (!map) return
+    const labels = route ? route.legs : failed ? straightLabels(rawDay.points) : []
+    if (labels.length === 0) return
+    const overlays = labels.map((l) => makeDistancePill(map, l.text, l.pos, day.color))
     return () => overlays.forEach((o) => o.setMap(null))
-  }, [map, day])
+  }, [map, route, failed, rawDay, day.color])
 
   return (
     <>
