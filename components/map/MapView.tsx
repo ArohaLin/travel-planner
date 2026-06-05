@@ -198,8 +198,8 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
               points.push({
                 lat: geo.lat,
                 lng: geo.lng,
-                label: '宿',
-                title: `${prevAcc.name}（前晚住宿）`,
+                label: '出',
+                title: `出發：${prevAcc.name}（前晚住宿）`,
                 kind: 'origin',
               })
             }

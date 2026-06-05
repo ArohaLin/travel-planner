@@ -29,6 +29,23 @@ const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
 // marker 直徑約 31px（半徑 scale 13 + 邊框）；中心需相距 ≥ COLLIDE_PX 才不重疊
 const COLLIDE_PX = 38
 
+/** 兩經緯度間的直線距離（公里），Haversine 公式 */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(a))
+}
+
+/** 距離文字：≥1km 顯示「6.2 km」，否則「800 m」 */
+function formatKm(km: number): string {
+  return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(km * 1000)} m`
+}
+
 /**
  * 像素級散開：把在「當前 zoom 的螢幕投影」下會重疊的 marker 散開，
  * 隨 zoom 動態重算 —— 放大時點還原真實位置、縮小時自動散開，永不重疊。
@@ -218,6 +235,58 @@ function DayRoute({
     })
     polyline.setMap(map)
     return () => polyline.setMap(null)
+  }, [map, day])
+
+  // 相鄰兩點間的直線距離標籤（顯示在線段中點的小膠囊）
+  useEffect(() => {
+    if (!map || day.points.length < 2) return
+    const overlays: google.maps.OverlayView[] = []
+    for (let i = 0; i < day.points.length - 1; i++) {
+      const a = day.points[i]
+      const b = day.points[i + 1]
+      const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
+      if (km < 0.05) continue // 太近就不標，避免擁擠
+      const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
+      const text = formatKm(km)
+      const ov = new google.maps.OverlayView()
+      ov.onAdd = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
+        const div = document.createElement('div')
+        div.textContent = text
+        div.style.cssText = [
+          'position:absolute',
+          'transform:translate(-50%,-50%)',
+          'background:rgba(255,255,255,0.95)',
+          `color:${day.color}`,
+          `border:1px solid ${day.color}`,
+          'border-radius:9999px',
+          'padding:1px 6px',
+          'font-size:11px',
+          'font-weight:700',
+          'line-height:1.4',
+          'white-space:nowrap',
+          'box-shadow:0 1px 3px rgba(0,0,0,0.25)',
+          'pointer-events:none',
+        ].join(';')
+        this._div = div
+        this.getPanes()?.floatPane.appendChild(div)
+      }
+      ov.draw = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
+        const proj = this.getProjection()
+        if (!proj || !this._div) return
+        const pos = proj.fromLatLngToDivPixel(new google.maps.LatLng(mid.lat, mid.lng))
+        if (pos) {
+          this._div.style.left = `${pos.x}px`
+          this._div.style.top = `${pos.y}px`
+        }
+      }
+      ov.onRemove = function (this: google.maps.OverlayView & { _div?: HTMLDivElement }) {
+        this._div?.remove()
+        this._div = undefined
+      }
+      ov.setMap(map)
+      overlays.push(ov)
+    }
+    return () => overlays.forEach((o) => o.setMap(null))
   }, [map, day])
 
   return (
