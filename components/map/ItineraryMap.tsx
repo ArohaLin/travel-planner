@@ -22,6 +22,8 @@ export interface MapDay {
 
 interface ItineraryMapProps {
   days: MapDay[]
+  /** 是否顯示每段距離/時間標籤（地圖上可即時切換，不重打 API） */
+  showDistances: boolean
 }
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -60,10 +62,13 @@ function formatSeconds(s: number): string {
   return m ? `${h} 時 ${m} 分` : `${h} 時`
 }
 
+/** 距離標籤顯示門檻：同一段路小於此公里數就不顯示（短程沒意義、也讓畫面更乾淨） */
+const MIN_LABEL_KM = 5
+
 /** 一天的開車路線：真實道路路徑 + 每段（leg）的距離/時間標籤 */
 interface DrivingRoute {
   path: { lat: number; lng: number }[]
-  legs: { text: string; pos: { lat: number; lng: number } }[]
+  legs: { text: string; meters: number; pos: { lat: number; lng: number } }[]
 }
 
 // 開車路線快取（以「原始座標」為鍵，與 zoom 無關 → 縮放、切換天數來回都不會重打 Directions API）
@@ -83,7 +88,7 @@ function straightLabels(
     const a = points[i]
     const b = points[i + 1]
     const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
-    if (km < 0.05) continue
+    if (km < MIN_LABEL_KM) continue
     out.push({
       text: formatKm(km),
       pos: { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 },
@@ -119,7 +124,8 @@ function makeDistancePill(
       'box-shadow:0 1px 3px rgba(0,0,0,0.25)',
       'pointer-events:none',
     ].join(';')
-    ov.getPanes()?.floatPane.appendChild(div)
+    // 放在 overlayLayer（低於 markerLayer）→ 標籤永遠在地點 marker 下層，不會遮住景點號碼
+    ov.getPanes()?.overlayLayer.appendChild(div)
   }
   ov.draw = () => {
     const proj = ov.getProjection()
@@ -209,7 +215,7 @@ function spreadByPixels(
   return days.map((day, d) => ({ ...day, points: moved[d] }))
 }
 
-export function ItineraryMap({ days }: ItineraryMapProps) {
+export function ItineraryMap({ days, showDistances }: ItineraryMapProps) {
   return (
     <Map
       defaultCenter={TAIWAN_CENTER}
@@ -221,12 +227,12 @@ export function ItineraryMap({ days }: ItineraryMapProps) {
       fullscreenControl={false}
       style={{ width: '100%', height: '100%' }}
     >
-      <MapContent days={days} />
+      <MapContent days={days} showDistances={showDistances} />
     </Map>
   )
 }
 
-function MapContent({ days: rawDays }: ItineraryMapProps) {
+function MapContent({ days: rawDays, showDistances }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
   // 當前 zoom，用來觸發像素級散開重算
@@ -278,6 +284,7 @@ function MapContent({ days: rawDays }: ItineraryMapProps) {
             key={day.dayIndex}
             day={day}
             rawDay={rawDay}
+            showDistances={showDistances}
             onSelect={(point) => setSelected({ point, color: day.color })}
           />
         )
@@ -312,10 +319,12 @@ function MapContent({ days: rawDays }: ItineraryMapProps) {
 function DayRoute({
   day,
   rawDay,
+  showDistances,
   onSelect,
 }: {
   day: MapDay
   rawDay: MapDay
+  showDistances: boolean
   onSelect: (point: MapPoint) => void
 }) {
   const map = useMap()
@@ -378,9 +387,10 @@ function DayRoute({
                 lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
                 lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
               }
-          const dist = formatMeters(leg.distance?.value ?? 0)
+          const meters = leg.distance?.value ?? 0
+          const dist = formatMeters(meters)
           const dur = formatSeconds(leg.duration?.value ?? 0)
-          return { text: `${dist}・約 ${dur}`, pos }
+          return { text: `${dist}・約 ${dur}`, meters, pos }
         })
         const drv: DrivingRoute = {
           path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
@@ -435,13 +445,18 @@ function DayRoute({
   }, [map, route, failed, rawDay, day.color])
 
   // 距離/時間標籤：有開車路線顯示「23.4 km・約 35 分」；失敗退回直線距離。
+  // 切換關閉（showDistances=false）或該段 < MIN_LABEL_KM 公里時不顯示。
   useEffect(() => {
-    if (!map) return
-    const labels = route ? route.legs : failed ? straightLabels(rawDay.points) : []
+    if (!map || !showDistances) return
+    const labels = route
+      ? route.legs.filter((l) => l.meters >= MIN_LABEL_KM * 1000)
+      : failed
+        ? straightLabels(rawDay.points)
+        : []
     if (labels.length === 0) return
     const overlays = labels.map((l) => makeDistancePill(map, l.text, l.pos, day.color))
     return () => overlays.forEach((o) => o.setMap(null))
-  }, [map, route, failed, rawDay, day.color])
+  }, [map, route, failed, rawDay, day.color, showDistances])
 
   return (
     <>

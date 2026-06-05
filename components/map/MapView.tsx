@@ -59,6 +59,8 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
   // 本次 session geocode 得到的座標，key = `${dayIndex}:${target}`
   const [geoCache, setGeoCache] = useState<Record<string, GeoLocation>>({})
   const [geocoding, setGeocoding] = useState(false)
+  // 是否顯示距離/時間標籤（地圖右上角切換鈕；預設開）
+  const [showDistances, setShowDistances] = useState(true)
 
   const destination = itinerary.metadata?.destination
   const originCity = itinerary.metadata?.originCity
@@ -277,6 +279,18 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       </div>
 
+      {/* 距離/時間標籤顯示切換（在天數選擇器下方右側） */}
+      <button
+        onClick={() => setShowDistances((v) => !v)}
+        aria-pressed={showDistances}
+        className={`absolute top-16 right-3 z-20 flex items-center gap-1 rounded-full shadow-md px-3 py-2 text-xs font-medium min-h-[36px] transition-colors ${
+          showDistances ? 'bg-blue-600 text-white' : 'bg-white/95 text-gray-500'
+        }`}
+      >
+        <span>📏</span>
+        <span>{showDistances ? '距離 開' : '距離 關'}</span>
+      </button>
+
       {/* geocoding 載入提示 */}
       {geocoding && !hasAnyPoint && (
         <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
@@ -294,7 +308,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       )}
 
-      <ItineraryMap days={mapDays} />
+      <ItineraryMap days={mapDays} showDistances={showDistances} />
     </div>
   )
 }
