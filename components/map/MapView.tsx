@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
-import { ItineraryMap, type MapDay, type MapPoint } from './ItineraryMap'
+import { ItineraryMap, type MapDay, type MapPoint, type DistanceMode } from './ItineraryMap'
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 
@@ -19,6 +19,19 @@ const DAY_COLORS = [
   '#0891b2', // 青
   '#65a30d', // 黃綠
 ]
+
+// 距離標籤層級輪替順序與顯示文字/樣式
+const DIST_MODES: DistanceMode[] = ['top', 'below', 'hidden']
+const DIST_LABEL: Record<DistanceMode, string> = {
+  top: '置頂',
+  below: '下層',
+  hidden: '隱藏',
+}
+const DIST_STYLE: Record<DistanceMode, string> = {
+  top: 'bg-blue-600 text-white',
+  below: 'bg-emerald-600 text-white',
+  hidden: 'bg-white/95 text-gray-400',
+}
 
 interface MapViewProps {
   itinerary: Itinerary
@@ -59,8 +72,8 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
   // 本次 session geocode 得到的座標，key = `${dayIndex}:${target}`
   const [geoCache, setGeoCache] = useState<Record<string, GeoLocation>>({})
   const [geocoding, setGeocoding] = useState(false)
-  // 是否顯示距離/時間標籤（地圖右上角切換鈕；預設開）
-  const [showDistances, setShowDistances] = useState(true)
+  // 距離/時間標籤層級（地圖右上角輪替鈕；預設「下層」不遮 marker）
+  const [distanceMode, setDistanceMode] = useState<DistanceMode>('below')
 
   const destination = itinerary.metadata?.destination
   const originCity = itinerary.metadata?.originCity
@@ -279,16 +292,16 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       </div>
 
-      {/* 距離/時間標籤顯示切換（在天數選擇器下方右側） */}
+      {/* 距離/時間標籤層級輪替：置頂 → 下層 → 隱藏（天數選擇器下方右側） */}
       <button
-        onClick={() => setShowDistances((v) => !v)}
-        aria-pressed={showDistances}
-        className={`absolute top-16 right-3 z-20 flex items-center gap-1 rounded-full shadow-md px-3 py-2 text-xs font-medium min-h-[36px] transition-colors ${
-          showDistances ? 'bg-blue-600 text-white' : 'bg-white/95 text-gray-500'
-        }`}
+        onClick={() =>
+          setDistanceMode((m) => DIST_MODES[(DIST_MODES.indexOf(m) + 1) % DIST_MODES.length])
+        }
+        title="距離標籤：置頂／下層／隱藏（點一下輪替）"
+        className={`absolute top-16 right-3 z-20 flex items-center gap-1 rounded-full shadow-md px-3 py-2 text-xs font-medium min-h-[36px] transition-colors ${DIST_STYLE[distanceMode]}`}
       >
         <span>📏</span>
-        <span>{showDistances ? '距離 開' : '距離 關'}</span>
+        <span>距離 {DIST_LABEL[distanceMode]}</span>
       </button>
 
       {/* geocoding 載入提示 */}
@@ -308,7 +321,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       )}
 
-      <ItineraryMap days={mapDays} showDistances={showDistances} />
+      <ItineraryMap days={mapDays} distanceMode={distanceMode} />
     </div>
   )
 }

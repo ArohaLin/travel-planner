@@ -20,10 +20,13 @@ export interface MapDay {
   points: MapPoint[]
 }
 
+/** 距離/時間標籤的層級模式：置頂（蓋在 marker 上）/ 下層（在 marker 下）/ 隱藏 */
+export type DistanceMode = 'top' | 'below' | 'hidden'
+
 interface ItineraryMapProps {
   days: MapDay[]
-  /** 是否顯示每段距離/時間標籤（地圖上可即時切換，不重打 API） */
-  showDistances: boolean
+  /** 距離/時間標籤層級：置頂 / 下層 / 隱藏（地圖上可即時輪替，不重打 API） */
+  distanceMode: DistanceMode
 }
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -97,12 +100,16 @@ function straightLabels(
   return out
 }
 
-/** 建立一個距離/時間膠囊 overlay（白底圓角，隨地圖平移/縮放跟著動） */
+/**
+ * 建立一個距離/時間膠囊 overlay（白底圓角，隨地圖平移/縮放跟著動）。
+ * pane='floatPane' → 置頂（蓋在 marker 上）；pane='overlayLayer' → 在 marker 下層。
+ */
 function makeDistancePill(
   map: google.maps.Map,
   text: string,
   pos: { lat: number; lng: number },
   color: string,
+  pane: 'floatPane' | 'overlayLayer',
 ): google.maps.OverlayView {
   let div: HTMLDivElement | null = null
   const ov = new google.maps.OverlayView()
@@ -124,8 +131,7 @@ function makeDistancePill(
       'box-shadow:0 1px 3px rgba(0,0,0,0.25)',
       'pointer-events:none',
     ].join(';')
-    // 放在 overlayLayer（低於 markerLayer）→ 標籤永遠在地點 marker 下層，不會遮住景點號碼
-    ov.getPanes()?.overlayLayer.appendChild(div)
+    ov.getPanes()?.[pane].appendChild(div)
   }
   ov.draw = () => {
     const proj = ov.getProjection()
@@ -215,7 +221,7 @@ function spreadByPixels(
   return days.map((day, d) => ({ ...day, points: moved[d] }))
 }
 
-export function ItineraryMap({ days, showDistances }: ItineraryMapProps) {
+export function ItineraryMap({ days, distanceMode }: ItineraryMapProps) {
   return (
     <Map
       defaultCenter={TAIWAN_CENTER}
@@ -227,12 +233,12 @@ export function ItineraryMap({ days, showDistances }: ItineraryMapProps) {
       fullscreenControl={false}
       style={{ width: '100%', height: '100%' }}
     >
-      <MapContent days={days} showDistances={showDistances} />
+      <MapContent days={days} distanceMode={distanceMode} />
     </Map>
   )
 }
 
-function MapContent({ days: rawDays, showDistances }: ItineraryMapProps) {
+function MapContent({ days: rawDays, distanceMode }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
   // 當前 zoom，用來觸發像素級散開重算
@@ -284,7 +290,7 @@ function MapContent({ days: rawDays, showDistances }: ItineraryMapProps) {
             key={day.dayIndex}
             day={day}
             rawDay={rawDay}
-            showDistances={showDistances}
+            distanceMode={distanceMode}
             onSelect={(point) => setSelected({ point, color: day.color })}
           />
         )
@@ -319,12 +325,12 @@ function MapContent({ days: rawDays, showDistances }: ItineraryMapProps) {
 function DayRoute({
   day,
   rawDay,
-  showDistances,
+  distanceMode,
   onSelect,
 }: {
   day: MapDay
   rawDay: MapDay
-  showDistances: boolean
+  distanceMode: DistanceMode
   onSelect: (point: MapPoint) => void
 }) {
   const map = useMap()
@@ -445,18 +451,20 @@ function DayRoute({
   }, [map, route, failed, rawDay, day.color])
 
   // 距離/時間標籤：有開車路線顯示「23.4 km・約 35 分」；失敗退回直線距離。
-  // 切換關閉（showDistances=false）或該段 < MIN_LABEL_KM 公里時不顯示。
+  // 層級依 distanceMode：top=置頂(floatPane) / below=下層(overlayLayer) / hidden=不顯示。
+  // 該段 < MIN_LABEL_KM 公里時一律不顯示。
   useEffect(() => {
-    if (!map || !showDistances) return
+    if (!map || distanceMode === 'hidden') return
+    const pane = distanceMode === 'top' ? 'floatPane' : 'overlayLayer'
     const labels = route
       ? route.legs.filter((l) => l.meters >= MIN_LABEL_KM * 1000)
       : failed
         ? straightLabels(rawDay.points)
         : []
     if (labels.length === 0) return
-    const overlays = labels.map((l) => makeDistancePill(map, l.text, l.pos, day.color))
+    const overlays = labels.map((l) => makeDistancePill(map, l.text, l.pos, day.color, pane))
     return () => overlays.forEach((o) => o.setMap(null))
-  }, [map, route, failed, rawDay, day.color, showDistances])
+  }, [map, route, failed, rawDay, day.color, distanceMode])
 
   return (
     <>
