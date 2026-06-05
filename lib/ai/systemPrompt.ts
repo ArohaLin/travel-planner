@@ -1,6 +1,23 @@
 import type { Itinerary } from '@/lib/types/itinerary'
 
 /**
+ * 餵給 AI 前先移除地圖衍生欄位（travelLegs / routePolyline / travelSig）：
+ * 這些是程式自動算出的，與 AI 規劃無關，留著只會膨脹 prompt、也可能讓 AI 誤改。
+ */
+function forPrompt(itinerary: Itinerary): Itinerary {
+  return {
+    ...itinerary,
+    days: itinerary.days.map((d) => {
+      const { travelLegs, routePolyline, travelSig, ...rest } = d
+      void travelLegs
+      void routePolyline
+      void travelSig
+      return rest
+    }),
+  }
+}
+
+/**
  * 行程專屬 AI 記憶 recap + 更新指示（#15）。
  * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
  * <memory>更新後的記憶</memory>，由後端解析後存回 metadata.aiMemory。
@@ -92,7 +109,7 @@ export function buildAdjustPromptMinimax(itinerary: Itinerary): string {
 目前行程資料如下：
 
 <current_itinerary>
-${JSON.stringify(itinerary, null, 2)}
+${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
 ${buildMemorySection(itinerary)}
 == CRITICAL OUTPUT FORMAT REQUIREMENT ==
@@ -180,7 +197,7 @@ export function buildAdjustPrompt(itinerary: Itinerary): string {
 目前行程資料如下：
 
 <current_itinerary>
-${JSON.stringify(itinerary, null, 2)}
+${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
 ${buildMemorySection(itinerary)}
 ## 核心規則
@@ -317,7 +334,7 @@ export function buildAdjustPromptGemini(itinerary: Itinerary): string {
   return `你是一位專業的繁體中文旅遊規劃助手。請根據使用者需求調整以下行程：
 
 <current_itinerary>
-${JSON.stringify(itinerary, null, 2)}
+${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
 ${buildMemorySection(itinerary)}
 == MANDATORY OUTPUT FORMAT ==
@@ -409,7 +426,7 @@ export function buildConsultPrompt(itinerary: Itinerary): string {
 目前行程資料如下（僅供參考，你不能修改它）：
 
 <current_itinerary>
-${JSON.stringify(itinerary, null, 2)}
+${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
 ${buildMemorySection(itinerary)}
 ## 重要限制

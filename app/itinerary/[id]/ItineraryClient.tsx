@@ -29,6 +29,7 @@ import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { MapView } from '@/components/map/MapView'
+import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
 import { useToast } from '@/components/ui/Toast'
 import { APIProvider } from '@vis.gl/react-google-maps'
 
@@ -497,6 +498,14 @@ export function ItineraryClient({
 
   const inner = (
     <div className="min-h-screen bg-gray-50 pb-6">
+      {/* 背景路線預抓（在 APIProvider 內才能用 useMapsLibrary）：開行程即檢查並更新距離/時間 */}
+      {MAPS_KEY && (
+        <RoutePrefetcher
+          itinerary={liveItinerary}
+          itineraryId={itineraryId}
+          onSaved={refreshItinerary}
+        />
+      )}
       <ItineraryHeader
         itinerary={displayItinerary}
         itineraryId={itineraryId}

@@ -126,6 +126,9 @@ export const TravelLegSchema = z.object({
   toId: z.string(),
   meters: z.number().nonnegative(),
   seconds: z.number().nonnegative(),
+  /** 地圖上距離標籤的位置（道路中點）；行程卡不需要、可選 */
+  midLat: z.number().optional(),
+  midLng: z.number().optional(),
 })
 
 export const ItineraryDaySchema = z.object({
@@ -138,6 +141,10 @@ export const ItineraryDaySchema = z.object({
   notes: z.string().optional(),
   /** 開車路段距離/時間（地圖計算後寫回，供行程卡顯示；可選） */
   travelLegs: z.array(TravelLegSchema).optional(),
+  /** 當天整條開車路線的編碼折線（Directions overview_polyline），地圖解碼後直接畫線，免重打 API */
+  routePolyline: z.string().optional(),
+  /** 路線輸入指紋（景點順序＋座標）；與目前資料比對以判斷是否需要重算 */
+  travelSig: z.string().optional(),
 })
 
 export const MemberGenderValues = ['male', 'female', 'other'] as const

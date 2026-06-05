@@ -1,0 +1,193 @@
+import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
+
+/**
+ * 路線共用邏輯：組裝每天的有序點位、計算輸入指紋（signature）、呼叫 Directions 算路線。
+ * 地圖與背景 prefetch 共用此模組，確保兩邊產生「相同的點位與簽章」→ 可正確判斷重用。
+ */
+
+export interface RoutePoint {
+  /** activity.id / 'accommodation' / 'origin' */
+  id: string
+  kind: 'origin' | 'activity' | 'accommodation'
+  lat: number
+  lng: number
+  /** marker 顯示文字（① 出 宿…）；不影響簽章 */
+  label: string
+  title: string
+  time?: string
+}
+
+/** 解析某點座標：優先用既有 location，否則由呼叫端的 cache 補上（回 undefined 表示尚無座標） */
+export type CoordResolver = (
+  dayIndex: number,
+  target: string,
+  existing?: GeoLocation | null,
+) => GeoLocation | undefined
+
+/** 一段路（寫回 DB 用）：抵達 toId 這站，相對前一站的距離/時間，midLat/midLng 為地圖標籤位置 */
+export interface PersistLeg {
+  toId: string
+  meters: number
+  seconds: number
+  midLat?: number
+  midLng?: number
+}
+
+/** Directions 算完的整天路線（記憶體用） */
+export interface ComputedRoute {
+  legs: {
+    toId: string
+    meters: number
+    seconds: number
+    text: string
+    pos: { lat: number; lng: number }
+  }[]
+  path: { lat: number; lng: number }[]
+  /** 編碼折線（存 DB 用） */
+  polyline: string
+  /** 輸入指紋 */
+  sig: string
+}
+
+export function formatMeters(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
+}
+
+export function formatSeconds(s: number): string {
+  const min = Math.round(s / 60)
+  if (min < 60) return `${min} 分`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m ? `${h} 時 ${m} 分` : `${h} 時`
+}
+
+export function legText(meters: number, seconds: number): string {
+  return `${formatMeters(meters)}・約 ${formatSeconds(seconds)}`
+}
+
+/**
+ * 組裝某天的有序點位（出發地/前晚住宿 → 各實際地點 → 當晚住宿），只納入已有座標者。
+ * 地圖與 prefetch 都用這支，保證點位與順序一致。
+ */
+export function buildDayPoints(
+  itinerary: Itinerary,
+  dayIndex: number,
+  resolve: CoordResolver,
+): RoutePoint[] {
+  const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
+  if (!day) return []
+  const originCity = itinerary.metadata?.originCity
+  const points: RoutePoint[] = []
+
+  // 起點：第一天用出發城市；後續天用「前一晚住宿」
+  if (dayIndex === 0) {
+    if (originCity) {
+      const geo = resolve(0, 'origin', undefined)
+      if (geo) {
+        points.push({ id: 'origin', kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: `出發：${originCity}` })
+      }
+    }
+  } else {
+    const prevDay = itinerary.days.find((d) => d.dayIndex === dayIndex - 1)
+    const prevAcc = prevDay?.accommodation
+    if (prevAcc) {
+      const geo = resolve(dayIndex - 1, 'accommodation', prevAcc.location)
+      if (geo) {
+        points.push({
+          id: 'origin',
+          kind: 'origin',
+          lat: geo.lat,
+          lng: geo.lng,
+          label: '出',
+          title: `出發：${prevAcc.name}（前晚住宿）`,
+        })
+      }
+    }
+  }
+
+  // 實際地點（排除交通類），連續編號
+  const placeActivities = day.activities.filter((a) => a.type !== 'transport')
+  placeActivities.forEach((a, i) => {
+    const geo = resolve(dayIndex, a.id, a.location)
+    if (!geo) return
+    const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
+    points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: String(i + 1), title: a.title, time })
+  })
+
+  // 當晚住宿
+  if (day.accommodation) {
+    const geo = resolve(dayIndex, 'accommodation', day.accommodation.location)
+    if (geo) {
+      points.push({
+        id: 'accommodation',
+        kind: 'accommodation',
+        lat: geo.lat,
+        lng: geo.lng,
+        label: '宿',
+        title: day.accommodation.name,
+      })
+    }
+  }
+
+  return points
+}
+
+/** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變 */
+export function signatureFor(points: { id: string; lat: number; lng: number }[]): string {
+  return points.map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
+}
+
+// 以 signature 為鍵的記憶體快取：地圖與 prefetch 共用，同 session 同一條路線只打一次 Directions
+const memCache = new Map<string, ComputedRoute>()
+
+/** 呼叫 Directions 取得整天開車路線；同簽章已算過則直接回快取（不打 API） */
+export async function getOrComputeRoute(
+  routesLib: google.maps.RoutesLibrary,
+  points: RoutePoint[],
+): Promise<ComputedRoute | null> {
+  if (points.length < 2 || points.length > 25) return null
+  const sig = signatureFor(points)
+  const hit = memCache.get(sig)
+  if (hit) return hit
+
+  const service = new routesLib.DirectionsService()
+  const res = await service.route({
+    origin: { lat: points[0].lat, lng: points[0].lng },
+    destination: { lat: points[points.length - 1].lat, lng: points[points.length - 1].lng },
+    waypoints: points.slice(1, -1).map((p) => ({ location: { lat: p.lat, lng: p.lng }, stopover: true })),
+    travelMode: google.maps.TravelMode.DRIVING,
+  })
+  const r = res.routes[0]
+  if (!r) return null
+
+  const legs: ComputedRoute['legs'] = r.legs.map((leg, i) => {
+    const lp: google.maps.LatLng[] = []
+    leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
+    const m = lp.length ? lp[Math.floor(lp.length / 2)] : null
+    const pos = m
+      ? { lat: m.lat(), lng: m.lng() }
+      : {
+          lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
+          lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
+        }
+    const meters = leg.distance?.value ?? 0
+    const seconds = leg.duration?.value ?? 0
+    return { toId: points[i + 1]?.id ?? '', meters, seconds, text: legText(meters, seconds), pos }
+  })
+
+  const computed: ComputedRoute = {
+    legs,
+    path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
+    polyline: r.overview_polyline ?? '',
+    sig,
+  }
+  memCache.set(sig, computed)
+  return computed
+}
+
+/** 把 ComputedRoute 轉成寫回 DB 的路段陣列（排除起點本身、保留中點供地圖標籤定位） */
+export function toPersistLegs(route: ComputedRoute): PersistLeg[] {
+  return route.legs
+    .filter((l) => l.toId && l.toId !== 'origin')
+    .map((l) => ({ toId: l.toId, meters: l.meters, seconds: l.seconds, midLat: l.pos.lat, midLng: l.pos.lng }))
+}

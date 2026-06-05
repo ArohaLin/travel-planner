@@ -9,9 +9,11 @@ import type { ItineraryDay, TravelLeg } from '@/lib/types/itinerary'
  * 供行程表卡片之間顯示「🚗 23 km・約 35 分」。採整天覆寫（每次送來的是該天完整路段）。
  */
 
-interface DayLegs {
+interface DayPayload {
   dayIndex: number
   legs: TravelLeg[]
+  polyline?: string
+  sig?: string
 }
 
 function sanitizeLegs(legs: unknown): TravelLeg[] {
@@ -19,11 +21,14 @@ function sanitizeLegs(legs: unknown): TravelLeg[] {
   const out: TravelLeg[] = []
   for (const l of legs) {
     if (!l || typeof l !== 'object') continue
-    const { toId, meters, seconds } = l as Record<string, unknown>
+    const { toId, meters, seconds, midLat, midLng } = l as Record<string, unknown>
     if (typeof toId !== 'string' || !toId) continue
     if (typeof meters !== 'number' || !Number.isFinite(meters) || meters < 0) continue
     if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) continue
-    out.push({ toId, meters, seconds })
+    const leg: TravelLeg = { toId, meters, seconds }
+    if (typeof midLat === 'number' && Number.isFinite(midLat)) leg.midLat = midLat
+    if (typeof midLng === 'number' && Number.isFinite(midLng)) leg.midLng = midLng
+    out.push(leg)
   }
   return out
 }
@@ -57,10 +62,15 @@ export async function POST(
     return NextResponse.json({ error: '無更新內容' }, { status: 400 })
   }
 
-  const byDay = new Map<number, TravelLeg[]>()
-  for (const d of rawDays as DayLegs[]) {
+  interface DayUpdate { legs: TravelLeg[]; polyline?: string; sig?: string }
+  const byDay = new Map<number, DayUpdate>()
+  for (const d of rawDays as DayPayload[]) {
     if (typeof d?.dayIndex !== 'number') continue
-    byDay.set(d.dayIndex, sanitizeLegs(d.legs))
+    byDay.set(d.dayIndex, {
+      legs: sanitizeLegs(d.legs),
+      polyline: typeof d.polyline === 'string' ? d.polyline : undefined,
+      sig: typeof d.sig === 'string' ? d.sig : undefined,
+    })
   }
   if (byDay.size === 0) {
     return NextResponse.json({ error: '無有效路段' }, { status: 400 })
@@ -82,9 +92,15 @@ export async function POST(
 
   let changed = false
   const newDays = days.map((day) => {
-    if (!byDay.has(day.dayIndex)) return day
+    const upd = byDay.get(day.dayIndex)
+    if (!upd) return day
     changed = true
-    return { ...day, travelLegs: byDay.get(day.dayIndex) }
+    return {
+      ...day,
+      travelLegs: upd.legs,
+      routePolyline: upd.polyline ?? day.routePolyline,
+      travelSig: upd.sig ?? day.travelSig,
+    }
   })
 
   if (!changed) {

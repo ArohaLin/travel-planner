@@ -2,6 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Map, Marker, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import type { TravelLeg } from '@/lib/types/itinerary'
+import {
+  getOrComputeRoute,
+  signatureFor,
+  legText,
+  toPersistLegs,
+  type PersistLeg,
+} from '@/lib/maps/route'
 
 export interface MapPoint {
   lat: number
@@ -12,21 +20,24 @@ export interface MapPoint {
   time?: string
   /** activity=圓形景點；accommodation=當晚住宿方形；origin=當天路線起點（出發地/前晚住宿）菱形 */
   kind: 'activity' | 'accommodation' | 'origin'
-  /** 對應的識別碼：activity.id、'accommodation' 或 'origin'（用於把路段距離存回對應卡片） */
+  /** 對應的識別碼：activity.id、'accommodation' 或 'origin' */
   id: string
 }
 
-/** 一段路（給上層寫回 DB 用）：抵達 toId 這站，相對前一站的距離/時間 */
-export interface PersistLeg {
-  toId: string
-  meters: number
-  seconds: number
+/** 寫回 DB 用的整天路線（距離/時間 + 編碼折線 + 簽章） */
+export interface PersistDayRoute {
+  dayIndex: number
+  legs: PersistLeg[]
+  polyline: string
+  sig: string
 }
 
 export interface MapDay {
   dayIndex: number
   color: string
   points: MapPoint[]
+  /** DB 已存的路線資料（sig 相符即可直接重用，免打 Directions） */
+  stored?: { sig?: string; polyline?: string; legs?: TravelLeg[] }
 }
 
 /** 距離/時間標籤的層級模式：置頂（蓋在 marker 上）/ 下層（在 marker 下）/ 隱藏 */
@@ -36,8 +47,8 @@ interface ItineraryMapProps {
   days: MapDay[]
   /** 距離/時間標籤層級：置頂 / 下層 / 隱藏（地圖上可即時輪替，不重打 API） */
   distanceMode: DistanceMode
-  /** 某天算出開車路段後回呼（供上層寫回 DB，給行程卡顯示） */
-  onLegs?: (dayIndex: number, legs: PersistLeg[]) => void
+  /** 某天算出開車路線後回呼（供上層寫回 DB） */
+  onRoute?: (payload: PersistDayRoute) => void
 }
 
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -45,7 +56,10 @@ const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
 // marker 直徑約 31px（半徑 scale 13 + 邊框）；中心需相距 ≥ COLLIDE_PX 才不重疊
 const COLLIDE_PX = 38
 
-/** 兩經緯度間的直線距離（公里），Haversine 公式 */
+/** 距離標籤顯示門檻：同一段路小於此公里數就不顯示（短程沒意義、也讓畫面更乾淨） */
+const MIN_LABEL_KM = 5
+
+/** 兩經緯度間的直線距離（公里），Haversine 公式（Directions 失敗時的退回方案用） */
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
   const toRad = (d: number) => (d * Math.PI) / 180
@@ -57,63 +71,19 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-/** 距離文字：≥1km 顯示「6.2 km」，否則「800 m」 */
 function formatKm(km: number): string {
   return km >= 1 ? `${km.toFixed(1)} km` : `${Math.round(km * 1000)} m`
 }
 
-/** 公尺 → 距離文字：≥1km 顯示「23.4 km」，否則「850 m」 */
-function formatMeters(m: number): string {
-  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`
-}
-
-/** 秒 → 時間文字：「35 分」或「1 時 5 分」 */
-function formatSeconds(s: number): string {
-  const min = Math.round(s / 60)
-  if (min < 60) return `${min} 分`
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return m ? `${h} 時 ${m} 分` : `${h} 時`
-}
-
-/** 距離標籤顯示門檻：同一段路小於此公里數就不顯示（短程沒意義、也讓畫面更乾淨） */
-const MIN_LABEL_KM = 5
-
-/** 一天的開車路線：真實道路路徑 + 每段（leg）的距離/時間標籤 */
-interface DrivingRoute {
-  path: { lat: number; lng: number }[]
-  legs: {
-    text: string
-    meters: number
-    seconds: number
-    /** 該段終點站識別碼（activity.id / 'accommodation' / 'origin'），用於寫回卡片 */
-    toId: string
-    pos: { lat: number; lng: number }
-  }[]
-}
-
-// 開車路線快取（以「原始座標」為鍵，與 zoom 無關 → 縮放、切換天數來回都不會重打 Directions API）
-// 注意：本檔案的 `Map` 名稱被 @vis.gl 的地圖元件佔用，這裡用 globalThis.Map 取原生 Map。
-const routeCache = new globalThis.Map<string, DrivingRoute>()
-
-function routeKey(points: MapPoint[]): string {
-  return points.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
-}
-
 /** 直線距離標籤（Directions 失敗時的退回方案，例如無法開車到達） */
-function straightLabels(
-  points: MapPoint[],
-): { text: string; pos: { lat: number; lng: number } }[] {
+function straightLabels(points: MapPoint[]): { text: string; pos: { lat: number; lng: number } }[] {
   const out: { text: string; pos: { lat: number; lng: number } }[] = []
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i]
     const b = points[i + 1]
     const km = haversineKm(a.lat, a.lng, b.lat, b.lng)
     if (km < MIN_LABEL_KM) continue
-    out.push({
-      text: formatKm(km),
-      pos: { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 },
-    })
+    out.push({ text: formatKm(km), pos: { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 } })
   }
   return out
 }
@@ -169,20 +139,15 @@ function makeDistancePill(
 }
 
 /**
- * 像素級散開：把在「當前 zoom 的螢幕投影」下會重疊的 marker 散開，
- * 隨 zoom 動態重算 —— 放大時點還原真實位置、縮小時自動散開，永不重疊。
- *
- * 原理：用 Google Maps 投影把經緯度 → 世界座標（0~256），乘 2^zoom 得螢幕像素。
- * 同群（像素距離 < COLLIDE_PX）的點以群中心為圓心、用足夠像素半徑排成圓圈，再轉回經緯度。
+ * 像素級散開：把在「當前 zoom 的螢幕投影」下會重疊的 marker 散開，隨 zoom 動態重算。
  */
 function spreadByPixels(
   days: MapDay[],
   projection: google.maps.Projection,
   zoom: number,
 ): MapDay[] {
-  const scale = Math.pow(2, zoom) // 1 世界座標單位 = scale 像素
+  const scale = Math.pow(2, zoom)
   type Ref = { d: number; p: number }
-  // 轉成像素座標
   const all: { px: number; py: number; ref: Ref }[] = []
   days.forEach((day, d) =>
     day.points.forEach((pt, p) => {
@@ -199,7 +164,6 @@ function spreadByPixels(
     if (used[i]) continue
     const group = [i]
     used[i] = true
-    // 用「擴張式」分群：任何與群內某點過近的點都納入
     for (let j = 0; j < all.length; j++) {
       if (used[j] || j === i) continue
       const tooClose = group.some((k) => {
@@ -210,15 +174,13 @@ function spreadByPixels(
       if (tooClose) {
         group.push(j)
         used[j] = true
-        j = -1 // 重新掃描，讓鏈式相鄰都納入同群
+        j = -1
       }
     }
     if (group.length < 2) continue
 
-    // 群中心（像素）
     const cx = group.reduce((s, k) => s + all[k].px, 0) / group.length
     const cy = group.reduce((s, k) => s + all[k].py, 0) / group.length
-    // 圓圈半徑：讓相鄰 marker 間距 ≥ COLLIDE_PX
     const n = group.length
     const radiusPx = Math.max(COLLIDE_PX / (2 * Math.sin(Math.PI / n)), COLLIDE_PX * 0.6)
 
@@ -226,7 +188,6 @@ function spreadByPixels(
       const angle = (2 * Math.PI * idx) / n
       const npx = cx + radiusPx * Math.cos(angle)
       const npy = cy + radiusPx * Math.sin(angle)
-      // 像素 → 世界座標 → 經緯度
       const world = new google.maps.Point(npx / scale, npy / scale)
       const latLng = projection.fromPointToLatLng(world)
       if (!latLng) return
@@ -239,7 +200,7 @@ function spreadByPixels(
   return days.map((day, d) => ({ ...day, points: moved[d] }))
 }
 
-export function ItineraryMap({ days, distanceMode, onLegs }: ItineraryMapProps) {
+export function ItineraryMap({ days, distanceMode, onRoute }: ItineraryMapProps) {
   return (
     <Map
       defaultCenter={TAIWAN_CENTER}
@@ -251,21 +212,18 @@ export function ItineraryMap({ days, distanceMode, onLegs }: ItineraryMapProps) 
       fullscreenControl={false}
       style={{ width: '100%', height: '100%' }}
     >
-      <MapContent days={days} distanceMode={distanceMode} onLegs={onLegs} />
+      <MapContent days={days} distanceMode={distanceMode} onRoute={onRoute} />
     </Map>
   )
 }
 
-function MapContent({ days: rawDays, distanceMode, onLegs }: ItineraryMapProps) {
+function MapContent({ days: rawDays, distanceMode, onRoute }: ItineraryMapProps) {
   const map = useMap()
   const [selected, setSelected] = useState<{ point: MapPoint; color: string } | null>(null)
-  // 當前 zoom，用來觸發像素級散開重算
   const [zoom, setZoom] = useState<number | null>(null)
 
-  // 原始座標（未散開），用於 fitBounds
   const rawPoints = useMemo(() => rawDays.flatMap((d) => d.points), [rawDays])
 
-  // 監聽 zoom 變化 → 重算散開
   useEffect(() => {
     if (!map) return
     const update = () => setZoom(map.getZoom() ?? null)
@@ -274,15 +232,12 @@ function MapContent({ days: rawDays, distanceMode, onLegs }: ItineraryMapProps) 
     return () => listener.remove()
   }, [map])
 
-  // 依當前 zoom 做像素級散開（投影需要 map 已就緒）
   const days = useMemo(() => {
     if (!map || zoom == null) return rawDays
     const projection = map.getProjection()
     if (!projection) return rawDays
     return spreadByPixels(rawDays, projection, zoom)
   }, [map, zoom, rawDays])
-
-  const allPoints = days.flatMap((d) => d.points)
 
   // 自動縮放到所有可見景點（用原始座標）
   useEffect(() => {
@@ -309,7 +264,7 @@ function MapContent({ days: rawDays, distanceMode, onLegs }: ItineraryMapProps) 
             day={day}
             rawDay={rawDay}
             distanceMode={distanceMode}
-            onLegs={onLegs}
+            onRoute={onRoute}
             onSelect={(point) => setSelected({ point, color: day.color })}
           />
         )
@@ -341,106 +296,82 @@ function MapContent({ days: rawDays, distanceMode, onLegs }: ItineraryMapProps) 
   )
 }
 
+/** 給 polyline/labels 渲染用的整天路線（不論來自 DB 重用或現算） */
+interface RenderRoute {
+  path: { lat: number; lng: number }[]
+  labels: { text: string; meters: number; pos: { lat: number; lng: number } }[]
+}
+
 function DayRoute({
   day,
   rawDay,
   distanceMode,
-  onLegs,
+  onRoute,
   onSelect,
 }: {
   day: MapDay
   rawDay: MapDay
   distanceMode: DistanceMode
-  onLegs?: (dayIndex: number, legs: PersistLeg[]) => void
+  onRoute?: (payload: PersistDayRoute) => void
   onSelect: (point: MapPoint) => void
 }) {
   const map = useMap()
   const routesLib = useMapsLibrary('routes')
-  const [route, setRoute] = useState<DrivingRoute | null>(null)
+  const geometryLib = useMapsLibrary('geometry')
+  const [route, setRoute] = useState<RenderRoute | null>(null)
   const [failed, setFailed] = useState(false)
 
-  // 取得開車路線（真實道路 + 每段距離/時間）。以「原始座標」為快取鍵，
-  // 故 zoom in/out 不會觸發新的 Directions 請求、不產生費用。
+  // 取得整天開車路線：優先重用 DB（sig 相符 → 解碼折線、不打 API），否則呼叫 Directions。
+  // 以原始座標為基準，zoom in/out 不會觸發重抓。
   useEffect(() => {
-    if (!routesLib || rawDay.points.length < 2) {
+    if (rawDay.points.length < 2) {
       setRoute(null)
       setFailed(false)
       return
     }
-    // origin + destination + waypoints 數量上限約 25，超過就退回直線
-    if (rawDay.points.length > 25) {
-      setRoute(null)
-      setFailed(true)
-      return
-    }
-    const key = routeKey(rawDay.points)
-    const cached = routeCache.get(key)
-    if (cached) {
-      setRoute(cached)
+    const currentSig = signatureFor(rawDay.points)
+
+    // 1) DB 已有且新鮮 → 解碼直接用
+    const stored = rawDay.stored
+    if (stored?.sig && stored.sig === currentSig && stored.polyline && geometryLib) {
+      const path = geometryLib.encoding
+        .decodePath(stored.polyline)
+        .map((p) => ({ lat: p.lat(), lng: p.lng() }))
+      const labels = (stored.legs ?? [])
+        .filter((l) => typeof l.midLat === 'number' && typeof l.midLng === 'number')
+        .map((l) => ({
+          text: legText(l.meters, l.seconds),
+          meters: l.meters,
+          pos: { lat: l.midLat as number, lng: l.midLng as number },
+        }))
+      setRoute({ path, labels })
       setFailed(false)
       return
     }
 
+    // 2) 否則呼叫 Directions（同 session 同簽章會命中共用快取，不重複打）
+    if (!routesLib) return
     let cancelled = false
     setRoute(null)
     setFailed(false)
-    const service = new routesLib.DirectionsService()
-    const pts = rawDay.points
-    service
-      .route({
-        origin: { lat: pts[0].lat, lng: pts[0].lng },
-        destination: { lat: pts[pts.length - 1].lat, lng: pts[pts.length - 1].lng },
-        waypoints: pts.slice(1, -1).map((p) => ({
-          location: { lat: p.lat, lng: p.lng },
-          stopover: true,
-        })),
-        travelMode: google.maps.TravelMode.DRIVING,
-      })
-      .then((res) => {
+    getOrComputeRoute(routesLib, rawDay.points)
+      .then((computed) => {
         if (cancelled) return
-        const r = res.routes[0]
-        if (!r) {
+        if (!computed) {
           setFailed(true)
           return
         }
-        // leg[i] 連接 points[i] → points[i+1]（未開啟 optimizeWaypoints，順序與點一致）
-        const legs: DrivingRoute['legs'] = r.legs.map((leg, i) => {
-          // 取該段道路路徑的中點當標籤位置（落在實際道路上，而非兩端直線中點）
-          const lp: google.maps.LatLng[] = []
-          leg.steps?.forEach((s) => s.path?.forEach((pt) => lp.push(pt)))
-          const m = lp.length ? lp[Math.floor(lp.length / 2)] : null
-          const pos = m
-            ? { lat: m.lat(), lng: m.lng() }
-            : {
-                lat: (leg.start_location.lat() + leg.end_location.lat()) / 2,
-                lng: (leg.start_location.lng() + leg.end_location.lng()) / 2,
-              }
-          const meters = leg.distance?.value ?? 0
-          const seconds = leg.duration?.value ?? 0
-          const dist = formatMeters(meters)
-          const dur = formatSeconds(seconds)
-          return {
-            text: `${dist}・約 ${dur}`,
-            meters,
-            seconds,
-            toId: pts[i + 1]?.id ?? '',
-            pos,
-          }
+        setRoute({
+          path: computed.path,
+          labels: computed.legs.map((l) => ({ text: l.text, meters: l.meters, pos: l.pos })),
         })
-        const drv: DrivingRoute = {
-          path: r.overview_path.map((p) => ({ lat: p.lat(), lng: p.lng() })),
-          legs,
-        }
-        routeCache.set(key, drv)
-        setRoute(drv)
         setFailed(false)
-        // 把該天路段距離/時間寫回 DB（供行程卡顯示）；只在實際抓到路線時送一次
-        onLegs?.(
-          rawDay.dayIndex,
-          legs
-            .filter((l) => l.toId && l.toId !== 'origin')
-            .map((l) => ({ toId: l.toId, meters: l.meters, seconds: l.seconds })),
-        )
+        onRoute?.({
+          dayIndex: rawDay.dayIndex,
+          legs: toPersistLegs(computed),
+          polyline: computed.polyline,
+          sig: computed.sig,
+        })
       })
       .catch(() => {
         if (!cancelled) {
@@ -451,13 +382,11 @@ function DayRoute({
     return () => {
       cancelled = true
     }
-    // onLegs 故意不列入依賴：它只在「實際抓取路線」時於 .then 內呼叫一次，
-    // 不應因為上層重繪導致重抓；快取命中時也不會再呼叫。
+    // onRoute 不列依賴：只在實際抓取時於 .then 內呼叫一次，不應因上層重繪而重抓。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routesLib, rawDay])
+  }, [routesLib, geometryLib, rawDay])
 
-  // 路線折線：有開車路線就畫真實道路；Directions 失敗才退回直線連接。
-  // 載入中（route 尚未回來且未失敗）先不畫線，等結果一次顯示。
+  // 路線折線：有路線就畫；Directions 失敗才退回直線。載入中先不畫線，等結果。
   useEffect(() => {
     if (!map) return
     const path = route
@@ -489,14 +418,12 @@ function DayRoute({
     return () => polyline.setMap(null)
   }, [map, route, failed, rawDay, day.color])
 
-  // 距離/時間標籤：有開車路線顯示「23.4 km・約 35 分」；失敗退回直線距離。
-  // 層級依 distanceMode：top=置頂(floatPane) / below=下層(overlayLayer) / hidden=不顯示。
-  // 該段 < MIN_LABEL_KM 公里時一律不顯示。
+  // 距離/時間標籤：層級依 distanceMode；該段 < MIN_LABEL_KM 公里不顯示。
   useEffect(() => {
     if (!map || distanceMode === 'hidden') return
     const pane = distanceMode === 'top' ? 'floatPane' : 'overlayLayer'
     const labels = route
-      ? route.legs.filter((l) => l.meters >= MIN_LABEL_KM * 1000)
+      ? route.labels.filter((l) => l.meters >= MIN_LABEL_KM * 1000)
       : failed
         ? straightLabels(rawDay.points)
         : []
@@ -521,11 +448,9 @@ function DayRoute({
           icon={{
             path:
               point.kind === 'accommodation'
-                ? // 住宿用方形標記
-                  'M -12 -12 H 12 V 12 H -12 Z'
+                ? 'M -12 -12 H 12 V 12 H -12 Z'
                 : point.kind === 'origin'
-                  ? // 起點（出發地 / 前晚住宿）用菱形標記
-                    'M 0 -13 L 13 0 L 0 13 L -13 0 Z'
+                  ? 'M 0 -13 L 13 0 L 0 13 L -13 0 Z'
                   : google.maps.SymbolPath.CIRCLE,
             scale: point.kind === 'activity' ? 13 : 1,
             fillColor: day.color,
@@ -533,9 +458,7 @@ function DayRoute({
             strokeColor: '#ffffff',
             strokeWeight: 2.5,
             labelOrigin:
-              point.kind === 'activity'
-                ? undefined
-                : new google.maps.Point(0, 0),
+              point.kind === 'activity' ? undefined : new google.maps.Point(0, 0),
           }}
         />
       ))}

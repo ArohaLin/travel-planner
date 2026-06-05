@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
+import { buildDayPoints } from '@/lib/maps/route'
 import {
   ItineraryMap,
   type MapDay,
-  type MapPoint,
   type DistanceMode,
-  type PersistLeg,
+  type PersistDayRoute,
 } from './ItineraryMap'
 
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
@@ -192,79 +192,23 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
     [selectedDays],
   )
 
-  // 組裝地圖資料
+  // 組裝地圖資料（點位用共用 buildDayPoints，確保與背景 prefetch 一致 → sig 可正確比對重用）
   const mapDays: MapDay[] = useMemo(() => {
-    return sortedSelected
-      .map((dayIndex, colorIdx) => {
-        const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
-        if (!day) return null
-        const points: MapPoint[] = []
-
-        // Issue B 起點：路線從「出發地 / 前一晚住宿」開始，而非第一個景點。
-        if (dayIndex === 0) {
-          const geo = getGeo(0, 'origin', undefined)
-          if (geo && originCity) {
-            points.push({
-              lat: geo.lat,
-              lng: geo.lng,
-              label: '出',
-              title: `出發：${originCity}`,
-              kind: 'origin',
-              id: 'origin',
-            })
-          }
-        } else {
-          const prevDay = itinerary.days.find((d) => d.dayIndex === dayIndex - 1)
-          const prevAcc = prevDay?.accommodation
-          if (prevAcc) {
-            const geo = getGeo(dayIndex - 1, 'accommodation', prevAcc.location)
-            if (geo) {
-              points.push({
-                lat: geo.lat,
-                lng: geo.lng,
-                label: '出',
-                title: `出發：${prevAcc.name}（前晚住宿）`,
-                kind: 'origin',
-                id: 'origin',
-              })
-            }
-          }
-        }
-
-        // 只標「實際地點」：排除交通類（transport 是兩點間移動，不是地圖上的點），
-        // 並連續編號（①②③…不跳號），與行程表上的景點順序一致。
-        const placeActivities = day.activities.filter((a) => a.type !== 'transport')
-        placeActivities.forEach((a, i) => {
-          const geo = getGeo(dayIndex, a.id, a.location)
-          if (!geo) return
-          const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
-          points.push({
-            lat: geo.lat,
-            lng: geo.lng,
-            label: String(i + 1),
-            title: a.title,
-            time,
-            kind: 'activity',
-            id: a.id,
-          })
-        })
-        if (day.accommodation) {
-          const geo = getGeo(dayIndex, 'accommodation', day.accommodation.location)
-          if (geo) {
-            points.push({
-              lat: geo.lat,
-              lng: geo.lng,
-              label: '宿',
-              title: day.accommodation.name,
-              kind: 'accommodation',
-              id: 'accommodation',
-            })
-          }
-        }
-        return { dayIndex, color: DAY_COLORS[colorIdx % DAY_COLORS.length], points }
+    const out: MapDay[] = []
+    sortedSelected.forEach((dayIndex, colorIdx) => {
+      const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
+      if (!day) return
+      const points = buildDayPoints(itinerary, dayIndex, getGeo)
+      if (points.length === 0) return
+      out.push({
+        dayIndex,
+        color: DAY_COLORS[colorIdx % DAY_COLORS.length],
+        points,
+        stored: { sig: day.travelSig, polyline: day.routePolyline, legs: day.travelLegs },
       })
-      .filter((d): d is MapDay => d !== null && d.points.length > 0)
-  }, [sortedSelected, itinerary, getGeo, originCity])
+    })
+    return out
+  }, [sortedSelected, itinerary, getGeo])
 
   function toggleDay(dayIndex: number) {
     const next = selectedDays.includes(dayIndex)
@@ -282,12 +226,11 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
   }, [onLegsSaved])
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // 地圖算出某天開車路段後，寫回 DB（供行程卡顯示）。handleLegs 身分穩定，不會觸發重抓。
-  // 成功後去抖動觸發一次行程刷新 → 行程卡即時出現連接器（座標快取命中時不會重新 persist，故無迴圈）。
-  const handleLegs = useCallback(
-    (dayIndex: number, legs: PersistLeg[]) => {
-      if (legs.length === 0) return
-      persistLegs(itineraryId, dayIndex, legs).then((saved) => {
+  // 地圖算出某天整條路線後，寫回 DB（距離/時間＋編碼折線＋簽章）。handleRoute 身分穩定，不觸發重抓。
+  // 成功後去抖動觸發一次行程刷新 → 行程卡即時出現連接器（DB 已新鮮或座標快取命中時不會重新 persist，故無迴圈）。
+  const handleRoute = useCallback(
+    (payload: PersistDayRoute) => {
+      persistDayRoute(itineraryId, payload).then((saved) => {
         if (!saved) return
         if (refreshTimer.current) clearTimeout(refreshTimer.current)
         refreshTimer.current = setTimeout(() => {
@@ -363,7 +306,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         </div>
       )}
 
-      <ItineraryMap days={mapDays} distanceMode={distanceMode} onLegs={handleLegs} />
+      <ItineraryMap days={mapDays} distanceMode={distanceMode} onRoute={handleRoute} />
     </div>
   )
 }
@@ -380,16 +323,24 @@ async function persistGeo(itineraryId: string, updates: GeoUpdate[]) {
   }
 }
 
-async function persistLegs(
+async function persistDayRoute(
   itineraryId: string,
-  dayIndex: number,
-  legs: PersistLeg[],
+  payload: PersistDayRoute,
 ): Promise<boolean> {
   try {
     const res = await fetch(`/api/itinerary/${itineraryId}/legs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ days: [{ dayIndex, legs }] }),
+      body: JSON.stringify({
+        days: [
+          {
+            dayIndex: payload.dayIndex,
+            legs: payload.legs,
+            polyline: payload.polyline,
+            sig: payload.sig,
+          },
+        ],
+      }),
     })
     if (!res.ok) return false
     const json = await res.json().catch(() => null)
