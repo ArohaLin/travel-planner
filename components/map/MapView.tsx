@@ -82,8 +82,10 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
       if (!day) continue
       for (const a of day.activities) {
+        if (a.type === 'transport') continue // 交通類不標在地圖上，免 geocode
         if (getGeo(dayIndex, a.id, a.location)) continue
-        const query = a.location?.address || a.title
+        // 用地點簡稱 / 地址 / 標題查座標（placeLabel 通常較精準）
+        const query = a.placeLabel || a.location?.address || a.title
         if (!query) continue
         inputs.push({ query, region: destination })
         refs.push({ dayIndex, target: a.id })
@@ -136,7 +138,10 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
         const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
         if (!day) return null
         const points: MapPoint[] = []
-        day.activities.forEach((a, i) => {
+        // 只標「實際地點」：排除交通類（transport 是兩點間移動，不是地圖上的點），
+        // 並連續編號（①②③…不跳號），與行程表上的景點順序一致。
+        const placeActivities = day.activities.filter((a) => a.type !== 'transport')
+        placeActivities.forEach((a, i) => {
           const geo = getGeo(dayIndex, a.id, a.location)
           if (!geo) return
           const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime

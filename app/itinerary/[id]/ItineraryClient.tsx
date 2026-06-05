@@ -79,6 +79,8 @@ export function ItineraryClient({
     oldCount: number
     newCount: number
   } | null>(null)
+  // #24：天數變化時，使用者補充給 AI 的說明
+  const [dateChangeNote, setDateChangeNote] = useState('')
   const [notesSheetOpen, setNotesSheetOpen] = useState(false)
   const [addNoteFor, setAddNoteFor] = useState<Activity | null>(null)
   const [submittingNotes, setSubmittingNotes] = useState(false)
@@ -224,10 +226,13 @@ export function ItineraryClient({
     const ok = await patchDatesAndDays(startDate, endDate, newDays)
     if (!ok) { setDateChange(null); return }
     setActiveDay((d) => Math.min(d, newCount - 1))
+    const note = dateChangeNote.trim()
+    const noteLine = note ? `\n\n我的補充說明：${note}` : ''
     const msg = newCount > oldCount
-      ? `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），新增的第 ${oldCount + 1}~${newCount} 天目前是空白的，請依整體行程風格與動線幫我補齊這幾天的完整規劃。`
-      : `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），請幫我把行程重新濃縮調整成 ${newCount} 天，保留最精華的景點與合理動線。`
+      ? `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），新增的第 ${oldCount + 1}~${newCount} 天目前是空白的，請依整體行程風格與動線幫我補齊這幾天的完整規劃。${noteLine}`
+      : `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），請幫我把行程重新濃縮調整成 ${newCount} 天，保留最精華的景點與合理動線。${noteLine}`
     setDateChange(null)
+    setDateChangeNote('')
     setChatOpen(true)
     chat.queueMessage(msg, modelProvider)
   }
@@ -728,6 +733,17 @@ export function ItineraryClient({
                     <button onClick={() => setDateChange(null)}
                       className="w-full py-2.5 text-sm text-gray-400">取消</button>
                   </div>
+                  {/* #24 給 AI 的補充說明 */}
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <label className="text-xs text-gray-500 mb-1 block">給 AI 的補充說明（選填，選「請 AI」時一起送出）</label>
+                    <textarea
+                      value={dateChangeNote}
+                      onChange={(e) => setDateChangeNote(e.target.value)}
+                      rows={2}
+                      placeholder="例：新增的天想去都蘭、東河一帶，住台東市區"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
                 </>
               ) : (
                 <>
@@ -748,6 +764,17 @@ export function ItineraryClient({
                     </button>
                     <button onClick={() => setDateChange(null)}
                       className="w-full py-2.5 text-sm text-gray-400">取消</button>
+                  </div>
+                  {/* #24 給 AI 的補充說明 */}
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <label className="text-xs text-gray-500 mb-1 block">給 AI 的補充說明（選填，選「請 AI」時一起送出）</label>
+                    <textarea
+                      value={dateChangeNote}
+                      onChange={(e) => setDateChangeNote(e.target.value)}
+                      rows={2}
+                      placeholder="例：保留綠島兩天，刪掉嘉義那兩天"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
                   </div>
                 </>
               )}

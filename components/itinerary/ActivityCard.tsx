@@ -168,6 +168,10 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
           <span className="text-xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 leading-snug">{formatCardMain(activity)}</h3>
+            {/* 完整地址（交通類不顯示）*/}
+            {activity.type !== 'transport' && activity.location?.address && (
+              <p className="text-xs text-gray-400 mt-1 leading-relaxed">📍 {activity.location.address}</p>
+            )}
             {activity.highlight && activity.highlight.trim() && (
               <p className="text-xs text-amber-600 mt-1 leading-relaxed">（{activity.highlight.trim()}）</p>
             )}

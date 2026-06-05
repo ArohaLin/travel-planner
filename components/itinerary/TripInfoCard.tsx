@@ -42,7 +42,6 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
     memberProfiles: metadata.memberProfiles ?? ([] as MemberProfile[]),
     aiMemory: metadata.aiMemory ?? '',
   })
-  const [transitInput, setTransitInput] = useState('')
 
   function openEdit() {
     setForm({
@@ -56,20 +55,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
       memberProfiles: metadata.memberProfiles ?? [],
       aiMemory: metadata.aiMemory ?? '',
     })
-    setTransitInput('')
     setEditing(true)
-  }
-
-  function addTransitCity() {
-    const city = transitInput.trim()
-    if (city && !form.transitCities.includes(city)) {
-      setForm((prev) => ({ ...prev, transitCities: [...prev.transitCities, city] }))
-    }
-    setTransitInput('')
-  }
-
-  function removeTransitCity(city: string) {
-    setForm((prev) => ({ ...prev, transitCities: prev.transitCities.filter((c) => c !== city) }))
   }
 
   function toggleTransport(value: string) {
@@ -201,16 +187,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
             </InfoRow>
           )}
 
-          {/* Style */}
-          {metadata.style && metadata.style.length > 0 && (
-            <InfoRow label="旅遊風格">
-              <div className="flex flex-wrap gap-1">
-                {metadata.style.map((s) => (
-                  <span key={s} className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{s}</span>
-                ))}
-              </div>
-            </InfoRow>
-          )}
+          {/* 旅遊風格已移除顯示（#22）*/}
 
           {/* Budget */}
           {metadata.totalBudget && (
@@ -310,44 +287,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
           </div>
         </div>
 
-        {/* Transit cities */}
-        <div>
-          <label className="text-xs font-medium text-gray-500 block mb-1">中途城市</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={transitInput}
-              onChange={(e) => setTransitInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTransitCity() } }}
-              placeholder="輸入城市後按 Enter"
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-            />
-            <button
-              type="button"
-              onClick={addTransitCity}
-              className="px-3 py-2 bg-purple-50 text-purple-700 rounded-xl text-sm font-medium"
-            >
-              新增
-            </button>
-          </div>
-          {form.transitCities.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {form.transitCities.map((city) => (
-                <span
-                  key={city}
-                  className="flex items-center gap-1 bg-purple-50 text-purple-700 text-xs px-2.5 py-1 rounded-full"
-                >
-                  {city}
-                  <button onClick={() => removeTransitCity(city)} className="hover:text-purple-900">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* 中途城市編輯已移除（#23）*/}
 
         {/* Transport */}
         <div>

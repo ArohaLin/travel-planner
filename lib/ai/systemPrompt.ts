@@ -530,6 +530,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "recommendation": "推薦重點：必看必玩、當地飲食或名產（1-2句）",
           "tips": "貼心提醒：注意事項、最佳時段或省錢小撇步（1句，選填）",
           "placeLabel": "地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它填，交通免）",
+          "location": { "lat": 0, "lng": 0, "address": "盡量填完整地址，如「972花蓮縣秀林鄉富世村」（非交通類都要填，lat/lng 留 0 由系統定位）" },
           "fromLabel": "交通起點簡稱（僅 type=transport 填，如「台東市」）",
           "toLabel": "交通終點簡稱（僅 type=transport 填，如「富岡漁港」）",
           "transportMode": "交通方式（僅 type=transport 填，如「自駕」「步行」「船」）",
@@ -576,6 +577,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
    - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
    - 任何活動若有特別需注意處，填 highlight（簡短幾字）
    title 保持簡短（純名稱／店名），地點與項目放對應欄位，不要全擠進 title
+2-4. **地址（重要）**：非交通類活動都要填 location.address（盡量完整，含縣市鄉鎮），lat/lng 留 0 由系統定位。卡片會顯示這個地址。
 3. activity.id、accommodation.id、cityTransport.id 一律用 8 字元英數字（如 aB3kP9xZ）
 4. 有城市間移動（包含中途城市）才填 cityTransports，否則用空陣列 []
 5. **cityTransports 的 departureTime / arrivalTime 必須嚴格用 ISO 8601 格式，例如："2026-06-01T08:00:00.000Z"（結尾必須有 .000Z）**

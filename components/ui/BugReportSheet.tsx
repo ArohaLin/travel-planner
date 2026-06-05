@@ -89,21 +89,13 @@ interface ReportFormProps {
 function ReportForm({ pageName, pageUrl, onSuccess }: ReportFormProps) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [expected, setExpected] = useState('')
   const [category, setCategory] = useState<BugCategory>('functionality')
-  const [priority, setPriority] = useState<BugPriority>('medium')
-  const [pageNameOverride, setPageNameOverride] = useState('')
-  const [isManualPage, setIsManualPage] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const finalPageName = isManualPage
-    ? pageNameOverride
-    : pageNameOverride || pageName
-
   async function handleSubmit() {
     if (!title.trim() || !description.trim()) {
-      setError('請填寫標題與問題描述')
+      setError('請填寫標題與說明')
       return
     }
     setError('')
@@ -112,11 +104,10 @@ function ReportForm({ pageName, pageUrl, onSuccess }: ReportFormProps) {
       const payload: CreateBugReportPayload = {
         title: title.trim(),
         description: description.trim(),
-        expected: expected.trim() || undefined,
-        page_name: finalPageName || '未指定',
+        page_name: pageName || '未指定',  // 自動偵測
         page_url: pageUrl,
         category,
-        priority,
+        priority: 'medium',  // 已移除嚴重程度選擇，固定中
         browser_info: getBrowserInfo(),
       }
       const res = await fetch('/api/bug-reports', {
@@ -139,39 +130,8 @@ function ReportForm({ pageName, pageUrl, onSuccess }: ReportFormProps) {
 
   return (
     <div className="space-y-4">
-      {/* 操作畫面 */}
-      <div>
-        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">發生在哪個畫面</label>
-        <select
-          value={isManualPage ? '其他' : pageNameOverride}
-          onChange={(e) => {
-            if (e.target.value === '其他') {
-              setIsManualPage(true)
-              setPageNameOverride('')
-            } else {
-              setIsManualPage(false)
-              setPageNameOverride(e.target.value)
-            }
-          }}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 bg-white"
-        >
-          {PAGE_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        {isManualPage && (
-          <input
-            type="text"
-            value={pageNameOverride}
-            onChange={(e) => setPageNameOverride(e.target.value)}
-            placeholder="請輸入畫面名稱"
-            className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
-          />
-        )}
-        {!isManualPage && !pageNameOverride && pageName && (
-          <p className="text-xs text-gray-400 mt-1">自動偵測：{pageName}</p>
-        )}
-      </div>
+      {/* 發生畫面（自動偵測，僅顯示）*/}
+      <p className="text-xs text-gray-400">📍 發生在：{pageName || '目前頁面'}（自動偵測）</p>
 
       {/* 標題 */}
       <div>
@@ -185,16 +145,19 @@ function ReportForm({ pageName, pageUrl, onSuccess }: ReportFormProps) {
         />
       </div>
 
-      {/* 類別 */}
+      {/* 類別：只分 問題 / 介面 */}
       <div>
-        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">問題類別</label>
-        <div className="grid grid-cols-3 gap-1.5">
-          {CATEGORIES.map((c) => (
+        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">類別</label>
+        <div className="flex gap-2">
+          {([
+            { value: 'functionality' as BugCategory, label: '⚙️ 問題' },
+            { value: 'ui' as BugCategory, label: '🖼️ 介面' },
+          ]).map((c) => (
             <button
               key={c.value}
               onClick={() => setCategory(c.value)}
               className={clsx(
-                'text-xs py-1.5 px-1 rounded-xl border text-center transition-all leading-snug',
+                'flex-1 text-sm py-2 rounded-xl border text-center transition-all',
                 category === c.value
                   ? 'bg-red-500 text-white border-red-500 font-medium'
                   : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-red-300',
@@ -206,47 +169,14 @@ function ReportForm({ pageName, pageUrl, onSuccess }: ReportFormProps) {
         </div>
       </div>
 
-      {/* 優先級 */}
+      {/* 問題描述 + 期望（合併一欄）*/}
       <div>
-        <label className="text-xs font-semibold text-gray-500 mb-1.5 block">嚴重程度</label>
-        <div className="flex gap-2">
-          {PRIORITIES.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setPriority(p.value)}
-              className={clsx(
-                'flex-1 text-xs py-1.5 rounded-xl border font-medium transition-all',
-                priority === p.value
-                  ? p.color + ' font-semibold'
-                  : 'bg-white border-gray-200 text-gray-400',
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 問題描述 */}
-      <div>
-        <label className="text-xs font-semibold text-gray-500 mb-1 block">問題描述 *</label>
+        <label className="text-xs font-semibold text-gray-500 mb-1 block">說明 *</label>
         <textarea
-          rows={3}
+          rows={4}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="詳細描述發生了什麼問題，以及如何重現（例：點擊編輯後輸入名稱，按儲存後名稱沒有更新）"
-          className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
-        />
-      </div>
-
-      {/* 期望改善 */}
-      <div>
-        <label className="text-xs font-semibold text-gray-500 mb-1 block">期望的正確行為 / 改善建議</label>
-        <textarea
-          rows={2}
-          value={expected}
-          onChange={(e) => setExpected(e.target.value)}
-          placeholder="你希望正確的行為應該是怎樣？（可選填）"
+          placeholder="描述問題、如何重現，以及你期望的正確行為（例：編輯後按儲存名稱沒更新，希望儲存後立即顯示新名稱）"
           className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
         />
       </div>
