@@ -140,6 +140,7 @@ The <plans> block format (DO NOT deviate):
 - Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
 - 卡片資訊分層：title 只放簡短名稱、description 留空或極短；詳細介紹寫進 intro/transport/recommendation/tips，不要全塞進 description
 - 卡片精簡欄位（依類型填）：景點填 placeLabel（地點）；交通 transport 填 fromLabel/toLabel/transportMode；餐飲 food 填 mealType/placeLabel/foodItems；特別注意處填 highlight
+- 每日簡介 theme 同步更新：動到某天活動就必須一併更新該天 theme；局部修改時額外加 { "op":"update_day", "dayIndex":N, "payload":{"theme":"更新後簡介"} }
 - 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位
 - 每天從住宿出發：每天第一個景點前若有住宿，先安排 type:"transport" 從住宿出發的交通
 
@@ -236,6 +237,11 @@ ${buildMemorySection(itinerary)}
 - 若某天的活動需要大幅更換（超過一半的活動都要改），使用 **update_day** 並在 payload 中直接提供完整的 activities 陣列，取代個別的 add/remove ops
 - 格式：\`{ "op": "update_day", "dayIndex": N, "payload": { "theme": "...", "activities": [...完整活動陣列...] } }\`
 - 這樣每天只需 1 個 op，而非 N 個 add_activity + M 個 remove_activity
+
+**⚠️ 每日簡介（theme）必須同步更新（必須遵守）**：
+- 每天頂部的「簡介」就是該天的 theme 欄位。
+- 只要你**動到某一天的活動**（新增/移除/修改/換地點等任何變動），就**必須一併更新該天的 theme**，讓簡介反映調整後的新內容，不要留著與實際活動不符的舊簡介。
+- 用 update_day 時直接在 payload 帶新 theme；若用 add_activity/remove_activity/update_activity 局部修改，請**額外加一個 update_day op 只更新該天 theme**（payload 只放 theme，不放 activities），例如：\`{ "op": "update_day", "dayIndex": N, "payload": { "theme": "更新後的當天簡介" } }\`
 
 **⚠️ Activity 卡片資訊分層（必須遵守）**：
 - **title**：簡短的景點/活動名稱（例如「七星潭踏浪」），不要把介紹塞進 title
@@ -368,6 +374,10 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 - title 只放簡短名稱；description 留空或極短
 - 詳細介紹寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒）
 - 絕對不要把一大段介紹全塞進 description
+
+== 每日簡介 theme 必須同步更新 ==
+- 每天的「簡介」就是 theme 欄位。只要動到某天的活動，就必須一併更新該天 theme 反映新內容。
+- update_day 時直接帶新 theme；若用 add/remove/update_activity 局部修改，請額外加一個只更新 theme 的 update_day op：{ "op": "update_day", "dayIndex": N, "payload": { "theme": "更新後簡介" } }
 
 == 卡片精簡欄位（依類型填好）==
 - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）

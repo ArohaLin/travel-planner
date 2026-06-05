@@ -27,6 +27,7 @@ import { AddNoteModal } from '@/components/ai/AddNoteModal'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
 import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
+import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { MapView } from '@/components/map/MapView'
 import { useToast } from '@/components/ui/Toast'
 import { APIProvider } from '@vis.gl/react-google-maps'
@@ -34,6 +35,7 @@ import { APIProvider } from '@vis.gl/react-google-maps'
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
+import { daysBetweenInclusive, getDaysInRange } from '@/lib/utils/date'
 
 type ViewMode = 'list' | 'map'
 
@@ -69,6 +71,14 @@ export function ItineraryClient({
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
   const [editAccommodation, setEditAccommodation] = useState<Accommodation | null>(null)
+  const [editThemeOpen, setEditThemeOpen] = useState(false)
+  // 日期變更導致天數變化的處理對話
+  const [dateChange, setDateChange] = useState<{
+    startDate: string
+    endDate: string
+    oldCount: number
+    newCount: number
+  } | null>(null)
   const [notesSheetOpen, setNotesSheetOpen] = useState(false)
   const [addNoteFor, setAddNoteFor] = useState<Activity | null>(null)
   const [submittingNotes, setSubmittingNotes] = useState(false)
@@ -110,6 +120,116 @@ export function ItineraryClient({
       setEditAccommodation(null)
       showToast(`住宿「${updated.name}」已更新`, 'success')
     }
+  }
+
+  // ── 每日簡介（theme）手動編輯 ──────────────────────────────────────────────
+  async function handleSaveTheme(theme: string) {
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `編輯第 ${activeDay + 1} 天簡介`,
+      proposedBy: 'user',
+      ops: [{ op: 'update_day', dayIndex: activeDay, payload: { theme } }],
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      setEditThemeOpen(false)
+      showToast('每日簡介已更新', 'success')
+    }
+  }
+
+  // ── 日期變更處理（#19）────────────────────────────────────────────────────
+  // 用新的 PATCH（含 days）整批更新日期 + days 陣列
+  async function patchDatesAndDays(startDate: string, endDate: string, newDays: Itinerary['days']) {
+    const totalDays = newDays.length
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          metadata: { startDate, endDate, totalDays },
+          days: newDays,
+        }),
+      })
+      if (res.ok) {
+        refreshItinerary()
+        return true
+      }
+      const d = await res.json().catch(() => ({}))
+      showToast(d.error ?? '更新失敗', 'error')
+      return false
+    } catch {
+      showToast('網路錯誤，請再試一次', 'error')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 重算每天的 date（以新出發日為基準），可指定要保留幾天 / 補幾天空白
+  function rebuildDays(startDate: string, targetCount: number): Itinerary['days'] {
+    const dates = getDaysInRange(startDate, targetCount)
+    const src = liveItinerary.days
+    return dates.map((date, i) => {
+      if (i < src.length) {
+        // 保留原本那天的活動/住宿，只更新 date 與 dayIndex
+        return { ...src[i], dayIndex: i, date }
+      }
+      // 新增的空白天
+      return {
+        dayIndex: i,
+        date,
+        city: liveItinerary.metadata.destination,
+        theme: '',
+        activities: [],
+        accommodation: undefined,
+      }
+    })
+  }
+
+  // TripInfoCard 日期變更入口
+  function handleDatesChange(startDate: string, endDate: string) {
+    const oldCount = liveItinerary.days.length
+    const newCount = daysBetweenInclusive(startDate, endDate)
+    if (newCount === oldCount) {
+      // 天數不變 → 只平移日期，直接套用
+      const newDays = rebuildDays(startDate, newCount)
+      patchDatesAndDays(startDate, endDate, newDays).then((ok) => {
+        if (ok) showToast('日期已更新', 'success')
+      })
+      return
+    }
+    // 天數變化 → 跳對話讓使用者決定
+    setDateChange({ startDate, endDate, oldCount, newCount })
+  }
+
+  // 對話選項：在尾端補空白天（天數變多時）/ 刪除最後幾天（天數變少時）
+  async function applyDateChangeKeepOrTrim() {
+    if (!dateChange) return
+    const { startDate, endDate, newCount } = dateChange
+    const newDays = rebuildDays(startDate, newCount)
+    const ok = await patchDatesAndDays(startDate, endDate, newDays)
+    setDateChange(null)
+    if (ok) {
+      showToast(newCount > dateChange.oldCount ? `已新增空白天，共 ${newCount} 天` : `已調整為 ${newCount} 天`, 'success')
+      setActiveDay((d) => Math.min(d, newCount - 1))
+    }
+  }
+
+  // 對話選項：請 AI 補齊/調整（先更新日期+天數，再帶訊息給 AI）
+  async function applyDateChangeWithAI() {
+    if (!dateChange) return
+    const { startDate, endDate, oldCount, newCount } = dateChange
+    const newDays = rebuildDays(startDate, newCount)
+    const ok = await patchDatesAndDays(startDate, endDate, newDays)
+    if (!ok) { setDateChange(null); return }
+    setActiveDay((d) => Math.min(d, newCount - 1))
+    const msg = newCount > oldCount
+      ? `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），新增的第 ${oldCount + 1}~${newCount} 天目前是空白的，請依整體行程風格與動線幫我補齊這幾天的完整規劃。`
+      : `我把行程天數從 ${oldCount} 天改為 ${newCount} 天（日期 ${startDate} ~ ${endDate}），請幫我把行程重新濃縮調整成 ${newCount} 天，保留最精華的景點與合理動線。`
+    setDateChange(null)
+    setChatOpen(true)
+    chat.queueMessage(msg, modelProvider)
   }
 
   // ── AI 備註：送出 → 走現有 adjust 對話 → 開啟 ChatSheet 看方案 ──────────────
@@ -385,6 +505,7 @@ export function ItineraryClient({
         itineraryId={itineraryId}
         canEdit={userCanEdit}
         onMetadataUpdated={handleMetadataUpdated}
+        onDatesChange={handleDatesChange}
       />
 
       {/* 行程 / 地圖 切換（sticky 黏在 ItineraryHeader 下方，z-20 低於 header z-50 不影響 BugReportSheet） */}
@@ -444,6 +565,7 @@ export function ItineraryClient({
               onEditAccommodation={userCanEdit ? setEditAccommodation : undefined}
               onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
+              onEditTheme={() => setEditThemeOpen(true)}
             />
           )}
         </>
@@ -567,6 +689,71 @@ export function ItineraryClient({
           onSave={handleSaveAccommodation}
           onClose={() => setEditAccommodation(null)}
         />
+      )}
+
+      {/* 每日簡介編輯 modal */}
+      {editThemeOpen && currentDayData && (
+        <ThemeEditModal
+          dayNumber={activeDay + 1}
+          initialTheme={currentDayData.theme ?? ''}
+          onSave={handleSaveTheme}
+          onClose={() => setEditThemeOpen(false)}
+        />
+      )}
+
+      {/* 日期變更 → 天數變化處理對話（#19）*/}
+      {dateChange && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={() => setDateChange(null)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full">
+              <div className="text-3xl text-center mb-3">📅</div>
+              {dateChange.newCount > dateChange.oldCount ? (
+                <>
+                  <h3 className="font-semibold text-gray-900 text-center mb-2">天數變多了</h3>
+                  <p className="text-sm text-gray-600 text-center mb-5">
+                    行程從 <span className="font-medium">{dateChange.oldCount}</span> 天增加為{' '}
+                    <span className="font-medium text-purple-700">{dateChange.newCount}</span> 天，
+                    新增的第 {dateChange.oldCount + 1}~{dateChange.newCount} 天目前是空白的，要如何處理？
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={applyDateChangeWithAI} disabled={saving}
+                      className="w-full py-3 text-sm font-semibold text-white bg-purple-600 rounded-2xl disabled:opacity-60">
+                      ✨ 請 AI 幫我補齊新增的天數
+                    </button>
+                    <button onClick={applyDateChangeKeepOrTrim} disabled={saving}
+                      className="w-full py-3 text-sm font-semibold text-gray-700 border border-gray-200 rounded-2xl disabled:opacity-60">
+                      新增空白天，我自己排
+                    </button>
+                    <button onClick={() => setDateChange(null)}
+                      className="w-full py-2.5 text-sm text-gray-400">取消</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h3 className="font-semibold text-gray-900 text-center mb-2">天數變少了</h3>
+                  <p className="text-sm text-gray-600 text-center mb-5">
+                    行程從 <span className="font-medium">{dateChange.oldCount}</span> 天減少為{' '}
+                    <span className="font-medium text-amber-700">{dateChange.newCount}</span> 天，
+                    第 {dateChange.newCount + 1}~{dateChange.oldCount} 天（含活動）將被移除，要如何處理？
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={applyDateChangeWithAI} disabled={saving}
+                      className="w-full py-3 text-sm font-semibold text-white bg-purple-600 rounded-2xl disabled:opacity-60">
+                      ✨ 請 AI 幫我重新濃縮調整
+                    </button>
+                    <button onClick={applyDateChangeKeepOrTrim} disabled={saving}
+                      className="w-full py-3 text-sm font-semibold text-white bg-amber-500 rounded-2xl disabled:opacity-60">
+                      直接刪除最後 {dateChange.oldCount - dateChange.newCount} 天
+                    </button>
+                    <button onClick={() => setDateChange(null)}
+                      className="w-full py-2.5 text-sm text-gray-400">取消</button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Activity detail modal（點擊卡片開啟） */}

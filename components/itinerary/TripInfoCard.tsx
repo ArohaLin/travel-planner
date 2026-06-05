@@ -21,9 +21,11 @@ interface TripInfoCardProps {
   itineraryId: string
   canEdit: boolean
   onMetadataUpdated?: (newMetadata: TripMetadata) => void
+  /** 日期變更時交由父層處理（可能涉及天數增減）；回傳 true 表示已處理（不需自行存 metadata 的日期） */
+  onDatesChange?: (startDate: string, endDate: string) => void
 }
 
-export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated }: TripInfoCardProps) {
+export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated, onDatesChange }: TripInfoCardProps) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const { showToast } = useToast()
@@ -31,6 +33,8 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
   // Edit form state — initialized from metadata
   const [form, setForm] = useState({
     title: metadata.title,
+    startDate: metadata.startDate,
+    endDate: metadata.endDate,
     originCity: metadata.originCity,
     returnCity: metadata.returnCity ?? metadata.originCity,
     transitCities: metadata.transitCities ?? [],
@@ -43,6 +47,8 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
   function openEdit() {
     setForm({
       title: metadata.title,
+      startDate: metadata.startDate,
+      endDate: metadata.endDate,
       originCity: metadata.originCity,
       returnCity: metadata.returnCity ?? metadata.originCity,
       transitCities: metadata.transitCities ?? [],
@@ -84,6 +90,19 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
   }
 
   async function handleSave() {
+    // 日期有變更 → 交給父層處理（可能涉及天數增減的提示與選項）
+    const datesChanged =
+      form.startDate !== metadata.startDate || form.endDate !== metadata.endDate
+    if (datesChanged) {
+      if (form.endDate < form.startDate) {
+        showToast('回程日期不能早於出發日期', 'error')
+        return
+      }
+      setEditing(false)
+      onDatesChange?.(form.startDate, form.endDate)
+      return
+    }
+
     setSaving(true)
     try {
       const patchedMetadata: Partial<TripMetadata> = {
@@ -242,6 +261,31 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
             onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
           />
+        </div>
+
+        {/* 日期 */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">出發日期</label>
+            <input
+              type="date"
+              value={form.startDate}
+              onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">回程日期</label>
+            <input
+              type="date"
+              value={form.endDate}
+              onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          {(form.startDate !== metadata.startDate || form.endDate !== metadata.endDate) && (
+            <p className="col-span-2 text-xs text-amber-600">📅 日期有變更，儲存後若天數改變會提供處理選項</p>
+          )}
         </div>
 
         {/* Origin / Return */}

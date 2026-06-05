@@ -17,6 +17,8 @@ interface DayViewProps {
   onEditAccommodation?: (acc: Accommodation) => void
   onAddNoteAccommodation?: (acc: Accommodation) => void
   hasNoteForAccommodation?: boolean
+  /** 編輯每日簡介（theme）*/
+  onEditTheme?: () => void
 }
 
 /** 小型「+」插入按鈕，顯示在兩個活動之間或最後一個活動之後 */
@@ -36,14 +38,27 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation }: DayViewProps) {
+export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
   return (
     <div className="px-4 pt-4">
-      {/* Day header */}
-      {day.theme && (
-        <div className="mb-4 px-4 py-3 bg-purple-50 rounded-2xl border border-purple-100">
-          <p className="text-sm font-medium text-purple-700">✨ {day.theme}</p>
+      {/* Day header（每日簡介，可編輯）*/}
+      {day.theme ? (
+        <div className="mb-4 px-4 py-3 bg-purple-50 rounded-2xl border border-purple-100 flex items-start gap-2">
+          <p className="text-sm font-medium text-purple-700 flex-1">✨ {day.theme}</p>
+          {canEdit && onEditTheme && (
+            <button onClick={onEditTheme} title="編輯每日簡介" className="text-purple-400 hover:text-purple-700 flex-shrink-0 mt-0.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+              </svg>
+            </button>
+          )}
         </div>
+      ) : (
+        canEdit && onEditTheme && (
+          <button onClick={onEditTheme} className="mb-4 w-full px-4 py-2.5 bg-purple-50/60 rounded-2xl border border-dashed border-purple-200 text-sm text-purple-500 hover:bg-purple-50 transition-colors">
+            ✨ 新增每日簡介
+          </button>
+        )
       )}
 
       {/* Activities timeline */}

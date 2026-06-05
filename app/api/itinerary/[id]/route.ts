@@ -67,7 +67,7 @@ export async function PATCH(
   }
 
   const body = await request.json()
-  const { metadata: metadataPatch } = body
+  const { metadata: metadataPatch, days: daysReplace } = body
 
   if (!metadataPatch || typeof metadataPatch !== 'object') {
     return NextResponse.json({ error: '請提供 metadata 欄位' }, { status: 400 })
@@ -77,19 +77,25 @@ export async function PATCH(
   const currentData = row.data as Record<string, unknown>
   const currentMetadata = (currentData.metadata ?? {}) as Record<string, unknown>
   const newMetadata = { ...currentMetadata, ...metadataPatch }
-  const newData = {
+  const newData: Record<string, unknown> = {
     ...currentData,
     metadata: newMetadata,
     lastModifiedAt: new Date().toISOString(),
   }
+  // 若有提供 days（改日期/天數變化時前端算好的完整 days 陣列），整批替換
+  if (Array.isArray(daysReplace)) {
+    newData.days = daysReplace
+  }
 
-  // Also update denormalized top-level columns if title changed
+  // Also update denormalized top-level columns if changed
   const updatePayload: Record<string, unknown> = {
     data: newData,
     version: (row.version ?? 1) + 1,
     updated_at: new Date().toISOString(),
   }
   if (metadataPatch.title) updatePayload.title = metadataPatch.title
+  if (metadataPatch.startDate) updatePayload.start_date = metadataPatch.startDate
+  if (metadataPatch.endDate) updatePayload.end_date = metadataPatch.endDate
 
   const { error: updateError } = await db
     .from('itineraries')

@@ -23,6 +23,11 @@ export function getDaysInRange(startDate: string, totalDays: number): string[] {
   )
 }
 
+/** 計算起訖日期間的總天數（含頭尾）。例如 8/16~8/22 = 7 天 */
+export function daysBetweenInclusive(startDate: string, endDate: string): number {
+  return differenceInDays(parseISO(endDate), parseISO(startDate)) + 1
+}
+
 export function formatRelativeTime(isoString: string): string {
   const date = parseISO(isoString)
   const now = new Date()
