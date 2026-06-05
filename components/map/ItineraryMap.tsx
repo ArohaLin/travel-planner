@@ -80,19 +80,27 @@ function formatKm(km: number): string {
  */
 function makeDistancePill(
   map: google.maps.Map,
-  text: string,
+  content: { from: string; to: string; dist: string },
   pos: { lat: number; lng: number },
   color: string,
   pane: 'floatPane' | 'overlayLayer',
 ): google.maps.OverlayView {
   let div: HTMLDivElement | null = null
   const ov = new google.maps.OverlayView()
+  // 編號圓形徽章（與地圖 marker 同色、白字），避免與距離數字看混
+  const badge = (t: string) =>
+    `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:15px;height:15px;padding:0 3px;border-radius:9999px;background:${color};color:#fff;font-size:9px;font-weight:700;line-height:1;box-sizing:border-box">${t}</span>`
   ov.onAdd = () => {
     div = document.createElement('div')
-    div.textContent = text
+    // 「前一點 → 目的地」兩個編號徽章 + 距離/時間
+    div.innerHTML =
+      `${badge(content.from)}<span style="margin:0 1px;color:#9ca3af">→</span>${badge(content.to)}` +
+      `<span style="margin-left:4px">${content.dist}</span>`
     div.style.cssText = [
       'position:absolute',
       'transform:translate(-50%,-50%)',
+      'display:flex',
+      'align-items:center',
       'background:rgba(255,255,255,0.95)',
       `color:${color}`,
       `border:1px solid ${color}`,
@@ -291,10 +299,16 @@ interface RenderLeg {
   polyline: string
 }
 
-/** 逐段渲染資料：path=該段要畫的線（真實道路或直線兩點），label=距離標籤 */
+/** 逐段渲染資料：path=該段要畫的線（真實道路或直線兩點），label=距離標籤（含起訖編號） */
 interface RenderSegment {
   path: { lat: number; lng: number }[]
-  label: { text: string; meters: number; pos: { lat: number; lng: number } } | null
+  label: {
+    from: string
+    to: string
+    dist: string
+    meters: number
+    pos: { lat: number; lng: number }
+  } | null
 }
 
 function DayRoute({
@@ -416,8 +430,8 @@ function DayRoute({
         meters = km * 1000
         pos = mid
       }
-      // 標籤前綴目的地編號（與 marker 上的編號一致）→「前往該點」的距離/時間
-      segs.push({ path, label: { text: `→${b.label} ${distText}`, meters, pos } })
+      // 標籤帶「起點編號 → 目的地編號」（與 marker 上的編號一致）+ 距離/時間
+      segs.push({ path, label: { from: a.label, to: b.label, dist: distText, meters, pos } })
     }
     return segs
   }, [legs, geometryLib, rawDay])
@@ -459,10 +473,18 @@ function DayRoute({
     const pane = distanceMode === 'top' ? 'floatPane' : 'overlayLayer'
     const overlays = segments
       .map((s) => s.label)
-      .filter((l): l is { text: string; meters: number; pos: { lat: number; lng: number } } =>
-        !!l && l.meters >= MIN_LABEL_KM * 1000,
+      .filter(
+        (
+          l,
+        ): l is {
+          from: string
+          to: string
+          dist: string
+          meters: number
+          pos: { lat: number; lng: number }
+        } => !!l && l.meters >= MIN_LABEL_KM * 1000,
       )
-      .map((l) => makeDistancePill(map, l.text, l.pos, day.color, pane))
+      .map((l) => makeDistancePill(map, { from: l.from, to: l.to, dist: l.dist }, l.pos, day.color, pane))
     return () => overlays.forEach((o) => o.setMap(null))
   }, [map, segments, day.color, distanceMode])
 
