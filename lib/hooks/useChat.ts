@@ -27,6 +27,8 @@ interface UseChatReturn {
   sendMessage: (text: string, itineraryId: string, modelProvider?: ModelProvider) => Promise<void>
   queueMessage: (text: string, modelProvider?: ModelProvider) => void
   cancelStreaming: () => void
+  /** 重新從 DB 抓最新訊息並還原待選方案（開啟視窗/回前景時呼叫，補救行動裝置斷線漏接） */
+  refreshMessages: () => void
 }
 
 export function useChat(itineraryId: string): UseChatReturn {
@@ -170,6 +172,50 @@ export function useChat(itineraryId: string): UseChatReturn {
       if (channel) supabase.removeChannel(channel)
     }
   }, [itineraryId, chatMode])
+
+  // ── 補救式重新載入 ─────────────────────────────────────────────────────────
+  // 行動裝置鎖屏/切 App 時，串流 fetch 與 Realtime websocket 都可能中斷；
+  // 伺服器端其實已把 AI 回應（含待選方案）存進 DB，但前端漏接、畫面上什麼都沒有。
+  // 這裡重新抓最新訊息並還原 pending_selection 方案，於「回前景／重開視窗」時呼叫。
+  const refreshMessages = useCallback(() => {
+    if (!threadId || isStreaming) return
+    const supabase = getSupabaseBrowserClient()
+    supabase
+      .from('chat_messages')
+      .select('*')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+      .limit(30)
+      .then(({ data }) => {
+        if (!data) return
+        const typedMsgs = data as ChatMessage[]
+        setMessages(typedMsgs)
+        const pendingMsg = [...typedMsgs].reverse().find(
+          (m) => m.role === 'assistant' && m.patch_status === 'pending_selection',
+        )
+        if (pendingMsg?.patch) {
+          const plans = extractPlansFromPatch(pendingMsg.patch)
+          if (plans && plans.length > 0) {
+            setLastPlans(plans)
+            setLastPlansMessageId(pendingMsg.id)
+            return
+          }
+        }
+        // 沒有待選方案（可能已在他處套用/取消）→ 清掉殘留狀態
+        setLastPlans(null)
+        setLastPlansMessageId(null)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId, isStreaming])
+
+  // 頁面回到前景（手機解鎖/切回 App）時自動補載
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshMessages()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refreshMessages])
 
   const sendMessage = useCallback(
     async (text: string, iId: string, modelProvider: ModelProvider = 'claude') => {
@@ -355,5 +401,6 @@ export function useChat(itineraryId: string): UseChatReturn {
     sendMessage,
     queueMessage,
     cancelStreaming,
+    refreshMessages,
   }
 }

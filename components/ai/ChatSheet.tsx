@@ -98,6 +98,14 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
     setTimeout(() => inputRef.current?.focus(), 300)
   }, [])
 
+  // 開啟視窗時補載最新訊息與待選方案：
+  // 行動裝置鎖屏/切 App 會讓串流與 Realtime 斷線，AI 回應已存 DB 但前端漏接，
+  // 重開視窗時從 DB 重新載入，確保方案卡不會「消失」。
+  useEffect(() => {
+    chat.refreshMessages()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function handleSend() {
     const text = input.trim()
     if (!text || isStreaming) return
