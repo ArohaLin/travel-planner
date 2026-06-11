@@ -4,6 +4,7 @@ import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MOD
 import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
+import { sendPushToUser } from '@/lib/push/send'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { ModelProvider } from '@/lib/ai/client'
 
@@ -216,6 +217,13 @@ export async function POST(request: Request) {
     // Create the default chat thread
     await db.from('chat_threads').insert({
       itinerary_id: row.id,
+    })
+
+    // AI 完成通知（App 在前景時 service worker 會自動略過不彈）
+    await sendPushToUser(user.id, {
+      title: '🎉 行程生成完成',
+      body: `「${itinerary.metadata.title}」已建立完成，點擊查看`,
+      url: `/itinerary/${row.id}`,
     })
 
     return NextResponse.json({ itineraryId: row.id, aiInfo: buildInfo(true, null, null) })

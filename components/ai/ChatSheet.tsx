@@ -10,6 +10,7 @@ import { AIInfoBar } from './AIInfoBar'
 import { useToast } from '@/components/ui/Toast'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { useAIInfoHistory } from '@/lib/hooks/useLastAIInfo'
+import { usePushNotification } from '@/lib/hooks/usePushNotification'
 
 interface ChatSheetProps {
   itineraryId: string
@@ -46,6 +47,7 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
   const { showToast } = useToast()
   const { modelProvider, setModelProvider } = useModelPreference()
   const aiInfoHistory = useAIInfoHistory()
+  const push = usePushNotification()
 
   const {
     messages, streamingText, isStreaming, isGeneratingPlans,
@@ -302,6 +304,32 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
                 ✦ Gemini
               </button>
             </div>
+
+            {/* AI 完成通知開關（iOS 需從主畫面開啟的 PWA 才支援） */}
+            {push.state !== 'unsupported' && push.state !== 'loading' && (
+              <button
+                onClick={async () => {
+                  if (push.busy) return
+                  if (push.state === 'on') {
+                    const ok = await push.disable()
+                    if (ok) showToast('已關閉 AI 完成通知', 'info')
+                  } else if (push.state === 'denied') {
+                    showToast('通知已被拒絕，請到 iPhone 設定 → 通知 開啟', 'error')
+                  } else {
+                    const ok = await push.enable()
+                    showToast(ok ? '已開啟 AI 完成通知 🔔' : '開啟失敗，請再試一次', ok ? 'success' : 'error')
+                  }
+                }}
+                title={push.state === 'on' ? 'AI 完成通知：開（點擊關閉）' : 'AI 完成通知：關（點擊開啟）'}
+                className={clsx(
+                  'ml-auto w-7 h-7 flex items-center justify-center rounded-lg text-sm transition-colors',
+                  push.state === 'on' ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400',
+                  push.busy && 'opacity-50',
+                )}
+              >
+                {push.state === 'on' ? '🔔' : '🔕'}
+              </button>
+            )}
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, b
 import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
+import { sendPushToUser } from '@/lib/push/send'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
@@ -374,6 +375,20 @@ export async function POST(request: Request) {
         patch: plans ? plans : null,
         patch_status: patchStatus,
       })
+
+      // ── AI 完成通知（Web Push）────────────────────────────────────────────
+      // 結果已存 DB 才發；App 在前景時 service worker 會自動略過不彈。
+      if (!streamError && fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')) {
+        const tripTitle = itinerary.metadata?.title ?? '行程'
+        await sendPushToUser(user.id, {
+          title: mode === 'adjust' ? '✨ AI 調整方案完成' : '💬 AI 咨詢回覆完成',
+          body:
+            mode === 'adjust'
+              ? `「${tripTitle}」的調整方案已就緒，點擊查看並選擇方案`
+              : `「${tripTitle}」的咨詢回覆已完成，點擊查看`,
+          url: `/itinerary/${itineraryId}`,
+        })
+      }
 
       // ── 組裝 AI 回傳資訊（記錄最近一次）────────────────────────────────────
       const success = !streamError && !!fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')
