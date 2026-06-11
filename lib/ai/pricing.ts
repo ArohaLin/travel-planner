@@ -1,5 +1,5 @@
 import type { ModelProvider } from './client'
-import { MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from './client'
+import { MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO } from './client'
 
 /**
  * AI 回傳資訊 + 費用估算
@@ -40,6 +40,15 @@ export const MODEL_PRICING: Record<ModelProvider, ModelPrice> = {
   },
 }
 
+/** 依「實際模型 ID」覆寫定價（同一供應商有多個模型時用，例如 Gemini 調整用 Pro） */
+export const MODEL_PRICE_BY_ID: Record<string, ModelPrice> = {
+  [MODEL_GEMINI_PRO]: {
+    label: MODEL_GEMINI_PRO,  // gemini-3.1-pro-preview
+    inputPerM: 2.0,
+    outputPerM: 12.0,
+  },
+}
+
 // ── Token 用量 ─────────────────────────────────────────────────────────────
 export interface AIUsage {
   inputTokens: number
@@ -73,10 +82,14 @@ export interface AIResultInfo {
   durationMs: number
 }
 
-/** 計算費用（美金）。usage 缺失回 null。 */
-export function computeCostUSD(provider: ModelProvider, usage: AIUsage | null): number | null {
+/** 計算費用（美金）。usage 缺失回 null。modelId 有覆寫價時優先採用（如 Gemini Pro）。 */
+export function computeCostUSD(
+  provider: ModelProvider,
+  usage: AIUsage | null,
+  modelId?: string,
+): number | null {
   if (!usage) return null
-  const price = MODEL_PRICING[provider]
+  const price = (modelId && MODEL_PRICE_BY_ID[modelId]) || MODEL_PRICING[provider]
   if (!price) return null
   const inputCost = (usage.inputTokens / 1_000_000) * price.inputPerM
   const outputCost = (usage.outputTokens / 1_000_000) * price.outputPerM

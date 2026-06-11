@@ -1,5 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
+import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
@@ -134,6 +134,8 @@ export async function POST(request: Request) {
       let streamError: string | undefined
       let usage: AIUsage | null = null
       let closed = false
+      // 實際使用的模型 ID（Gemini 依模式選 Pro/Flash，且可能備援切換；其他供應商為 null → 用預設 label）
+      let actualModel: string | null = null
       // 安全 enqueue：client 斷線後 controller 已關閉，避免拋 ERR_INVALID_STATE
       const safeEnqueue = (s: string) => {
         if (closed) return
@@ -189,10 +191,6 @@ export async function POST(request: Request) {
         } else if (modelProvider === 'gemini') {
           // ── Gemini via Google Generative AI SDK ───────────────────────────
           const gemini = getGeminiClient()
-          const model = gemini.getGenerativeModel({
-            model: MODEL_GEMINI,
-            systemInstruction: systemPrompt,
-          })
 
           // Gemini history 必須嚴格交替 user/model，且第一筆必須是 user、最後一筆必須是 model
           type GeminiRole = 'user' | 'model'
@@ -219,30 +217,52 @@ export async function POST(request: Request) {
           console.log('[chat] Gemini history length:', geminiHistory.length,
             '| roles:', geminiHistory.map(m => m.role).join(','))
 
-          const chat = model.startChat({
-            history: geminiHistory,
-            generationConfig: { maxOutputTokens: 32768 },
-          })
+          // 模型選擇（A/B 實測 2026-06-12）：
+          // 調整＝多約束推理 → Pro（實測零違規、約 60 秒）；咨詢＝純文字 → Flash（快又省）。
+          // 自動備援：主模型失敗且尚未輸出任何內容時，改用另一個模型重試一次（例：503 過載）。
+          const primaryModel = mode === 'adjust' ? MODEL_GEMINI_PRO : MODEL_GEMINI
+          const fallbackModel = primaryModel === MODEL_GEMINI_PRO ? MODEL_GEMINI : MODEL_GEMINI_PRO
 
-          const result = await chat.sendMessageStream(userMessage)
-          for await (const chunk of result.stream) {
-            const delta = chunk.text()
-            if (delta) {
-              fullResponse += delta
-              safeEnqueue(delta)
+          for (const modelName of [primaryModel, fallbackModel]) {
+            try {
+              const model = gemini.getGenerativeModel({
+                model: modelName,
+                systemInstruction: systemPrompt,
+              })
+              const chat = model.startChat({
+                history: geminiHistory,
+                generationConfig: { maxOutputTokens: 32768 },
+              })
+
+              const result = await chat.sendMessageStream(userMessage)
+              for await (const chunk of result.stream) {
+                const delta = chunk.text()
+                if (delta) {
+                  fullResponse += delta
+                  safeEnqueue(delta)
+                }
+              }
+              // Gemini usage 在 aggregated response 的 usageMetadata
+              const gemResp = await result.response
+              const um = gemResp.usageMetadata
+              if (um) {
+                usage = {
+                  inputTokens: um.promptTokenCount ?? 0,
+                  outputTokens: um.candidatesTokenCount ?? 0,
+                  totalTokens: um.totalTokenCount ?? 0,
+                }
+              }
+              actualModel = modelName
+              break
+            } catch (e) {
+              // 已輸出部分內容就不能換模型重來（前端已顯示），或備援也失敗 → 拋出
+              if (fullResponse.length > 0 || modelName === fallbackModel) throw e
+              console.warn(`[chat] Gemini ${modelName} 失敗，改用備援 ${fallbackModel}:`,
+                String(e).slice(0, 200))
             }
           }
-          // Gemini usage 在 aggregated response 的 usageMetadata
-          const gemResp = await result.response
-          const um = gemResp.usageMetadata
-          if (um) {
-            usage = {
-              inputTokens: um.promptTokenCount ?? 0,
-              outputTokens: um.candidatesTokenCount ?? 0,
-              totalTokens: um.totalTokenCount ?? 0,
-            }
-          }
-          console.log('[chat] Gemini fullResponse length:', fullResponse.length,
+          console.log('[chat] Gemini model:', actualModel,
+            '| fullResponse length:', fullResponse.length,
             '| has <plans>:', fullResponse.includes('<plans>'),
             '| first 200:', fullResponse.slice(0, 200))
         } else {
@@ -358,12 +378,14 @@ export async function POST(request: Request) {
       // ── 組裝 AI 回傳資訊（記錄最近一次）────────────────────────────────────
       const success = !streamError && !!fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')
       const errInfo = streamError ? classifyError(streamError) : null
-      const costUSD = computeCostUSD(modelProvider, usage)
+      const costUSD = computeCostUSD(modelProvider, usage, actualModel ?? undefined)
       const aiInfo: AIResultInfo = {
         timestamp: new Date().toISOString(),
         scene: mode,
         provider: isLocalAI() ? 'local' : modelProvider,
-        model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING[modelProvider].label,
+        model: isLocalAI()
+          ? 'claude -p（本機訂閱制）'
+          : actualModel ?? MODEL_PRICING[modelProvider].label,
         success,
         errorCode: errInfo?.code ?? (success ? null : 'EMPTY'),
         errorMeaning: errInfo?.meaning ?? (success ? null : 'AI 沒有回應內容'),

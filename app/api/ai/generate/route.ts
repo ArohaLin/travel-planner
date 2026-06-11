@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI } from '@/lib/ai/client'
+import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO } from '@/lib/ai/client'
 import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
@@ -60,6 +60,8 @@ export async function POST(request: Request) {
 
   const startTs = Date.now()
   let usage: AIUsage | null = null
+  // 實際使用的模型 ID（Gemini 可能備援切換；其他供應商為 null → 用預設 label）
+  let actualModel: string | null = null
 
   try {
     let text = ''
@@ -94,27 +96,39 @@ export async function POST(request: Request) {
       }
     } else if (modelProvider === 'gemini') {
       // ── Gemini via Google Generative AI SDK ──────────────────────────────
+      // 生成用 Flash（大輸出、避開 Vercel 300s 時限；Pro 生成實測 103~272 秒，貼近上限）。
+      // 自動備援：Flash 失敗（例：503 過載）改用 Pro 重試一次。
       const gemini = getGeminiClient()
-      const model = gemini.getGenerativeModel({
-        model: MODEL_GEMINI,
-        // 詳情欄位（intro/transport/recommendation/tips）讓輸出變長，需提高上限避免 JSON 被截斷
-        generationConfig: { maxOutputTokens: 32768 },
-      })
-      const result = await model.generateContentStream(prompt)
-      for await (const chunk of result.stream) {
-        const delta = chunk.text()
-        if (delta) text += delta
-      }
-      const gemResp = await result.response
-      const um = gemResp.usageMetadata
-      if (um) {
-        usage = {
-          inputTokens: um.promptTokenCount ?? 0,
-          outputTokens: um.candidatesTokenCount ?? 0,
-          totalTokens: um.totalTokenCount ?? 0,
+      for (const modelName of [MODEL_GEMINI, MODEL_GEMINI_PRO]) {
+        try {
+          const model = gemini.getGenerativeModel({
+            model: modelName,
+            // 詳情欄位（intro/transport/recommendation/tips）讓輸出變長，需提高上限避免 JSON 被截斷
+            generationConfig: { maxOutputTokens: 32768 },
+          })
+          const result = await model.generateContentStream(prompt)
+          for await (const chunk of result.stream) {
+            const delta = chunk.text()
+            if (delta) text += delta
+          }
+          const gemResp = await result.response
+          const um = gemResp.usageMetadata
+          if (um) {
+            usage = {
+              inputTokens: um.promptTokenCount ?? 0,
+              outputTokens: um.candidatesTokenCount ?? 0,
+              totalTokens: um.totalTokenCount ?? 0,
+            }
+          }
+          actualModel = modelName
+          break
+        } catch (e) {
+          if (text.length > 0 || modelName === MODEL_GEMINI_PRO) throw e
+          text = ''
+          console.warn(`[generate] Gemini ${modelName} 失敗，改用備援 ${MODEL_GEMINI_PRO}:`, String(e).slice(0, 200))
         }
       }
-      console.log('[generate] Gemini text_len:', text.length)
+      console.log('[generate] Gemini model:', actualModel, 'text_len:', text.length)
     } else {
       // ── Claude via Anthropic SDK ─────────────────────────────────────────
       const anthropic = getAnthropicClient()
@@ -144,12 +158,14 @@ export async function POST(request: Request) {
     }
 
     // 組裝 AI 回傳資訊（成功情境）
-    const costUSD = computeCostUSD(modelProvider, usage)
+    const costUSD = computeCostUSD(modelProvider, usage, actualModel ?? undefined)
     const buildInfo = (success: boolean, errorCode: string | null, errorMeaning: string | null): AIResultInfo => ({
       timestamp: new Date().toISOString(),
       scene: 'generate',
       provider: isLocalAI() ? 'local' : modelProvider,
-      model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING[modelProvider].label,
+      model: isLocalAI()
+        ? 'claude -p（本機訂閱制）'
+        : actualModel ?? MODEL_PRICING[modelProvider].label,
       success,
       errorCode,
       errorMeaning,
