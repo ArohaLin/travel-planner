@@ -1,5 +1,6 @@
 import type { Accommodation } from '@/lib/types/itinerary'
 import { formatMoney } from '@/lib/utils/currency'
+import { mapsNavUrl } from './ActivityCard'
 
 interface AccommodationCardProps {
   accommodation: Accommodation
@@ -50,7 +51,14 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
 
       <h3 className="font-semibold text-gray-900 mb-1 pr-16">{accommodation.name}</h3>
       {accommodation.location?.address && (
-        <p className="text-sm text-gray-500 mb-2">📍 {accommodation.location.address}</p>
+        <a
+          href={mapsNavUrl(accommodation.location)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block text-sm text-blue-500 underline decoration-blue-200 underline-offset-2 mb-2 active:text-blue-700"
+        >
+          📍 {accommodation.location.address}
+        </a>
       )}
       <div className="flex items-center gap-4 text-sm text-gray-600">
         <span>入住 {accommodation.checkInTime}</span>

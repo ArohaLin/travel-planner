@@ -1,6 +1,13 @@
-import type { Activity } from '@/lib/types/itinerary'
+import type { Activity, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { formatDuration } from './ActivityDetailModal'
+
+/** Google Maps 導航連結：有座標用座標（較精準），否則用地址文字 */
+export function mapsNavUrl(loc: GeoLocation): string {
+  const hasCoords = loc.lat !== 0 || loc.lng !== 0
+  const dest = hasCoords ? `${loc.lat},${loc.lng}` : (loc.address ?? '')
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(dest)}&travelmode=driving`
+}
 
 /** 計算時長（分鐘），無 endTime 回 null */
 function durationMinutes(start: string, end?: string): number | null {
@@ -168,9 +175,17 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
           <span className="text-xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-gray-900 leading-snug">{formatCardMain(activity)}</h3>
-            {/* 完整地址（交通類不顯示）*/}
+            {/* 完整地址（交通類不顯示）：點擊開 Google Maps 導航 */}
             {activity.type !== 'transport' && activity.location?.address && (
-              <p className="text-xs text-gray-400 mt-1 leading-relaxed">📍 {activity.location.address}</p>
+              <a
+                href={mapsNavUrl(activity.location)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="block text-xs text-blue-500 underline decoration-blue-200 underline-offset-2 mt-1 leading-relaxed active:text-blue-700"
+              >
+                📍 {activity.location.address}
+              </a>
             )}
             {activity.highlight && activity.highlight.trim() && (
               <p className="text-xs text-amber-600 mt-1 leading-relaxed">（{activity.highlight.trim()}）</p>

@@ -1,22 +1,9 @@
 import { createServerClient } from '@/lib/supabase/server'
 import Link from 'next/link'
-import { formatDateRange } from '@/lib/utils/date'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { BugReportSheet } from '@/components/ui/BugReportSheet'
+import { ItineraryCardItem } from '@/components/dashboard/ItineraryCardItem'
 import type { GlobalRole } from '@/lib/types/collaboration'
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: '草稿',
-  published: '已發布',
-  archived: '已封存',
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  owner: '擁有者',
-  editor: '編輯者',
-  viewer: '觀看者',
-}
 
 export default async function DashboardPage() {
   const supabase = createServerClient()
@@ -86,27 +73,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
         ) : (
-          itineraries.map((trip) => (
-            <Link key={trip.id} href={`/itinerary/${trip.id}`}>
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 active:bg-gray-50 transition-colors">
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <h2 className="font-semibold text-gray-900 leading-snug flex-1">{trip.title}</h2>
-                  <div className="flex gap-1 flex-shrink-0">
-                    {trip.role !== 'owner' && (
-                      <Badge variant="default">{ROLE_LABELS[trip.role]}</Badge>
-                    )}
-                    {trip.status === 'draft' && (
-                      <Badge variant="yellow">{STATUS_LABELS[trip.status]}</Badge>
-                    )}
-                  </div>
-                </div>
-                <p className="text-sm text-gray-500 mb-1">📍 {trip.destination}</p>
-                <p className="text-sm text-gray-400">
-                  {formatDateRange(trip.start_date, trip.end_date)}
-                </p>
-              </div>
-            </Link>
-          ))
+          itineraries.map((trip) => <ItineraryCardItem key={trip.id} trip={trip} />)
         )}
       </div>
     </div>

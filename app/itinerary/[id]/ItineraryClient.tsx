@@ -498,6 +498,16 @@ export function ItineraryClient({
 
   const inner = (
     <div className="min-h-screen bg-gray-50 pb-6">
+      {/* 儲存中提示（#30）：所有儲存/刪除操作進行時顯示，避免使用者以為沒反應 */}
+      {saving && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 z-[80] flex items-center gap-2 bg-gray-900/90 text-white text-sm font-medium px-4 py-2.5 rounded-full shadow-lg pointer-events-none"
+          style={{ top: 'calc(env(safe-area-inset-top) + 12px)' }}
+        >
+          <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+          儲存中...
+        </div>
+      )}
       {/* 背景路線預抓（在 APIProvider 內才能用 useMapsLibrary）：開行程即檢查並更新距離/時間 */}
       {MAPS_KEY && (
         <RoutePrefetcher
