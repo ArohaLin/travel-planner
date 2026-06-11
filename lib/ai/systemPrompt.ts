@@ -160,6 +160,7 @@ The <plans> block format (DO NOT deviate):
 - 每日簡介 theme 同步更新：動到某天活動就必須一併更新該天 theme；局部修改時額外加 { "op":"update_day", "dayIndex":N, "payload":{"theme":"更新後簡介"} }
 - 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位
 - 每天從住宿出發：每天第一個景點前若有住宿，先安排 type:"transport" 從住宿出發的交通；若第一個活動本身是交通（如搭船/搭火車）但起點不是住宿（如港口/車站），須在它之前加一段「住宿→該起點」的接駁交通
+- 行程連貫性：相鄰活動之間扣除合理交通時間後，閒置不得超過約 45 分鐘；若刻意留白（等日落、休息、Check-in），必須排成明確的活動（type:"rest"）說明用途，不可留下無說明的空白時段
 
 == CRITICAL: TIME CONFLICT PREVENTION ==
 Before scheduling ANY new activity on a day, you MUST:
@@ -288,6 +289,12 @@ ${buildMemorySection(itinerary)}
   （例如港口、車站），必須在它之前再加一段「住宿→該起點」的接駁交通。
 - 不要讓使用者當天第一站沒有出發時間與交通規劃。
 
+**⚠️ 行程連貫性（必須遵守）**：
+- 相鄰兩個活動之間，扣除合理交通時間後，閒置時間不得超過約 45 分鐘。
+- 若刻意留白（例如等日落、回住宿休息、Check-in、避開人潮），必須把它排成
+  明確的活動（type:"rest"，title 說明用途，如「返回民宿盥洗休息」），
+  讓使用者看得懂這段時間在做什麼。**嚴禁留下沒有說明的空白時段**。
+
 ## 互動風格
 
 - 先用 2-3 句話分析用戶的需求，再提供方案
@@ -411,6 +418,10 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 == 每天從住宿出發（重要）==
 - 每天第一個景點前，若有住宿，先安排一段 type:"transport" 從住宿出發的交通，排好時間。
 - 若第一個活動本身是交通（搭船/火車）但起點不是住宿，須先加「住宿→該起點」的接駁段。
+
+== 行程連貫性（重要）==
+- 相鄰活動間扣除交通後閒置不得超過約 45 分鐘。
+- 刻意留白（等日落/休息/Check-in）須排成 type:"rest" 活動並說明用途，嚴禁無說明的空白時段。
 
 == TIME RULES ==
 - Never schedule activities with overlapping times on the same day
@@ -591,6 +602,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 2. 每天安排 4-5 個活動（含用餐），保持簡潔
 2-1. **卡片資訊分層**：title 只放簡短名稱、description 留空或極短；詳細介紹一律寫進 intro（介紹與安排理由）、transport（交通）、recommendation（推薦/名產）、tips（提醒，選填）。**絕對不要把一大段介紹塞進 description**，否則行程表卡片會太長
 2-2. **每天從住宿出發**：每天第一個景點之前，若該天有住宿，必須先安排一段 type:"transport" 從住宿出發的交通（排好出發時間與路程），不要讓當天第一站沒有交通規劃；若第一個活動本身是交通（搭船/火車）但起點不是住宿（如港口/車站），須在它之前加一段「住宿→該起點」的接駁交通
+2-3. **行程連貫性**：相鄰活動之間扣除合理交通時間後，閒置不得超過約 45 分鐘；若刻意留白（等日落、回住宿休息、Check-in），必須排成明確的 type:"rest" 活動並在 title 說明用途，嚴禁留下無說明的空白時段
 2-3. **卡片精簡欄位（重要，用於行程表卡片精簡顯示）**：每個活動依類型填好對應欄位：
    - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）
    - 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（交通方式）
