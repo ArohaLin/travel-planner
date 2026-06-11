@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { COMMON_CURRENCIES, getCurrencyName } from '@/lib/utils/currency'
 import type { MemberProfile } from '@/lib/types/itinerary'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
-import { useLastAIInfo, saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
+import { useAIInfoHistory, saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
 import { AIInfoBar } from '@/components/ai/AIInfoBar'
 import clsx from 'clsx'
 
@@ -66,7 +66,7 @@ export default function NewItineraryPage() {
 
   // ── Model preference ─────────────────────────────────────────────────────────
   const { modelProvider, setModelProvider } = useModelPreference()
-  const lastAIInfo = useLastAIInfo()
+  const aiInfoHistory = useAIInfoHistory()
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -292,9 +292,9 @@ export default function NewItineraryPage() {
           )}
 
           {/* AI 回傳資訊（生成失敗時最有用，成功會跳轉到行程頁）*/}
-          {lastAIInfo && (
+          {aiInfoHistory.length > 0 && (
             <div className="rounded-xl overflow-hidden border border-gray-100">
-              <AIInfoBar info={lastAIInfo} />
+              <AIInfoBar history={aiInfoHistory} />
             </div>
           )}
 
