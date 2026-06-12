@@ -214,13 +214,28 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
     return out
   }, [sortedSelected, itinerary, getGeo])
 
+  // #40：預設單選（點哪天就只看那天），可切換成多選模式同時看多天
+  const [multiMode, setMultiMode] = useState(false)
+
   function toggleDay(dayIndex: number) {
+    if (!multiMode) {
+      onSelectedDaysChange([dayIndex])
+      return
+    }
     const next = selectedDays.includes(dayIndex)
       ? selectedDays.length === 1
         ? selectedDays // 至少保留一天
         : selectedDays.filter((d) => d !== dayIndex)
       : [...selectedDays, dayIndex]
     onSelectedDaysChange(next)
+  }
+
+  function toggleMultiMode() {
+    setMultiMode((m) => {
+      // 關閉多選時收斂成單一天（保留最早選的那天）
+      if (m && selectedDays.length > 1) onSelectedDaysChange([Math.min(...selectedDays)])
+      return !m
+    })
   }
 
   // onLegsSaved 以 ref 保存，避免 handleLegs 依賴變動；去抖動把多天的儲存合併成一次刷新
@@ -259,6 +274,19 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       {/* 天數選擇器 */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 max-w-[calc(100%-24px)] overflow-x-auto no-scrollbar">
         <div className="flex gap-1.5 bg-white/95 backdrop-blur rounded-full shadow-md px-2 py-1.5 min-w-max">
+          {/* 單選/多選切換（#40） */}
+          <button
+            onClick={toggleMultiMode}
+            title={multiMode ? '多選模式：可同時看多天（點切回單選）' : '單選模式：點哪天看哪天（點開啟多選）'}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-medium transition-colors min-h-[36px] border ${
+              multiMode
+                ? 'bg-purple-600 text-white border-purple-600'
+                : 'bg-white text-gray-500 border-gray-200'
+            }`}
+          >
+            {multiMode ? '☑ 多選' : '☐ 多選'}
+          </button>
+          <div className="w-px bg-gray-200 my-1 flex-shrink-0" />
           {itinerary.days.map((day) => {
             const active = selectedDays.includes(day.dayIndex)
             return (

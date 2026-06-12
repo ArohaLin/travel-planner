@@ -28,6 +28,8 @@ interface TripInfoCardProps {
 export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated, onDatesChange }: TripInfoCardProps) {
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
+  // #39：預設收合，只顯示地點與日期；點開才看詳細
+  const [expanded, setExpanded] = useState(false)
   const { showToast } = useToast()
 
   // Edit form state — initialized from metadata
@@ -123,10 +125,39 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
 
   // ── Read-only view ───────────────────────────────────────────────────────────
   if (!editing) {
+    // 收合列摘要：地點（路線）＋日期
+    const fmtMD = (s: string) => `${+s.slice(5, 7)}/${+s.slice(8, 10)}`
+    const routeSummary = [
+      metadata.originCity,
+      ...(metadata.transitCities ?? []),
+      metadata.destination,
+      ...(metadata.returnCity && metadata.returnCity !== metadata.originCity ? [metadata.returnCity] : []),
+    ].join(' → ')
+
     return (
       <div className="mx-4 mt-3 mb-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 flex items-center justify-between border-b border-gray-50">
-          <h2 className="text-sm font-semibold text-gray-700">行程資訊</h2>
+        {/* 收合列（#39 預設只顯示地點與日期，點擊展開詳細） */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full px-4 py-3 flex items-center gap-2 text-left min-h-[44px]"
+        >
+          <span className="flex-shrink-0">📍</span>
+          <span className="text-sm text-gray-800 truncate flex-1 min-w-0">{routeSummary}</span>
+          <span className="text-xs text-gray-400 flex-shrink-0">
+            {fmtMD(metadata.startDate)} – {fmtMD(metadata.endDate)}
+          </span>
+          <svg
+            className={`w-4 h-4 text-gray-300 flex-shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+            fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        </button>
+
+        {expanded && (
+        <>
+        <div className="px-4 pt-1 pb-1 flex items-center justify-between border-t border-gray-50">
+          <h2 className="text-sm font-semibold text-gray-700 py-2">行程資訊</h2>
           {canEdit && (
             <button
               onClick={openEdit}
@@ -140,7 +171,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
           )}
         </div>
 
-        <div className="px-4 py-3 space-y-2 text-sm">
+        <div className="px-4 pb-3 space-y-2 text-sm">
           {/* Route */}
           <InfoRow label="路線">
             <span className="text-gray-800">
@@ -212,6 +243,8 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     )
   }
