@@ -76,8 +76,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - `public/apple-touch-icon.png`（180px）
 - `public/icon-192.png`、`public/icon-512.png`
 - `public/manifest.json`（standalone 模式）
-- Icon 設計：黃→藍漸層背景 + 地球 + 白色飛機 + 咖啡色復古行李箱 + 閃爍星星
-- 重新產生 icon：`node scripts/generate-icon-v3.mjs`
+- Icon 設計（v4，2026-06-13 起）：使用者提供的手繪蠟筆風圖（白紙底 + 地球 + 飛機 + 行李箱），已去白邊裁成全出血正方形
+- 重新產生 icon：`node scripts/generate-icon-v4.mjs`（來源圖：scripts/icon-source-v4.png，手繪風地球+飛機+行李箱）
 
 ### ✅ 地圖功能（Google Maps）
 - 套件：`@vis.gl/react-google-maps`，需環境變數 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`（已在 .env.local，**尚未加到 Vercel**）
@@ -176,7 +176,7 @@ travel-planner/
 │   └── migration_bug_reports.sql    # bug_reports table
 │
 ├── scripts/
-│   └── generate-icon-v3.mjs        # 產生 PWA icon（執行：node scripts/generate-icon-v3.mjs）
+│   └── generate-icon-v4.mjs        # 產生 PWA icon（執行：node scripts/generate-icon-v4.mjs）
 │
 ├── middleware.ts                    # Auth guard（/register 已移除）
 └── public/
@@ -294,7 +294,7 @@ interface ItineraryPatch {
 npm run dev
 
 # 重新產生 PWA icon
-node scripts/generate-icon-v3.mjs
+node scripts/generate-icon-v4.mjs
 
 # 部署（git push 即自動觸發 Vercel 重新 build）
 git add .
