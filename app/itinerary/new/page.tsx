@@ -8,6 +8,7 @@ import { COMMON_CURRENCIES, getCurrencyName } from '@/lib/utils/currency'
 import type { MemberProfile } from '@/lib/types/itinerary'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { useAIInfoHistory, saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
+import { usePushNotification } from '@/lib/hooks/usePushNotification'
 import { AIInfoBar } from '@/components/ai/AIInfoBar'
 import clsx from 'clsx'
 
@@ -66,6 +67,7 @@ export default function NewItineraryPage() {
 
   // ── Model preference ─────────────────────────────────────────────────────────
   const { modelProvider, setModelProvider } = useModelPreference()
+  const push = usePushNotification()
   const aiInfoHistory = useAIInfoHistory()
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -284,6 +286,16 @@ export default function NewItineraryPage() {
               <div className="text-4xl mb-3 animate-bounce">✈️</div>
               <p className="text-gray-700 font-medium">AI 正在為你規劃行程...</p>
               <p className="text-sm text-gray-400 mt-1">通常需要 30–60 秒</p>
+              {/* #37：明顯提示可先離開 App */}
+              <div className="mx-4 mt-4 flex items-start gap-2.5 bg-purple-50 border border-purple-200 rounded-2xl px-4 py-3 text-left">
+                <span className="text-lg leading-none mt-0.5">📱</span>
+                <p className="text-sm text-purple-800 leading-relaxed">
+                  <span className="font-bold">可以先離開 App 做別的事</span>，
+                  {push.state === 'on'
+                    ? '生成完成會推播通知你回來查看。'
+                    : '完成後回來即可查看（在行程頁的 AI 對話開啟 🔔 通知，完成時會主動提醒你）。'}
+                </p>
+              </div>
             </div>
           )}
 

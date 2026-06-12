@@ -16,6 +16,8 @@ interface ChatSheetProps {
   itineraryId: string
   chat: ReturnType<typeof useChat>
   onClose: () => void
+  /** 方案套用成功後呼叫（讓行程頁立即刷新，不等 Realtime） */
+  onPatchApplied?: () => void
 }
 
 const SUGGESTIONS_ADJUST = [
@@ -32,7 +34,7 @@ const SUGGESTIONS_CONSULT = [
   '旅遊保險需要買嗎？',
 ]
 
-export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
+export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSheetProps) {
   const [input, setInput] = useState('')
   const [isApplying, setIsApplying] = useState(false)
   const [applyingIndex, setApplyingIndex] = useState<number | null>(null)
@@ -156,6 +158,8 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
         } else {
           clearLastPlans()
         }
+        // 立即刷新行程資料（#38：不等 Realtime 推播，出去看行程就是新的）
+        onPatchApplied?.()
       } else if (res.status === 409) {
         showToast('行程已被更新，請重新整理', 'error')
       } else {
@@ -398,6 +402,19 @@ export function ChatSheet({ itineraryId, chat, onClose }: ChatSheetProps) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* #37：處理中明顯提示「可先離開 App」 */}
+          {isStreaming && (
+            <div className="flex items-start gap-2.5 bg-purple-50 border border-purple-200 rounded-2xl px-4 py-3">
+              <span className="text-lg leading-none mt-0.5">📱</span>
+              <p className="text-sm text-purple-800 leading-relaxed">
+                AI 處理中（約 1～2 分鐘）——<span className="font-bold">可以先離開 App 做別的事</span>，
+                {push.state === 'on'
+                  ? '完成後會推播通知你回來查看。'
+                  : '完成後回來即可查看（點右上 🔔 開啟通知，完成時會主動提醒你）。'}
+              </p>
             </div>
           )}
 

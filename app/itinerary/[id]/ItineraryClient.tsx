@@ -735,6 +735,7 @@ export function ItineraryClient({
           itineraryId={itineraryId}
           chat={chat}
           onClose={() => setChatOpen(false)}
+          onPatchApplied={refreshItinerary}
         />
       )}
 
