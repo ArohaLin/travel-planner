@@ -13,6 +13,11 @@ export interface GeocodeInput {
   query: string
   /** 目的地，用於提高查詢精準度（例如「台東」） */
   region?: string
+  /**
+   * 允許「行政區中心」結果：查詢目標本來就是城市時（出發城市/返回城市）必須開啟，
+   * 否則會被「拒絕行政區 fallback」防呆誤擋（城市查詢回傳的本來就是行政區型別）。
+   */
+  allowArea?: boolean
 }
 
 let geocoder: google.maps.Geocoder | null = null
@@ -76,7 +81,7 @@ export async function geocodeOne(input: GeocodeInput): Promise<GeoLocation | nul
       types.length > 0 &&
       types.some((t) => AREA_TYPES.includes(t)) &&
       !types.some((t) => PLACE_TYPES.includes(t))
-    if (isAreaOnly) {
+    if (isAreaOnly && !input.allowArea) {
       return null // 只配到行政區中心 → 不是真正的地點
     }
 

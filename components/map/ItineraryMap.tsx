@@ -19,8 +19,8 @@ export interface MapPoint {
   title: string
   time?: string
   /** activity=圓形景點；accommodation=當晚住宿方形；origin=當天路線起點（出發地/前晚住宿）菱形 */
-  kind: 'activity' | 'accommodation' | 'origin'
-  /** 對應的識別碼：activity.id、'accommodation' 或 'origin' */
+  kind: 'activity' | 'accommodation' | 'origin' | 'return'
+  /** 對應的識別碼：activity.id、'accommodation'、'origin' 或 'return'（旅程終點） */
   id: string
 }
 
@@ -280,7 +280,9 @@ function MapContent({ days: rawDays, distanceMode, onRoute }: ItineraryMapProps)
                   ? '住宿'
                   : selected.point.kind === 'origin'
                     ? '路線起點'
-                    : selected.point.time}
+                    : selected.point.kind === 'return'
+                      ? '旅程終點'
+                      : selected.point.time}
               </div>
             )}
           </div>
@@ -505,7 +507,7 @@ function DayRoute({
             path:
               point.kind === 'accommodation'
                 ? 'M -12 -12 H 12 V 12 H -12 Z'
-                : point.kind === 'origin'
+                : point.kind === 'origin' || point.kind === 'return'
                   ? 'M 0 -13 L 13 0 L 0 13 L -13 0 Z'
                   : google.maps.SymbolPath.CIRCLE,
             scale: point.kind === 'activity' ? 13 : 1,

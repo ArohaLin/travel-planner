@@ -6,9 +6,9 @@ import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
  */
 
 export interface RoutePoint {
-  /** activity.id / 'accommodation' / 'origin' */
+  /** activity.id / 'accommodation' / 'origin' / 'return'（旅程終點） */
   id: string
-  kind: 'origin' | 'activity' | 'accommodation'
+  kind: 'origin' | 'activity' | 'accommodation' | 'return'
   lat: number
   lng: number
   /** marker 顯示文字（① 出 宿…）；不影響簽章 */
@@ -127,6 +127,25 @@ export function buildDayPoints(
         label: '宿',
         title: day.accommodation.name,
       })
+    }
+  }
+
+  // 旅程終點（#41）：最後一天且無住宿 → 補返回城市，路線才會延伸到終點
+  const lastIndex = Math.max(...itinerary.days.map((d) => d.dayIndex))
+  if (dayIndex === lastIndex && !day.accommodation) {
+    const returnCity = itinerary.metadata?.returnCity ?? originCity
+    if (returnCity) {
+      const geo = resolve(dayIndex, 'return', undefined)
+      if (geo) {
+        points.push({
+          id: 'return',
+          kind: 'return',
+          lat: geo.lat,
+          lng: geo.lng,
+          label: '終',
+          title: `終點：${returnCity}`,
+        })
+      }
     }
   }
 

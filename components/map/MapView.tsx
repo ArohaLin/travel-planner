@@ -114,6 +114,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       fullAddress: string | undefined,
       fallbackQuery: string | undefined,
       regionBias?: string,
+      allowArea?: boolean,
     ) => {
       const key = `${di}:${target}`
       if (seen.has(key)) return
@@ -122,7 +123,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       const query = addr || fallbackQuery
       if (!query) return
       seen.add(key)
-      inputs.push({ query, region: addr ? undefined : (regionBias || destination) })
+      inputs.push({ query, region: addr ? undefined : (regionBias || destination), allowArea })
       refs.push({ dayIndex: di, target })
     }
 
@@ -132,8 +133,8 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
 
       // Issue B 起點：第一天用出發地，後續天用「前一晚住宿」（需先有座標）
       if (dayIndex === 0) {
-        // 出發城市本身即縣市，query 直接用城市名、不附加 destination
-        enqueue(0, 'origin', undefined, originCity, originCity)
+        // 出發城市本身即縣市：允許行政區結果（否則被防呆誤擋）
+        enqueue(0, 'origin', undefined, originCity, originCity, undefined, true)
       } else {
         const prevDay = itinerary.days.find((d) => d.dayIndex === dayIndex - 1)
         if (prevDay?.accommodation) {
@@ -161,6 +162,11 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
           day.accommodation.name,
           day.city,
         )
+      }
+      // 旅程終點（#41）：最後一天且無住宿 → geocode 返回城市（城市查詢需允許行政區結果）
+      if (dayIndex === Math.max(...itinerary.days.map((d) => d.dayIndex)) && !day.accommodation) {
+        const returnCity = itinerary.metadata?.returnCity ?? originCity
+        if (returnCity) enqueue(dayIndex, 'return', undefined, returnCity, returnCity, undefined, true)
       }
     }
 
