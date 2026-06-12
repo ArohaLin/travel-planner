@@ -623,6 +623,12 @@ export function ItineraryClient({
                 if (activeDay === 0 && origin) return { name: origin, isHome: true }
                 return undefined
               })()}
+              arrival={(() => {
+                // 旅程終點（#41）：最後一天顯示返回城市（沒填則用出發城市）
+                if (activeDay !== displayItinerary.days.length - 1) return undefined
+                const name = displayItinerary.metadata.returnCity ?? displayItinerary.metadata.originCity
+                return name ? { name } : undefined
+              })()}
               currency={displayItinerary.metadata.currency}
               canEdit={userCanEdit}
               onEditActivity={handleEditActivity}

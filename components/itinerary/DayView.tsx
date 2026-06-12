@@ -234,11 +234,37 @@ function DepartureCard({ name, location, isHome, departTime }: DepartureCardProp
   )
 }
 
+/** 最後一天的「終點站」卡片（#41）：與出發地卡片對稱，標示旅程結束的地點與抵達時間 */
+function ArrivalCard({ name, time }: { name: string; time?: string | null }) {
+  return (
+    <div className="flex gap-3">
+      {/* 時間軸終點：實心圓點收尾，不再延伸直線 */}
+      <div className="flex flex-col items-center flex-shrink-0 w-8">
+        <div className="w-0.5 h-3 bg-gray-200" />
+        <div className="w-2.5 h-2.5 rounded-full bg-purple-400 flex-shrink-0" />
+      </div>
+
+      <div className="flex-1 rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-3 mb-3">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          {time && <span className="text-sm font-semibold text-gray-700">{time}</span>}
+          <span className="text-xs text-gray-400">旅程結束・平安到家</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-xl leading-none mt-0.5">🏁</span>
+          <h3 className="font-semibold text-gray-700 leading-snug">終點：{name}</h3>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 interface DayViewProps {
   day: ItineraryDay
   currency: string
   /** 當天出發地（前一晚住宿；第 1 天為出發城市）→ 顯示在時間軸最上方 */
   departure?: { name: string; location?: GeoLocation | null; isHome?: boolean }
+  /** 旅程終點（最後一天才有，#41）→ 顯示在時間軸最下方 */
+  arrival?: { name: string }
   canEdit?: boolean
   onEditActivity?: (activity: Activity) => void
   onDeleteActivity?: (activity: Activity) => void
@@ -271,7 +297,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, departure, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
+export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
   // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
   const acts = day.activities
@@ -383,7 +409,7 @@ export function DayView({ day, currency, departure, canEdit, onEditActivity, onD
                 )}
                 <ActivityCard
                   activity={activity}
-                  isLast={idx === acts.length - 1 && !canEdit && !day.accommodation}
+                  isLast={idx === acts.length - 1 && !canEdit && !day.accommodation && !arrival}
                   canEdit={canEdit}
                   onEdit={onEditActivity}
                   onDelete={onDeleteActivity}
@@ -421,6 +447,11 @@ export function DayView({ day, currency, departure, canEdit, onEditActivity, onD
             onAddNote={onAddNoteAccommodation}
           />
         </>
+      )}
+
+      {/* 旅程終點卡（#41：最後一天，抵達時間 = 最後一個活動結束時間） */}
+      {arrival && acts.length > 0 && (
+        <ArrivalCard name={arrival.name} time={lastActivity?.endTime ?? lastActivity?.startTime} />
       )}
 
       {/* Cost summary */}
