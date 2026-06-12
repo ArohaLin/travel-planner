@@ -76,13 +76,18 @@ function buildTravelTimeSection(itinerary: Itinerary): string {
 
       // 3 分鐘以下的微距離不佔篇幅
       if (googleMin >= 3) {
+        // 建議預留 = 路程 + 緩衝（路程一半，最少 5 分、最多 15 分），進位到 5 分鐘
+        // 直接給算好的數字讓 AI 照抄，不要讓 AI 自己套公式（算術不可靠）
+        const comfortable = googleMin + Math.min(Math.max(googleMin * 0.5, 5), 15)
+        const recMin = Math.ceil(comfortable / 5) * 5
         let note = ''
         if (allottedMin != null && allottedMin > 0) {
-          const comfortable = googleMin + Math.min(Math.max(googleMin * 0.5, 5), 15)
-          if (allottedMin < googleMin) note = `；行程只留 ${fmtMin(allottedMin)} ⚠️不足`
-          else if (allottedMin < comfortable) note = `；行程留 ${fmtMin(allottedMin)}，偏緊`
+          if (allottedMin < googleMin) note = `；目前只留 ${fmtMin(allottedMin)} ⚠️不足`
+          else if (allottedMin < comfortable) note = `；目前留 ${fmtMin(allottedMin)} 🟡偏緊`
         }
-        lines.push(`- 第${day.dayIndex + 1}天 ${fromName} → ${toName}：實際開車約 ${fmtMin(googleMin)}${note}`)
+        lines.push(
+          `- 第${day.dayIndex + 1}天 ${fromName} → ${toName}：路程 ${fmtMin(googleMin)}，建議預留 ${fmtMin(recMin)}${note}`,
+        )
       }
       fromName = toName
     }
@@ -94,8 +99,9 @@ function buildTravelTimeSection(itinerary: Itinerary): string {
 
 ${lines.join('\n')}
 
-- 安排或調整時間時，兩活動之間預留的移動時間必須 ≥ 上列實測路程
-- 標示 ⚠️不足 的段落代表目前安排會遲到，調整該天時應優先修正（後移後續活動或縮短前一活動停留）
+- 安排或調整時間時，兩活動之間的預留時間請直接採用上列「建議預留」值（= 路程 + 緩衝；緩衝為路程一半，最少 5 分、最多 15 分）
+- 只貼著「路程」下限排是不夠的：預留 < 建議值會被系統標成 🟡偏緊，使用者會看到滿排黃燈
+- 標示 ⚠️不足 或 🟡偏緊 的段落，調整該天時應優先修正（後移後續活動或縮短前一活動停留）
 - 上列為開車實測；搭船/火車等班次型交通的時間依現有交通卡為準
 `
 }
