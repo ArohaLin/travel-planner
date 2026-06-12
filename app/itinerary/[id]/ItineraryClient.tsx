@@ -578,6 +578,14 @@ export function ItineraryClient({
           {currentDayData && (
             <DayView
               day={currentDayData}
+              departure={(() => {
+                // 每天的出發地：前一晚住宿；第 1 天用出發城市
+                const prevAcc = displayItinerary.days.find((d) => d.dayIndex === activeDay - 1)?.accommodation
+                if (prevAcc) return { name: prevAcc.name, location: prevAcc.location }
+                const origin = displayItinerary.metadata.originCity
+                if (activeDay === 0 && origin) return { name: origin, isHome: true }
+                return undefined
+              })()}
               currency={displayItinerary.metadata.currency}
               canEdit={userCanEdit}
               onEditActivity={handleEditActivity}

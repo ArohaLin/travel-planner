@@ -1,6 +1,6 @@
-import type { ItineraryDay, Activity, Accommodation, TravelLeg } from '@/lib/types/itinerary'
+import type { ItineraryDay, Activity, Accommodation, TravelLeg, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
-import { ActivityCard } from './ActivityCard'
+import { ActivityCard, mapsNavUrl } from './ActivityCard'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
 
@@ -33,14 +33,17 @@ function modeInfo(a?: Activity): { icon: string; label: string; driving: boolean
   return { icon: '🚗', label: '開車', driving: true }
 }
 
-/** 緩衝判斷門檻：行程留的時間 ≥ max(Google+15分, Google×1.25) 才算充足 */
+/**
+ * 緩衝判斷門檻：充足 = 路程 + 路程的一半（最少 5 分、最多 15 分）。
+ * 用比例制避免短程被絕對門檻誤判（例：路程 6 分留 15 分，明明很夠卻被 +15 分規則標偏緊）。
+ */
 function bufferStatus(allottedSec: number, googleSec: number): { color: string; text: string } {
   if (allottedSec < googleSec) {
-    return { color: 'red', text: `只留 ${fmtDur(allottedSec)}，恐遲到` }
+    return { color: 'red', text: `路程約 ${fmtDur(googleSec)}，只留 ${fmtDur(allottedSec)}，恐遲到` }
   }
-  const comfortable = Math.max(googleSec + 900, googleSec * 1.25)
+  const comfortable = googleSec + Math.min(Math.max(googleSec * 0.5, 300), 900)
   if (allottedSec < comfortable) {
-    return { color: 'amber', text: `留 ${fmtDur(allottedSec)}・偏緊` }
+    return { color: 'amber', text: `路程約 ${fmtDur(googleSec)}，只留 ${fmtDur(allottedSec)}，時間偏緊` }
   }
   return { color: 'green', text: `留 ${fmtDur(allottedSec)}・充足` }
 }
@@ -69,21 +72,26 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
   const { icon, label, driving } = modeInfo(transport)
   const hasDriveLeg = !!leg && leg.meters >= 50 && driving
 
-  // timeText：排程交通卡的出發時間（讓它落在時間軸上，不再像憑空出現的連接線）
-  // main：路線（A → B）或微提示（開車約 N 分）；status：開車段的緩衝判斷
+  // 統一模板：「HH:MM 動詞前往目的地・約時長」（排程交通）／「動詞約時長」（合成微提示）。
+  // 一律不顯示 fromLabel：時間軸上一張卡就是出發點，且 fromLabel 是 AI 最常寫得不一致的欄位。
   let timeText: string | null = null
   let main: string
   let status: { color: string; text: string } | null = null
 
   if (transport) {
-    // 排程交通：以「出發時間 + 路線」呈現，與活動卡同樣掛在時間軸上
+    // 排程交通：出發時間 + 動詞前往目的地 + 時長（開車段優先用 Google 路程，其次卡片時段）
     timeText = transport.startTime || null
-    main =
-      transport.fromLabel && transport.toLabel
-        ? `${transport.fromLabel} → ${transport.toLabel}`
-        : transport.title
-    if (hasDriveLeg && leg && allottedSec != null && allottedSec > 0) {
-      status = bufferStatus(allottedSec, leg.seconds)
+    const cardSec = (() => {
+      const s = toMin(transport.startTime)
+      const e = toMin(transport.endTime)
+      return s != null && e != null && e > s ? (e - s) * 60 : null
+    })()
+    const durSec = hasDriveLeg && leg ? leg.seconds : cardSec
+    const to = transport.toLabel?.trim()
+    main = `${to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}`
+    const budget = allottedSec ?? cardSec
+    if (hasDriveLeg && leg && budget != null && budget > 0) {
+      status = bufferStatus(budget, leg.seconds)
     }
   } else if (hasDriveLeg && leg) {
     // 合成列：兩景點之間的 Google 開車段（無交通卡）→ 只給「開車約 N 分」的淡提示
@@ -94,11 +102,10 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
     return null
   }
 
-  // 只有偏緊/恐遲到才上色 + ⚠️；排程交通用稍深的灰、微提示用更淡的灰
+  // 只有偏緊/恐遲到才上色 + ⚠️（獨立一列完整顯示，不擠在主列尾端）
   const warn = status?.color === 'amber' || status?.color === 'red'
-  const textTone = warn
-    ? (status!.color === 'red' ? 'text-red-500' : 'text-amber-600')
-    : (transport ? 'text-gray-500' : 'text-gray-400')
+  const warnTone = status?.color === 'red' ? 'text-red-500' : 'text-amber-600'
+  const textTone = transport ? 'text-gray-500' : 'text-gray-400'
   const clickable = !!(transport && onClick)
 
   return (
@@ -110,45 +117,103 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
         <div className="w-0.5 flex-1 bg-gray-200" />
       </div>
 
-      {/* 內容（靠左、安靜）*/}
+      {/* 內容（靠左、安靜；警示另起一列） */}
       <div
         role={clickable ? 'button' : undefined}
         tabIndex={clickable ? 0 : undefined}
         onClick={clickable ? () => onClick!(transport!) : undefined}
         className={clsx(
-          'flex-1 flex items-center gap-1.5 text-xs py-1.5 mb-1 min-w-0',
-          textTone,
+          'flex-1 py-1.5 mb-1 min-w-0',
           clickable && 'cursor-pointer active:opacity-70',
         )}
       >
-        {warn && <span className="flex-shrink-0">⚠️</span>}
-        {timeText && <span className="flex-shrink-0 font-medium tabular-nums">{timeText}</span>}
-        <span className="truncate">
-          {main}
-          {warn && status && <span className="font-medium">・{status.text}</span>}
-        </span>
-        {canEdit && transport && (
-          <span className="flex items-center gap-0.5 flex-shrink-0 ml-auto pl-1 text-gray-400">
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit?.(transport) }}
-              title="編輯交通"
-              className="w-6 h-6 flex items-center justify-center rounded hover:text-purple-600"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-              </svg>
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete?.(transport) }}
-              title="刪除交通"
-              className="w-6 h-6 flex items-center justify-center rounded hover:text-red-500"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </span>
+        <div className={clsx('flex items-start gap-1.5 text-xs min-w-0', textTone)}>
+          {timeText && <span className="flex-shrink-0 font-medium tabular-nums">{timeText}</span>}
+          <span className="leading-snug">{main}</span>
+          {canEdit && transport && (
+            <span className="flex items-center gap-0.5 flex-shrink-0 ml-auto pl-1 text-gray-400">
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit?.(transport) }}
+                title="編輯交通"
+                className="w-6 h-6 flex items-center justify-center rounded hover:text-purple-600"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                </svg>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete?.(transport) }}
+                title="刪除交通"
+                className="w-6 h-6 flex items-center justify-center rounded hover:text-red-500"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          )}
+        </div>
+        {warn && status && (
+          <div className={clsx('flex items-start gap-1 text-xs mt-1 font-medium', warnTone)}>
+            <span className="flex-shrink-0">⚠️</span>
+            <span>{status.text}</span>
+          </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+interface DepartureCardProps {
+  name: string
+  location?: GeoLocation | null
+  /** 第 1 天從家裡/出發城市出發（圖示用 🏠） */
+  isHome?: boolean
+  /** 當天第一個活動的開始時間（出發時間）；往前抓 1.5 小時當早餐+整理行李 */
+  departTime?: string | null
+}
+
+/** 每天開頭的「出發地」卡片：前一晚住宿（或第 1 天的出發城市），合成顯示、不可編輯 */
+function DepartureCard({ name, location, isHome, departTime }: DepartureCardProps) {
+  const PREP_MIN = 90
+  let timeRange: string | null = null
+  const dep = toMin(departTime ?? undefined)
+  if (dep != null) {
+    const start = Math.max(0, dep - PREP_MIN)
+    const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`
+    timeRange = `${hh(start)} — ${hh(dep)}`
+  }
+
+  return (
+    <div className="flex gap-3">
+      {/* 時間軸：空心圓點標示起點 */}
+      <div className="flex flex-col items-center flex-shrink-0 w-8">
+        <div className="w-2.5 h-2.5 rounded-full border-2 border-purple-300 bg-white mt-3 flex-shrink-0" />
+        <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
+      </div>
+
+      <div className="flex-1 rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-3 mb-3">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          {timeRange && <span className="text-sm font-semibold text-gray-700">{timeRange}</span>}
+          <span className="text-xs text-gray-400">早餐・整理行李</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-xl leading-none mt-0.5">{isHome ? '🏠' : '🏨'}</span>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-700 leading-snug">出發地：{name}</h3>
+            {location?.address && (
+              <a
+                href={mapsNavUrl(location)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="block text-xs text-blue-500 underline decoration-blue-200 underline-offset-2 mt-1 leading-relaxed active:text-blue-700"
+              >
+                📍 {location.address}
+              </a>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -157,6 +222,8 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
 interface DayViewProps {
   day: ItineraryDay
   currency: string
+  /** 當天出發地（前一晚住宿；第 1 天為出發城市）→ 顯示在時間軸最上方 */
+  departure?: { name: string; location?: GeoLocation | null; isHome?: boolean }
   canEdit?: boolean
   onEditActivity?: (activity: Activity) => void
   onDeleteActivity?: (activity: Activity) => void
@@ -189,7 +256,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
+export function DayView({ day, currency, departure, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
   // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
   const acts = day.activities
@@ -239,6 +306,14 @@ export function DayView({ day, currency, canEdit, onEditActivity, onDeleteActivi
         </div>
       ) : (
         <div>
+          {departure && (
+            <DepartureCard
+              name={departure.name}
+              location={departure.location}
+              isHome={departure.isHome}
+              departTime={acts[0]?.startTime}
+            />
+          )}
           {canEdit && <AddButton label="在開始插入" onClick={() => onAddActivity?.(-1)} />}
 
           {acts.map((activity, idx) => {
