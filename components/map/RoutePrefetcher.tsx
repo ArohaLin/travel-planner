@@ -67,6 +67,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         existing: GeoLocation | null | undefined,
         fullAddress: string | undefined,
         fallbackQuery: string | undefined,
+        regionBias?: string,
       ) => {
         const key = `${di}:${target}`
         if (seen.has(key)) return
@@ -75,7 +76,8 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         const query = addr || fallbackQuery
         if (!query) return
         seen.add(key)
-        inputs.push({ query, region: addr ? undefined : destination })
+        // 沒地址時用「該天的城市」當地區偏好（跨縣市行程才不會被全程單一 destination 拉錯）
+        inputs.push({ query, region: addr ? undefined : (regionBias || destination) })
         refs.push({ dayIndex: di, target })
       }
 
@@ -85,7 +87,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         }
         for (const a of day.activities) {
           if (a.type === 'transport') continue
-          enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title)
+          enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }
         if (day.accommodation) {
           enqueue(
@@ -94,6 +96,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
             day.accommodation.location,
             day.accommodation.location?.address,
             day.accommodation.name,
+            day.city,
           )
         }
       }

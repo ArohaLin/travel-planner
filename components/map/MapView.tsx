@@ -104,14 +104,16 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
     const seen = new Set<string>()
 
     // 排入一筆 geocode；自動去重、且已有座標就跳過。
-    // 重點：query 帶完整地址（含縣市）時「不可」再附加 destination，
-    // 否則像「太魯閣 台東」會把花蓮景點誤定位到台東。
+    // 重點：query 帶完整地址（含縣市）時「不可」再附加地區偏好，否則像「太魯閣 台東」
+    // 會把花蓮景點誤定位到台東。沒地址時用「該天的城市」當偏好（跨縣市行程才不會被
+    // 全程單一 destination 拉錯，例如台東→嘉義行程裡的嘉義景點）。
     const enqueue = (
       di: number,
       target: string,
       existing: GeoLocation | null | undefined,
       fullAddress: string | undefined,
       fallbackQuery: string | undefined,
+      regionBias?: string,
     ) => {
       const key = `${di}:${target}`
       if (seen.has(key)) return
@@ -120,7 +122,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       const query = addr || fallbackQuery
       if (!query) return
       seen.add(key)
-      inputs.push({ query, region: addr ? undefined : destination })
+      inputs.push({ query, region: addr ? undefined : (regionBias || destination) })
       refs.push({ dayIndex: di, target })
     }
 
@@ -141,13 +143,14 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
             prevDay.accommodation.location,
             prevDay.accommodation.location?.address,
             prevDay.accommodation.name,
+            prevDay.city,
           )
         }
       }
 
       for (const a of day.activities) {
         if (a.type === 'transport') continue // 交通類不標在地圖上，免 geocode
-        enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title)
+        enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
       }
       if (day.accommodation) {
         enqueue(
@@ -156,6 +159,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
           day.accommodation.location,
           day.accommodation.location?.address,
           day.accommodation.name,
+          day.city,
         )
       }
     }

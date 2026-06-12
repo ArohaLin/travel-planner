@@ -57,6 +57,29 @@ export async function geocodeOne(input: GeocodeInput): Promise<GeoLocation | nul
     const first = result.results[0]
     if (!first) return null
 
+    // 防呆 #3：拒絕「退回行政區中心」的 fallback。
+    // 我們查的是具體地點，但 Google 找不到時會配到「縣/市/鄉/鎮/區/郵遞區號」中心點
+    // （例：嘉義的『耐斯王子飯店』在台東找不到 → 退回台東市中心）。
+    // 這種結果的 types 只有行政區、沒有任何「具體地點」型別 → 視為定位失敗、拒用。
+    const types = first.types ?? []
+    const PLACE_TYPES = [
+      'establishment', 'point_of_interest', 'premise', 'subpremise', 'street_address',
+      'route', 'intersection', 'park', 'natural_feature', 'tourist_attraction',
+      'transit_station', 'airport', 'lodging', 'food', 'store',
+    ]
+    const AREA_TYPES = [
+      'locality', 'sublocality', 'postal_code', 'political', 'country',
+      'administrative_area_level_1', 'administrative_area_level_2',
+      'administrative_area_level_3', 'administrative_area_level_4',
+    ]
+    const isAreaOnly =
+      types.length > 0 &&
+      types.some((t) => AREA_TYPES.includes(t)) &&
+      !types.some((t) => PLACE_TYPES.includes(t))
+    if (isAreaOnly) {
+      return null // 只配到行政區中心 → 不是真正的地點
+    }
+
     // 合理性驗證（只在查詢含明確鄉鎮市、且結果為中文地址時進行，避免語言/格式造成誤判）
     const expect = extractLocality(input.query)
     const formatted = first.formatted_address ?? ''
