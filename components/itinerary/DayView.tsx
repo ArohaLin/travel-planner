@@ -45,13 +45,6 @@ function bufferStatus(allottedSec: number, googleSec: number): { color: string; 
   return { color: 'green', text: `留 ${fmtDur(allottedSec)}・充足` }
 }
 
-const STATUS_BG: Record<string, string> = {
-  red: 'bg-red-50 text-red-600 border-red-100',
-  amber: 'bg-amber-50 text-amber-700 border-amber-100',
-  green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  gray: 'bg-gray-50 text-gray-500 border-gray-100',
-}
-
 interface TravelRowProps {
   /** 對應的 AI 交通活動（若有）；合成列為 undefined */
   transport?: Activity
@@ -67,66 +60,79 @@ interface TravelRowProps {
 
 /**
  * 統一「移動列」：每段移動只有這一條（取代 AI 交通大卡 + Google 連接器）。
- * - 開車段：顯示 Google 實際開車時間 + 緩衝狀態（🟢充足/🟠偏緊/🔴不足）
- * - 非開車段（船/火車…）：顯示 AI 交通資訊與其時長，不做開車比對
+ * 視覺上沿著時間軸的直線往下流（靠左、與卡片同一條軸），平常安靜、有問題才響：
+ * - 順暢的短程 → 只用淡灰小字（不打擾）
+ * - 🟠 偏緊 / 🔴 恐遲到 → 才上色 + ⚠️ 提醒
+ * 非開車段（船/火車…）顯示 AI 交通資訊與其時長，不做開車緩衝比對。
  */
 function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onClick }: TravelRowProps) {
   const { icon, label, driving } = modeInfo(transport)
   const hasDriveLeg = !!leg && leg.meters >= 50 && driving
 
-  // 主要文字
+  // timeText：排程交通卡的出發時間（讓它落在時間軸上，不再像憑空出現的連接線）
+  // main：路線（A → B）或微提示（開車約 N 分）；status：開車段的緩衝判斷
+  let timeText: string | null = null
   let main: string
   let status: { color: string; text: string } | null = null
-  if (hasDriveLeg && leg) {
-    main = `${label}約 ${fmtDur(leg.seconds)}`
-    if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, leg.seconds)
-  } else if (transport) {
-    // 非開車段：用交通卡資訊與其自身時長
-    const dur =
-      allottedSec != null && allottedSec > 0
-        ? allottedSec
-        : (() => {
-            const s = toMin(transport.startTime)
-            const e = toMin(transport.endTime)
-            return s != null && e != null && e > s ? (e - s) * 60 : null
-          })()
-    const route =
+
+  if (transport) {
+    // 排程交通：以「出發時間 + 路線」呈現，與活動卡同樣掛在時間軸上
+    timeText = transport.startTime || null
+    main =
       transport.fromLabel && transport.toLabel
         ? `${transport.fromLabel} → ${transport.toLabel}`
         : transport.title
-    main = `${route}${dur ? `・約 ${fmtDur(dur)}` : ''}`
-    status = { color: 'gray', text: label }
+    if (hasDriveLeg && leg && allottedSec != null && allottedSec > 0) {
+      status = bufferStatus(allottedSec, leg.seconds)
+    }
+  } else if (hasDriveLeg && leg) {
+    // 合成列：兩景點之間的 Google 開車段（無交通卡）→ 只給「開車約 N 分」的淡提示
+    main = `${label}約 ${fmtDur(leg.seconds)}`
+    if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, leg.seconds)
   } else {
     // 合成列但無可用開車路段 → 不顯示
     return null
   }
 
+  // 只有偏緊/恐遲到才上色 + ⚠️；排程交通用稍深的灰、微提示用更淡的灰
+  const warn = status?.color === 'amber' || status?.color === 'red'
+  const textTone = warn
+    ? (status!.color === 'red' ? 'text-red-500' : 'text-amber-600')
+    : (transport ? 'text-gray-500' : 'text-gray-400')
   const clickable = !!(transport && onClick)
-  const tone = status ? STATUS_BG[status.color] : STATUS_BG.gray
 
   return (
-    <div className="flex justify-center -mt-0.5 mb-2">
+    <div className="flex gap-3">
+      {/* 時間軸：延續上一張卡的直線，小圖示標示「移動中」 */}
+      <div className="flex flex-col items-center flex-shrink-0 w-8">
+        <div className="w-0.5 h-2 bg-gray-200" />
+        <span className="text-[11px] leading-none my-0.5 opacity-70">{icon}</span>
+        <div className="w-0.5 flex-1 bg-gray-200" />
+      </div>
+
+      {/* 內容（靠左、安靜）*/}
       <div
         role={clickable ? 'button' : undefined}
         tabIndex={clickable ? 0 : undefined}
         onClick={clickable ? () => onClick!(transport!) : undefined}
         className={clsx(
-          'inline-flex items-center gap-1.5 text-xs rounded-full border px-3 py-1 max-w-full',
-          tone,
-          clickable && 'cursor-pointer active:scale-[0.98] transition-transform',
+          'flex-1 flex items-center gap-1.5 text-xs py-1.5 mb-1 min-w-0',
+          textTone,
+          clickable && 'cursor-pointer active:opacity-70',
         )}
       >
-        <span className="flex-shrink-0">{icon}</span>
-        <span className="truncate">{main}</span>
-        {status && hasDriveLeg && (
-          <span className="flex-shrink-0 font-medium">· {status.text}</span>
-        )}
+        {warn && <span className="flex-shrink-0">⚠️</span>}
+        {timeText && <span className="flex-shrink-0 font-medium tabular-nums">{timeText}</span>}
+        <span className="truncate">
+          {main}
+          {warn && status && <span className="font-medium">・{status.text}</span>}
+        </span>
         {canEdit && transport && (
-          <span className="flex items-center gap-0.5 flex-shrink-0 ml-0.5">
+          <span className="flex items-center gap-0.5 flex-shrink-0 ml-auto pl-1 text-gray-400">
             <button
               onClick={(e) => { e.stopPropagation(); onEdit?.(transport) }}
               title="編輯交通"
-              className="w-5 h-5 flex items-center justify-center rounded text-current/60 hover:text-current"
+              className="w-6 h-6 flex items-center justify-center rounded hover:text-purple-600"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
@@ -135,7 +141,7 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
             <button
               onClick={(e) => { e.stopPropagation(); onDelete?.(transport) }}
               title="刪除交通"
-              className="w-5 h-5 flex items-center justify-center rounded text-current/60 hover:text-red-500"
+              className="w-6 h-6 flex items-center justify-center rounded hover:text-red-500"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
