@@ -99,8 +99,9 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, o
     const durSec = hasDriveLeg && leg ? leg.seconds : cardSec
     const to = transport.toLabel?.trim()
     // 複合用途的交通卡（還車/候船/轉乘…）：時段不只是移動，用原標題才不會讓人誤會
-    // 「騎車要 1 小時」（實際是騎車幾分鐘 + 還車 + 候船的整段時間）
-    const composite = /還車|取車|候船|候機|轉乘|等候|排隊|寄放/.test(transport.title)
+    // 「騎車要 1 小時」（實際是騎車幾分鐘 + 還車 + 候船的整段時間）。
+    // 關鍵字清單與 AI prompt 的「交通卡 title 規則」一致（雙邊閉環：AI 保證標明、這裡保證接住）
+    const composite = /還車|取車|候船|候機|報到|託運|安檢|轉乘|等候|排隊|寄放|手續/.test(transport.title)
     main = `${!composite && to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}`
     const budget = allottedSec ?? cardSec
     if (hasDriveLeg && leg && budget != null && budget > 0) {

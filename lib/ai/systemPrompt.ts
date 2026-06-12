@@ -247,6 +247,7 @@ The <plans> block format (DO NOT deviate):
 - Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
 - 卡片資訊分層：title 只放簡短名稱、description 留空或極短；詳細介紹寫進 intro/transport/recommendation/tips，不要全塞進 description
 - 卡片精簡欄位（依類型填）：景點填 placeLabel（地點）；交通 transport 填 fromLabel/toLabel/transportMode；餐飲 food 填 mealType/placeLabel/foodItems；特別注意處填 highlight
+- 交通卡 title 規則：純移動用「出發：A前往B」格式；時段若含移動以外的事，title 必須使用對應關鍵字標明（還車/取車/候船/候機/報到/託運/安檢/轉乘/等候/排隊/寄放/手續，例：「還車與南寮漁港候船」），App 依此顯示時間用途
 - 每日簡介 theme 同步更新：動到某天活動就必須一併更新該天 theme；局部修改時額外加 { "op":"update_day", "dayIndex":N, "payload":{"theme":"更新後簡介"} }
 - 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位。若填 location.address，**縣市/鄉鎮必須正確**——跨縣市行程的外地點尤其重要（例：台東行程裡的嘉義景點，地址要寫「嘉義」而非「台東」）；不確定確切門牌時，寧可給「縣市+鄉鎮+地標名」也不要硬湊門牌號
 - 每天從住宿出發：每天第一個景點前若有住宿，先安排 type:"transport" 從住宿出發的交通；若第一個活動本身是交通（如搭船/搭火車）但起點不是住宿（如港口/車站），須在它之前加一段「住宿→該起點」的接駁交通
@@ -366,6 +367,7 @@ ${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
 - 任何活動有特別需注意處：填 highlight（簡短幾字）
 - title 保持簡短純名稱，地點/項目放對應欄位，不要全擠進 title
+- 交通卡 title 規則：純移動用「出發：A前往B」格式；時段若含移動以外的事，title 必須使用對應關鍵字標明（還車/取車/候船/候機/報到/託運/安檢/轉乘/等候/排隊/寄放/手續，例：「還車與南寮漁港候船」），App 依此顯示時間用途
 
 **⚠️ 地址/地點正確性（必須遵守）**：
 - 當你「更換」一個活動成不同地點時（例如把「知本溫泉」改成「正氣路夜市」），
@@ -505,6 +507,7 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
 - 任何活動有特別需注意處：填 highlight（簡短幾字）
 - title 保持簡短純名稱，地點/項目放對應欄位
+- 交通卡 title 規則：純移動用「出發：A前往B」格式；時段若含移動以外的事，title 必須使用對應關鍵字標明（還車/取車/候船/候機/報到/託運/安檢/轉乘/等候/排隊/寄放/手續，例：「還車與南寮漁港候船」），App 依此顯示時間用途
 
 == 地址正確性（重要）==
 - 更換活動成不同地點時，絕對不要保留舊 location 座標。請省略 location 欄位讓系統重新定位，或在 location.address 填正確新地址。
@@ -704,6 +707,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
    - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
    - 任何活動若有特別需注意處，填 highlight（簡短幾字）
    title 保持簡短（純名稱／店名），地點與項目放對應欄位，不要全擠進 title
+   交通卡 title 規則：純移動用「出發：A前往B」格式；時段若含移動以外的事，title 必須使用對應關鍵字標明（還車/取車/候船/候機/報到/託運/安檢/轉乘/等候/排隊/寄放/手續，例：「還車與南寮漁港候船」），App 依此顯示時間用途
 2-4. **地址（重要）**：非交通類活動都要填 location.address（盡量完整，含縣市鄉鎮），lat/lng 留 0 由系統定位。卡片會顯示這個地址。**縣市必須正確**——跨縣市行程的外地點（例：台東行程裡的嘉義景點）要寫「嘉義」不要寫「台東」；不確定門牌就給「縣市+鄉鎮+地標名」，勿硬湊門牌號。
 3. activity.id、accommodation.id、cityTransport.id 一律用 8 字元英數字（如 aB3kP9xZ）
 4. 有城市間移動（包含中途城市）才填 cityTransports，否則用空陣列 []
