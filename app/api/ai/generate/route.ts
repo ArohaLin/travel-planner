@@ -219,12 +219,14 @@ export async function POST(request: Request) {
       itinerary_id: row.id,
     })
 
-    // AI 完成通知（App 在前景時 service worker 會自動略過不彈）
-    await sendPushToUser(user.id, {
-      title: '🎉 行程生成完成',
-      body: `「${itinerary.metadata.title}」已建立完成，點擊查看`,
-      url: `/itinerary/${row.id}`,
-    })
+    // AI 完成通知（即使連線中斷也保證送出）
+    runAfterResponse(
+      sendPushToUser(user.id, {
+        title: '🎉 行程生成完成',
+        body: `「${itinerary.metadata.title}」已建立完成，點擊查看`,
+        url: `/itinerary/${row.id}`,
+      }),
+    )
 
     return NextResponse.json({ itineraryId: row.id, aiInfo: buildInfo(true, null, null) })
   } catch (err) {

@@ -5,6 +5,7 @@ import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/li
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
+import { runAfterResponse } from '@/lib/push/waitUntil'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
@@ -381,14 +382,17 @@ export async function POST(request: Request) {
       if (!streamError && fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')) {
         console.log('[chat] sending push to user', user.id, 'mode', mode)
         const tripTitle = itinerary.metadata?.title ?? '行程'
-        await sendPushToUser(user.id, {
-          title: mode === 'adjust' ? '✨ AI 調整方案完成' : '💬 AI 咨詢回覆完成',
-          body:
-            mode === 'adjust'
-              ? `「${tripTitle}」的調整方案已就緒，點擊查看並選擇方案`
-              : `「${tripTitle}」的咨詢回覆已完成，點擊查看`,
-          url: `/itinerary/${itineraryId}`,
-        })
+        // waitUntil：即使使用者已把 App 滑掉、連線中斷，仍保證把通知送出
+        runAfterResponse(
+          sendPushToUser(user.id, {
+            title: mode === 'adjust' ? '✨ AI 調整方案完成' : '💬 AI 咨詢回覆完成',
+            body:
+              mode === 'adjust'
+                ? `「${tripTitle}」的調整方案已就緒，點擊查看並選擇方案`
+                : `「${tripTitle}」的咨詢回覆已完成，點擊查看`,
+            url: `/itinerary/${itineraryId}`,
+          }),
+        )
       }
 
       // ── 組裝 AI 回傳資訊（記錄最近一次）────────────────────────────────────
