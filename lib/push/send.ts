@@ -50,6 +50,7 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         try {
           const res = await webpush.sendNotification(row.subscription, body)
           console.log(`[push] 發送成功 sub=${row.id.slice(0, 8)} status=${res.statusCode}`)
+          await db.from('push_log').insert({ user_id: userId, context: payload.title, status_code: res.statusCode })
         } catch (e) {
           const status = (e as { statusCode?: number }).statusCode
           if (status === 410 || status === 404) {
