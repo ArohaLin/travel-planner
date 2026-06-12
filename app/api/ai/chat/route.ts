@@ -379,6 +379,7 @@ export async function POST(request: Request) {
       // ── AI 完成通知（Web Push）────────────────────────────────────────────
       // 結果已存 DB 才發；App 在前景時 service worker 會自動略過不彈。
       if (!streamError && fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')) {
+        console.log('[chat] sending push to user', user.id, 'mode', mode)
         const tripTitle = itinerary.metadata?.title ?? '行程'
         await sendPushToUser(user.id, {
           title: mode === 'adjust' ? '✨ AI 調整方案完成' : '💬 AI 咨詢回覆完成',
