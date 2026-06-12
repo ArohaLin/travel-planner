@@ -17,6 +17,89 @@ function forPrompt(itinerary: Itinerary): Itinerary {
   }
 }
 
+const toMinutes = (t?: string): number | null => {
+  if (!t) return null
+  const [h, m] = t.split(':').map(Number)
+  if (Number.isNaN(h) || Number.isNaN(m)) return null
+  return h * 60 + m
+}
+
+const fmtMin = (min: number): string =>
+  min < 60 ? `${min} 分` : `${Math.floor(min / 60)} 時${min % 60 ? ` ${min % 60} 分` : ''}`
+
+/**
+ * 實際路程摘要：travelLegs（Google 路線實測）不以 JSON 餵給 AI（見 forPrompt），
+ * 改在這裡轉成精簡文字清單 — AI 調整時間時有真實車程依據，不再憑常識亂估；
+ * 並標出目前「留的時間 < 實測路程」的段落，讓 AI 能優先修正。
+ */
+function buildTravelTimeSection(itinerary: Itinerary): string {
+  const lines: string[] = []
+
+  for (const day of itinerary.days) {
+    const legs = day.travelLegs ?? []
+    if (legs.length === 0) continue
+    const acts = day.activities
+
+    // 該天起點：前一晚住宿（第 1 天為出發城市）；legs 依序串接，前段終點即下段起點
+    let fromName =
+      itinerary.days.find((d) => d.dayIndex === day.dayIndex - 1)?.accommodation?.name ??
+      (day.dayIndex === 0 ? itinerary.metadata.originCity : undefined) ??
+      '出發地'
+
+    for (const leg of legs) {
+      const googleMin = Math.round(leg.seconds / 60)
+
+      // 目的地名稱 + 行程實際留的移動時間（前一張交通卡時長，或兩活動間的空檔）
+      let toName: string
+      let allottedMin: number | null = null
+      if (leg.toId === 'accommodation') {
+        toName = day.accommodation?.name ?? '住宿'
+        const last = acts[acts.length - 1]
+        const e = toMinutes(last?.endTime ?? last?.startTime)
+        const c = toMinutes(day.accommodation?.checkInTime)
+        if (e != null && c != null && c > e) allottedMin = c - e
+      } else {
+        const idx = acts.findIndex((a) => a.id === leg.toId)
+        if (idx < 0) continue
+        toName = acts[idx].title
+        const prev = idx > 0 ? acts[idx - 1] : undefined
+        if (prev?.type === 'transport') {
+          const s = toMinutes(prev.startTime)
+          const e = toMinutes(prev.endTime)
+          if (s != null && e != null && e > s) allottedMin = e - s
+        } else if (prev) {
+          const e = toMinutes(prev.endTime ?? prev.startTime)
+          const s = toMinutes(acts[idx].startTime)
+          if (e != null && s != null && s > e) allottedMin = s - e
+        }
+      }
+
+      // 3 分鐘以下的微距離不佔篇幅
+      if (googleMin >= 3) {
+        let note = ''
+        if (allottedMin != null && allottedMin > 0) {
+          const comfortable = googleMin + Math.min(Math.max(googleMin * 0.5, 5), 15)
+          if (allottedMin < googleMin) note = `；行程只留 ${fmtMin(allottedMin)} ⚠️不足`
+          else if (allottedMin < comfortable) note = `；行程留 ${fmtMin(allottedMin)}，偏緊`
+        }
+        lines.push(`- 第${day.dayIndex + 1}天 ${fromName} → ${toName}：實際開車約 ${fmtMin(googleMin)}${note}`)
+      }
+      fromName = toName
+    }
+  }
+
+  if (lines.length === 0) return ''
+  return `
+## 🚗 實際路程時間（Google 路線實測，估算交通時間一律以此為準，不要自行猜測）
+
+${lines.join('\n')}
+
+- 安排或調整時間時，兩活動之間預留的移動時間必須 ≥ 上列實測路程
+- 標示 ⚠️不足 的段落代表目前安排會遲到，調整該天時應優先修正（後移後續活動或縮短前一活動停留）
+- 上列為開車實測；搭船/火車等班次型交通的時間依現有交通卡為準
+`
+}
+
 /**
  * 行程專屬 AI 記憶 recap + 更新指示（#15）。
  * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
@@ -111,7 +194,7 @@ export function buildAdjustPromptMinimax(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}
+${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 == CRITICAL OUTPUT FORMAT REQUIREMENT ==
 
 You MUST output EXACTLY 1 best adjustment plan using the <plans> XML tag.
@@ -200,7 +283,7 @@ export function buildAdjustPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}
+${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 ## 核心規則
 
 1. **永遠以繁體中文回覆**
@@ -349,7 +432,7 @@ export function buildAdjustPromptGemini(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}
+${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 == MANDATORY OUTPUT FORMAT ==
 
 Step 1: Write 2-3 sentences in 繁體中文 analyzing the user's request.
@@ -447,7 +530,7 @@ export function buildConsultPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}
+${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 ## 重要限制
 
 1. **你只能提供建議、資訊和諮詢，不能修改行程**
