@@ -5,6 +5,7 @@ import { buildGeneratePrompt } from '@/lib/ai/systemPrompt'
 import { extractItinerary } from '@/lib/ai/patchParser'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
+import { runAfterResponse } from '@/lib/push/waitUntil'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { ModelProvider } from '@/lib/ai/client'
 
