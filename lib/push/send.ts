@@ -28,31 +28,42 @@ export interface PushPayload {
 
 export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
   try {
-    if (!ensureConfigured()) return
+    if (!ensureConfigured()) {
+      console.warn('[push] NOT configured — 缺 VAPID 環境變數，跳過發送')
+      return
+    }
     const db = createServiceRoleClient()
-    const { data: subs } = await db
+    const { data: subs, error } = await db
       .from('push_subscriptions')
       .select('id, subscription')
       .eq('user_id', userId)
+    if (error) {
+      console.warn('[push] 查訂閱失敗:', error.message)
+      return
+    }
+    console.log(`[push] user ${userId} 有 ${subs?.length ?? 0} 筆訂閱`)
     if (!subs || subs.length === 0) return
 
     const body = JSON.stringify(payload)
     await Promise.all(
       subs.map(async (row: { id: string; subscription: webpush.PushSubscription }) => {
         try {
-          await webpush.sendNotification(row.subscription, body)
+          const res = await webpush.sendNotification(row.subscription, body)
+          console.log(`[push] 發送成功 sub=${row.id.slice(0, 8)} status=${res.statusCode}`)
         } catch (e) {
           const status = (e as { statusCode?: number }).statusCode
           if (status === 410 || status === 404) {
             // 訂閱已失效 → 清除
             await db.from('push_subscriptions').delete().eq('id', row.id)
+            console.warn(`[push] sub=${row.id.slice(0, 8)} 已失效(${status})，已清除`)
           } else {
-            console.warn('[push] send failed:', status, String(e).slice(0, 120))
+            console.warn(`[push] 發送失敗 sub=${row.id.slice(0, 8)} status=${status}`,
+              String((e as { body?: string }).body ?? (e as Error).message).slice(0, 200))
           }
         }
       }),
     )
   } catch (e) {
-    console.warn('[push] sendPushToUser error:', String(e).slice(0, 160))
+    console.warn('[push] sendPushToUser error:', String(e).slice(0, 200))
   }
 }
