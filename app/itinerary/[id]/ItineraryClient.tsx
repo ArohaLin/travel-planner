@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { nanoid } from 'nanoid'
 import { useItinerary } from '@/lib/hooks/useItinerary'
@@ -30,6 +30,7 @@ import { AccommodationEditModal } from '@/components/itinerary/AccommodationEdit
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
+import { scanBufferWarnings } from '@/lib/maps/bufferScan'
 import { useToast } from '@/components/ui/Toast'
 import { APIProvider } from '@vis.gl/react-google-maps'
 
@@ -105,6 +106,19 @@ export function ItineraryClient({
 
   const currentDayData = displayItinerary.days[activeDay]
   const userCanEdit = canEdit(role)
+
+  // ── 全行程移動緩衝掃描（紅燈/黃燈段數）→ 一鍵請 AI 修正時間 ─────────────────
+  const bufferWarnings = useMemo(() => scanBufferWarnings(displayItinerary), [displayItinerary])
+
+  function handleFixTravelTimes() {
+    setChatOpen(true)
+    chat.queueMessage(
+      '請修正行程中所有移動時間「⚠️不足」與「🟡偏緊」的段落：依系統提供的「實際路程時間」清單，' +
+        '把每段預留的移動時間調整為清單中的「建議預留」值（後移後續活動或縮短前一活動停留）。' +
+        '只調整時間，不要增刪活動、不要更換景點。',
+      modelProvider,
+    )
+  }
 
   const handleMetadataUpdated = useCallback((newMetadata: TripMetadata) => {
     setLocalMetadata(newMetadata)
@@ -569,6 +583,29 @@ export function ItineraryClient({
 
       {viewMode === 'list' ? (
         <>
+          {bufferWarnings.total > 0 && userCanEdit && canChat(role) && (
+            <div className="px-4 pt-3">
+              <button
+                onClick={handleFixTravelTimes}
+                disabled={chat.isStreaming}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm text-left transition-colors min-h-[44px] ${
+                  bufferWarnings.red > 0
+                    ? 'bg-red-50 border-red-100 text-red-700 active:bg-red-100'
+                    : 'bg-amber-50 border-amber-100 text-amber-700 active:bg-amber-100'
+                } disabled:opacity-50`}
+              >
+                <span className="flex-shrink-0">{bufferWarnings.red > 0 ? '⚠️' : '🟡'}</span>
+                <span className="flex-1">
+                  {bufferWarnings.red > 0 && `${bufferWarnings.red} 段移動時間不足`}
+                  {bufferWarnings.red > 0 && bufferWarnings.amber > 0 && '、'}
+                  {bufferWarnings.amber > 0 && `${bufferWarnings.amber} 段偏緊`}
+                </span>
+                <span className="flex-shrink-0 font-semibold">
+                  {chat.isStreaming ? 'AI 處理中…' : '請 AI 修正 →'}
+                </span>
+              </button>
+            </div>
+          )}
           <DayTabs
             days={displayItinerary.days}
             activeDay={activeDay}
