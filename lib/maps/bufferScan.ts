@@ -20,10 +20,15 @@ const toMinutes = (t?: string): number | null => {
   return h * 60 + m
 }
 
-/** 與 DayView modeInfo 一致：船/火車/飛機/巴士/步行/單車視為非開車，不做開車緩衝比對 */
+/**
+ * 與 DayView modeInfo 一致：船/火車/飛機/巴士/步行/單車視為非開車，不做開車緩衝比對。
+ * 優先看 transportMode；沒填才退回標題（標題常含「候船」等誤導字）。機車視同開車比對。
+ */
 function isNonDriving(a?: Activity): boolean {
   if (!a) return false
-  const s = `${a.transportMode ?? ''} ${a.title ?? ''}`
+  const mode = a.transportMode?.trim() ?? ''
+  const s = mode || (a.title ?? '')
+  if (/機車|摩托車|scooter/i.test(s)) return false
   return /船|渡輪|ferry|火車|鐵路|台鐵|高鐵|train|飛機|航班|機場|flight|巴士|公車|客運|bus|步行|走路|徒步|walk|單車|腳踏車|自行車|bike/i.test(s)
 }
 

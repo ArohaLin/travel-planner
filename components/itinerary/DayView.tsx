@@ -20,13 +20,19 @@ function fmtDur(seconds: number): string {
   return m ? `${h} 時 ${m} 分` : `${h} 時`
 }
 
-/** 由交通方式/標題判斷圖示與動詞 */
+/**
+ * 由交通方式判斷圖示與動詞。優先看 transportMode（最可靠）；
+ * 沒填才退回標題判斷——標題常含誤導字（例：「南寮漁港候船」的「船」
+ * 是等船不是搭船，曾把還車候船誤標成 ⛴️ 搭船，看起來像連搭兩次船）。
+ */
 function modeInfo(a?: Activity): { icon: string; label: string; driving: boolean } {
-  const s = `${a?.transportMode ?? ''} ${a?.title ?? ''}`
+  const mode = a?.transportMode?.trim() ?? ''
+  const s = mode || (a?.title ?? '')
   if (/船|渡輪|ferry/i.test(s)) return { icon: '⛴️', label: '搭船', driving: false }
   if (/火車|鐵路|台鐵|高鐵|train/i.test(s)) return { icon: '🚆', label: '搭火車', driving: false }
   if (/飛機|航班|機場|flight/i.test(s)) return { icon: '✈️', label: '搭機', driving: false }
   if (/巴士|公車|客運|bus/i.test(s)) return { icon: '🚌', label: '搭車', driving: false }
+  if (/機車|摩托車|scooter/i.test(s)) return { icon: '🛵', label: '騎車', driving: true }
   if (/步行|走路|徒步|walk/i.test(s)) return { icon: '🚶', label: '步行', driving: false }
   if (/單車|腳踏車|自行車|bike/i.test(s)) return { icon: '🚲', label: '騎車', driving: false }
   // 自駕、未標示交通方式、或純合成（無交通卡）都當開車
