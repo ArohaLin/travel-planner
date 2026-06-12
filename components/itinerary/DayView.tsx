@@ -55,6 +55,10 @@ interface TravelRowProps {
   leg?: TravelLeg
   /** 行程實際留的移動時間（秒）；用來和 Google 比較緩衝 */
   allottedSec?: number | null
+  /** 合成列的推定出發時間（前一活動結束時間），讓格式與交通卡列一致 */
+  departTime?: string
+  /** 合成列的目的地名稱（下一張卡的地點），讓格式與交通卡列一致 */
+  toName?: string
   canEdit?: boolean
   onEdit?: (a: Activity) => void
   onDelete?: (a: Activity) => void
@@ -68,11 +72,11 @@ interface TravelRowProps {
  * - 🟠 偏緊 / 🔴 恐遲到 → 才上色 + ⚠️ 提醒
  * 非開車段（船/火車…）顯示 AI 交通資訊與其時長，不做開車緩衝比對。
  */
-function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onClick }: TravelRowProps) {
+function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, onEdit, onDelete, onClick }: TravelRowProps) {
   const { icon, label, driving } = modeInfo(transport)
   const hasDriveLeg = !!leg && leg.meters >= 50 && driving
 
-  // 統一模板：「HH:MM 動詞前往目的地・約時長」（排程交通）／「動詞約時長」（合成微提示）。
+  // 統一模板（交通卡列與合成列相同）：「HH:MM 動詞前往 目的地・約 時長」。
   // 一律不顯示 fromLabel：時間軸上一張卡就是出發點，且 fromLabel 是 AI 最常寫得不一致的欄位。
   let timeText: string | null = null
   let main: string
@@ -94,8 +98,9 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
       status = bufferStatus(budget, leg.seconds)
     }
   } else if (hasDriveLeg && leg) {
-    // 合成列：兩景點之間的 Google 開車段（無交通卡）→ 只給「開車約 N 分」的淡提示
-    main = `${label}約 ${fmtDur(leg.seconds)}`
+    // 合成列：兩景點之間的 Google 開車段（無交通卡）→ 補上推定出發時間與目的地，格式與交通卡列一致
+    timeText = departTime ?? null
+    main = `${toName ? `${label}前往 ${toName}` : `${label}`}・約 ${fmtDur(leg.seconds)}`
     if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, leg.seconds)
   } else {
     // 合成列但無可用開車路段 → 不顯示
@@ -105,7 +110,7 @@ function TravelRow({ transport, leg, allottedSec, canEdit, onEdit, onDelete, onC
   // 只有偏緊/恐遲到才上色 + ⚠️（獨立一列完整顯示，不擠在主列尾端）
   const warn = status?.color === 'amber' || status?.color === 'red'
   const warnTone = status?.color === 'red' ? 'text-red-500' : 'text-amber-600'
-  const textTone = transport ? 'text-gray-500' : 'text-gray-400'
+  const textTone = 'text-gray-500'
   const clickable = !!(transport && onClick)
 
   return (
@@ -358,7 +363,14 @@ export function DayView({ day, currency, departure, canEdit, onEditActivity, onD
 
             return (
               <div key={activity.id}>
-                {synthetic && <TravelRow leg={synthetic} allottedSec={allottedSec} />}
+                {synthetic && (
+                  <TravelRow
+                    leg={synthetic}
+                    allottedSec={allottedSec}
+                    departTime={prev?.endTime}
+                    toName={activity.placeLabel?.trim() || activity.title}
+                  />
+                )}
                 <ActivityCard
                   activity={activity}
                   isLast={idx === acts.length - 1 && !canEdit && !day.accommodation}
@@ -387,6 +399,8 @@ export function DayView({ day, currency, departure, canEdit, onEditActivity, onD
                 const c = toMin(day.accommodation.checkInTime)
                 return e != null && c != null && c > e ? (c - e) * 60 : null
               })()}
+              departTime={lastActivity?.endTime}
+              toName={day.accommodation.name}
             />
           )}
           <AccommodationCard
