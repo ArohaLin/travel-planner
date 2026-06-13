@@ -1,4 +1,4 @@
-import { getAnthropicClient, MODEL_CLAUDE } from '@/lib/ai/client'
+import { getGeminiClient, MODEL_GEMINI } from '@/lib/ai/client'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { BrochureCopy } from '@/lib/types/brochure'
@@ -91,16 +91,14 @@ export async function generateBrochureCopy(itin: Itinerary): Promise<BrochureCop
         timeoutMs: 90000,
       })
     } else {
-      const anthropic = getAnthropicClient()
-      const msg = await anthropic.messages.create({
-        model: MODEL_CLAUDE,
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: `${INSTRUCTION}\n\n---\n行程摘要：\n${summary}` }],
+      // Gemini Flash（與全 App 模型策略一致、便宜）；強制 JSON 輸出 → 乾淨好解析
+      const gemini = getGeminiClient()
+      const model = gemini.getGenerativeModel({
+        model: MODEL_GEMINI,
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 2048 },
       })
-      text = msg.content
-        .filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-        .map((c) => c.text)
-        .join('')
+      const result = await model.generateContent(`${INSTRUCTION}\n\n---\n行程摘要：\n${summary}`)
+      text = result.response.text()
     }
     return coerce(extractJson(text), itin)
   } catch (e) {

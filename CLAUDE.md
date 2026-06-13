@@ -108,7 +108,7 @@ npm run dev        # 開發伺服器 http://localhost:3000
   - `forPrompt()` 也濾掉 `photoRef`（與 travelLegs 同）。
 - **宣傳冊重用照片**：產生宣傳冊時先 `fetchAndStoreActivityPhotos` 補齊，再以 `activity.photoRef` 建快取（已抓過不再打 Places）。
 - **DM 風格改版**（參考旅行社範本）：封面加 AI 英文副標＋亮點標語；旅程總覽加 AI 特色簡介＋賣點清單；新增「行程特色」頁（精選景點/特色美食/推薦住宿，從現有資料策展＋照片）；新增「距離參考」（座標 Haversine 概估，每日＋全程公里）；每日章節加「早午晚宿摘要列」＋景點 2 欄排版（桌機 2 欄、手機 1 欄）。
-  - AI 文案：`lib/ai/brochureCopy.ts` 的 `generateBrochureCopy()`（支援 LOCAL_AI、失敗回退預設），結果存 `brochure_cache.copy`；距離存 `brochure_cache.dayKm/totalKm`。
+  - AI 文案：`lib/ai/brochureCopy.ts` 的 `generateBrochureCopy()` 用 **Gemini Flash**（`responseMimeType: application/json` 強制乾淨 JSON；與全 App 模型策略一致、便宜；本機 LOCAL_AI 走 claude -p；失敗回退預設），結果存 `brochure_cache.copy`；距離存 `brochure_cache.dayKm/totalKm`。
   - 公開頁無瀏覽器外殼，加浮動返回鈕 `components/brochure/BrochureBackButton.tsx`（原生 history.back + 即時回饋 + 防連按）。
   - 改進版（2026-06-13）：距離參考改用 `travelLegs`（實際開車距離，無 geocode 鋸齒；無則 haversine 淨位移）；總覽＋每日加「純文字行程簡表」；特色去重（同名只一次）並改大圖精選；每日改「簡表＋時間軸（小縮圖）」與特色做出差異化；公開頁覆寫 viewport 開放雙指縮放；圖片 `loading="lazy"`。
 
@@ -255,6 +255,7 @@ resolution TEXT, resolved_at TIMESTAMPTZ, created_at TIMESTAMPTZ
 | 建立行程（generate） | **只用 Gemini**（wizard 已移除選擇器、固定送 gemini） |
 | 行程調整（adjust） | **只用 Gemini**（ChatSheet 模型列只剩 Gemini，切到調整自動鎖 gemini） |
 | 咨詢服務（consult） | **Gemini ＋ 本地 AI**（使用者可切換） |
+| 宣傳冊文案（brochure copy） | **Gemini Flash**（強制 JSON；本機 claude -p） |
 
 - **本地 AI** = 自架 Ollama（OpenAI 相容端點 `https://api.alala.uk/v1`，模型 `gemma4:12b`，串流）。`lib/ai/client.ts` 的 `getOllamaClient()`，provider 值為 `'local'`，定價 0。chat route 的 `local` 分支放在 `isLocalAI()`（claude -p 開發覆寫）**之前** → 明確選本地 AI 一律走 Ollama。需家中電腦＋Ollama 開機，否則 502。
 - Claude / MiniMax 的 UI 選項已移除（後端程式保留，未使用）。`useModelPreference` 只接受 `gemini` / `local`，預設 `gemini`。
