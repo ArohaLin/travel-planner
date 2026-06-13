@@ -46,7 +46,12 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
   }
   if (targets.length === 0) return 0
 
-  const results = await mapPool(targets, (t) => findPlace(t.query, key), 5)
+  // 同名地點（如同一飯店出現在多天）共用「一次搜尋」→ 省 Places 呼叫
+  const uniqueQueries = Array.from(new Set(targets.map((t) => t.query)))
+  const looked = await mapPool(uniqueQueries, (q) => findPlace(q, key), 5)
+  const byQuery = new Map<string, (typeof looked)[number]>()
+  uniqueQueries.forEach((q, i) => byQuery.set(q, looked[i]))
+  const results = targets.map((t) => byQuery.get(t.query)!)
 
   // photoRef 對照表：activity → by id；accommodation → by dayIndex
   const actPhoto = new Map<string, string>()
