@@ -3,9 +3,11 @@ import type { BrochureCache } from '@/lib/types/brochure'
 import { formatDate } from '@/lib/utils/date'
 
 /**
- * 宣傳冊雜誌版面（純呈現、唯讀、無任何編輯）。參考旅行社 DM 排版：
- * 封面 → 旅程總覽（含 AI 文案）→ 行程特色/亮點 → 距離參考 → 逐日章節 → 結尾。
- * ⚠️ 依需求不顯示任何金額；亦不顯示內部 notes / 預約連結 / 成員個資。
+ * 宣傳冊雜誌版面（純呈現、唯讀）。差異化設計：
+ * - 行程特色頁＝大圖精選（少量、大卡、視覺強）
+ * - 每日章節＝行程簡表 + 當日地圖 + 時間軸（小縮圖＋文字，資訊密）
+ * 另含：總覽全程簡表、距離參考（實際開車）、雙指縮放、圖片 lazy。
+ * ⚠️ 不顯示任何金額 / 內部 notes / 預約連結 / 成員個資。
  */
 
 interface BrochureViewProps {
@@ -22,13 +24,11 @@ const GRADIENTS = [
   'from-emerald-200 to-teal-300',
   'from-cyan-200 to-blue-300',
 ]
-
 function gradFor(seed: string): string {
   let h = 0
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0
   return GRADIENTS[h % GRADIENTS.length]
 }
-
 function emojiFor(a: Activity): string {
   switch (a.type) {
     case 'food': return '🍜'
@@ -38,6 +38,19 @@ function emojiFor(a: Activity): string {
     case 'rest': return '☕'
     default: return '✦'
   }
+}
+
+/** 一列行程簡表的內容（時間＋活動） */
+interface SchedRow { time: string; text: string }
+function scheduleRows(day: ItineraryDay): SchedRow[] {
+  const acts = [...day.activities].sort((a, b) => a.startTime.localeCompare(b.startTime))
+  const rows: SchedRow[] = acts.map((a) => {
+    let text = a.title
+    if (a.type === 'food' && a.mealType && !a.title.includes(a.mealType)) text = `${a.mealType}・${a.title}`
+    return { time: a.startTime, text }
+  })
+  if (day.accommodation) rows.push({ time: '宿', text: day.accommodation.name })
+  return rows
 }
 
 export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
@@ -57,7 +70,7 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
 
   return (
     <article className="bg-white text-gray-800">
-      {/* ── 封面 ───────────────────────────────────────────── */}
+      {/* ── 封面（圖不 lazy，首屏要立即出現）── */}
       <header className="relative min-h-[68vh] flex items-end overflow-hidden">
         {hasPhoto('cover') ? (
           <img src={photoUrl('cover')} alt={metadata.destination} className="absolute inset-0 w-full h-full object-cover" />
@@ -82,7 +95,7 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
         </div>
       </header>
 
-      {/* ── 旅程總覽 ───────────────────────────────────────── */}
+      {/* ── 旅程總覽 ── */}
       <section className="max-w-2xl mx-auto px-6 py-10">
         <SectionTitle>旅程總覽</SectionTitle>
 
@@ -100,57 +113,52 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
           <ul className="flex flex-col gap-2 mb-6">
             {copy.highlights.map((h, i) => (
               <li key={i} className="flex gap-2 text-sm text-gray-700 leading-relaxed">
-                <span className="text-purple-400 flex-shrink-0">✦</span>
-                <span>{h}</span>
+                <span className="text-purple-400 flex-shrink-0">✦</span><span>{h}</span>
               </li>
             ))}
           </ul>
         )}
 
         {hasOverview && (
-          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm mb-6 aspect-[3/2] bg-indigo-50">
-            <img src={mapUrl('overview')} alt="旅程路線總覽" className="w-full h-full object-cover block" />
+          <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm mb-8 aspect-[3/2] bg-indigo-50">
+            <img src={mapUrl('overview')} alt="旅程路線總覽" loading="lazy" decoding="async" className="w-full h-full object-cover block" />
           </div>
         )}
 
-        <ol className="flex flex-col gap-2.5">
+        {/* 全程行程簡表（純文字，時間｜活動） */}
+        <p className="text-xs tracking-widest uppercase text-purple-400 font-medium mb-3">行程簡表</p>
+        <div className="flex flex-col gap-4">
           {days.map((day) => (
-            <li key={day.dayIndex} className="flex gap-3 items-baseline">
-              <span className="font-serif text-purple-400 text-sm font-medium w-12 flex-shrink-0">Day {day.dayIndex + 1}</span>
-              <span className="text-sm text-gray-700">
-                <span className="font-medium text-gray-900">{day.city}</span>
-                {day.theme ? <span className="text-gray-500"> · {day.theme}</span> : null}
-              </span>
-            </li>
+            <div key={day.dayIndex}>
+              <p className="text-sm font-medium text-gray-900 mb-1.5">
+                <span className="font-serif text-purple-400 mr-2">Day {day.dayIndex + 1}</span>
+                {day.city}{day.theme ? <span className="text-gray-400 font-normal"> · {day.theme}</span> : null}
+              </p>
+              <ScheduleRows rows={scheduleRows(day)} />
+            </div>
           ))}
-        </ol>
+        </div>
       </section>
 
-      {/* ── 行程特色 / 亮點 ─────────────────────────────────── */}
+      {/* ── 行程特色（大圖精選）── */}
       {hasFeatures && (
         <section className="border-t border-gray-100 bg-gray-50/50">
           <div className="max-w-2xl mx-auto px-6 py-10">
             <SectionTitle>行程特色</SectionTitle>
-            {features.scenic.length > 0 && (
-              <FeatureGroup label="精選景點" items={features.scenic} photoUrl={photoUrl} hasPhoto={hasPhoto} />
-            )}
-            {features.food.length > 0 && (
-              <FeatureGroup label="特色美食" items={features.food} photoUrl={photoUrl} hasPhoto={hasPhoto} />
-            )}
-            {features.stay.length > 0 && (
-              <FeatureGroup label="推薦住宿" items={features.stay} photoUrl={photoUrl} hasPhoto={hasPhoto} />
-            )}
+            {features.scenic.length > 0 && <FeatureGroup label="精選景點" items={features.scenic} photoUrl={photoUrl} hasPhoto={hasPhoto} />}
+            {features.food.length > 0 && <FeatureGroup label="特色美食" items={features.food} photoUrl={photoUrl} hasPhoto={hasPhoto} />}
+            {features.stay.length > 0 && <FeatureGroup label="推薦住宿" items={features.stay} photoUrl={photoUrl} hasPhoto={hasPhoto} />}
           </div>
         </section>
       )}
 
-      {/* ── 景點距離參考 ───────────────────────────────────── */}
+      {/* ── 距離參考（實際開車概估）── */}
       {cache?.totalKm ? (
         <section className="border-t border-gray-100">
           <div className="max-w-2xl mx-auto px-6 py-8">
             <SectionTitle>距離參考</SectionTitle>
             <p className="text-sm text-gray-500 mb-4">
-              全程移動約 <span className="font-semibold text-gray-800">{cache.totalKm}</span> 公里（各點直線距離概估）
+              全程移動約 <span className="font-semibold text-gray-800">{cache.totalKm}</span> 公里（依實際路線概估）
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-2">
               {days.map((day) =>
@@ -166,12 +174,11 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
         </section>
       ) : null}
 
-      {/* ── 逐日章節 ───────────────────────────────────────── */}
+      {/* ── 逐日章節 ── */}
       {days.map((day) => (
         <DaySection key={day.dayIndex} day={day} photoUrl={photoUrl} mapUrl={mapUrl} hasPhoto={hasPhoto} hasDayMap={hasDayMap} />
       ))}
 
-      {/* ── 結尾 ───────────────────────────────────────────── */}
       <footer className="max-w-2xl mx-auto px-6 py-12 text-center">
         <div className="w-12 h-0.5 bg-purple-200 mx-auto mb-5" />
         <p className="font-serif text-xl text-gray-800 mb-1">旅途愉快 ✦</p>
@@ -181,7 +188,6 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
   )
 }
 
-// ── 共用小標題 ────────────────────────────────────────────
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <>
@@ -191,61 +197,81 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
-// ── 特色/亮點：精選項目 ───────────────────────────────────
-interface FeatureItem { k: string; title: string; desc: string }
+/** 純文字行程簡表的列 */
+function ScheduleRows({ rows }: { rows: SchedRow[] }) {
+  return (
+    <div className="rounded-xl bg-gray-50 px-3 py-2">
+      {rows.map((r, i) => (
+        <div key={i} className="flex gap-3 py-1 text-[13px] leading-relaxed border-b border-gray-100 last:border-0">
+          <span className={`flex-shrink-0 w-12 tabular-nums ${r.time === '宿' ? 'text-amber-500' : 'text-purple-500'}`}>
+            {r.time === '宿' ? '🏨 宿' : r.time}
+          </span>
+          <span className="text-gray-700">{r.text}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
+// ── 特色/亮點：大圖精選（去重）──
+interface FeatureItem { k: string; title: string; desc: string }
 function curateFeatures(itin: Itinerary, hasPhoto: (k: string) => boolean) {
   const scenic: FeatureItem[] = []
   const food: FeatureItem[] = []
   const stay: FeatureItem[] = []
+  const seen = new Set<string>() // 依標題去重（跨天同地點只留一次）
   for (const d of itin.days) {
     for (const a of d.activities) {
       const k = `${d.dayIndex}:${a.id}`
+      const key = a.title.trim()
       if (a.type === 'food') {
+        if (seen.has('f:' + key)) continue
         if (a.foodItems || a.intro || a.recommendation || hasPhoto(k)) {
+          seen.add('f:' + key)
           food.push({ k, title: a.title, desc: a.foodItems || a.recommendation || a.intro || '' })
         }
       } else if (a.type === 'sightseeing' || a.type === 'nature' || a.type === 'experience') {
+        if (seen.has('s:' + key)) continue
         if (a.intro || a.recommendation || hasPhoto(k)) {
+          seen.add('s:' + key)
           scenic.push({ k, title: a.title, desc: a.intro || a.recommendation || '' })
         }
       }
     }
     if (d.accommodation) {
-      stay.push({ k: `${d.dayIndex}:acc`, title: d.accommodation.name, desc: d.accommodation.location?.address || '' })
+      const key = d.accommodation.name.trim()
+      if (!seen.has('h:' + key)) {
+        seen.add('h:' + key)
+        stay.push({ k: `${d.dayIndex}:acc`, title: d.accommodation.name, desc: d.accommodation.location?.address || '' })
+      }
     }
   }
-  // 有照片的優先、限制數量
+  // 有照片優先、限量（大圖精選 → 少量）
   const pick = (arr: FeatureItem[], n: number) =>
     [...arr].sort((a, b) => (hasPhoto(b.k) ? 1 : 0) - (hasPhoto(a.k) ? 1 : 0)).slice(0, n)
-  return { scenic: pick(scenic, 6), food: pick(food, 4), stay: pick(stay, 3) }
+  return { scenic: pick(scenic, 4), food: pick(food, 3), stay: pick(stay, 3) }
 }
 
 function FeatureGroup({
   label, items, photoUrl, hasPhoto,
-}: {
-  label: string
-  items: FeatureItem[]
-  photoUrl: (k: string) => string
-  hasPhoto: (k: string) => boolean
-}) {
+}: { label: string; items: FeatureItem[]; photoUrl: (k: string) => string; hasPhoto: (k: string) => boolean }) {
   return (
-    <div className="mb-8 last:mb-0">
-      <p className="text-xs tracking-widest uppercase text-purple-400 font-medium mb-3">{label}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+    <div className="mb-9 last:mb-0">
+      <p className="text-xs tracking-widest uppercase text-purple-400 font-medium mb-4">{label}</p>
+      <div className="flex flex-col gap-7">
         {items.map((it) => (
           <div key={it.k}>
-            <div className="rounded-xl overflow-hidden shadow-sm mb-2 aspect-[16/10] bg-gray-100">
+            <div className="rounded-2xl overflow-hidden shadow-md mb-3 aspect-[16/9] bg-gray-100">
               {hasPhoto(it.k) ? (
-                <img src={photoUrl(it.k)} alt={it.title} className="w-full h-full object-cover" />
+                <img src={photoUrl(it.k)} alt={it.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
               ) : (
                 <div className={`w-full h-full bg-gradient-to-br ${gradFor(it.title)} flex items-center justify-center`}>
-                  <span className="text-3xl opacity-40">✦</span>
+                  <span className="text-5xl opacity-40">✦</span>
                 </div>
               )}
             </div>
-            <p className="font-medium text-gray-900 text-sm leading-snug">{it.title}</p>
-            {it.desc && <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">{it.desc}</p>}
+            <h3 className="font-serif text-lg text-gray-900 leading-snug mb-1">{it.title}</h3>
+            {it.desc && <p className="text-sm text-gray-600 leading-relaxed">{it.desc}</p>}
           </div>
         ))}
       </div>
@@ -253,7 +279,7 @@ function FeatureGroup({
   )
 }
 
-// ── 單日章節 ──────────────────────────────────────────────
+// ── 單日章節：簡表 → 地圖 → 時間軸（小縮圖）──
 function DaySection({
   day, photoUrl, mapUrl, hasPhoto, hasDayMap,
 }: {
@@ -263,11 +289,10 @@ function DaySection({
   hasPhoto: (k: string) => boolean
   hasDayMap: (dayIndex: number) => boolean
 }) {
-  // 宣傳冊的逐日只放「景點」，交通不入（過於操作性）
+  // 時間軸只放「景點」（交通與用餐在簡表已呈現）
   const spots = [...day.activities]
     .filter((a) => a.type !== 'transport')
     .sort((a, b) => a.startTime.localeCompare(b.startTime))
-  const meals = mealSummary(day)
 
   return (
     <section className="border-t border-gray-100">
@@ -285,116 +310,72 @@ function DaySection({
           {day.theme && <p className="text-sm text-gray-500 mt-1 leading-relaxed">{day.theme}</p>}
         </div>
 
-        {/* 早午晚宿摘要列 */}
-        <div className="grid grid-cols-4 gap-2 mb-6 rounded-2xl bg-gray-50 p-3">
-          {meals.map((m) => (
-            <div key={m.label} className="text-center min-w-0">
-              <div className="text-lg leading-none mb-1">{m.icon}</div>
-              <div className="text-[10px] text-gray-400 mb-0.5">{m.label}</div>
-              <div className="text-[11px] text-gray-700 leading-tight truncate" title={m.name}>{m.name}</div>
-            </div>
-          ))}
+        {/* 當日行程簡表 */}
+        <div className="mb-6">
+          <ScheduleRows rows={scheduleRows(day)} />
         </div>
 
         {/* 當天路線圖 */}
         {hasDayMap(day.dayIndex) && (
           <div className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm mb-8 aspect-[16/9] bg-indigo-50">
-            <img src={mapUrl(String(day.dayIndex))} alt={`Day ${day.dayIndex + 1} 路線`} className="w-full h-full object-cover block" />
+            <img src={mapUrl(String(day.dayIndex))} alt={`Day ${day.dayIndex + 1} 路線`} loading="lazy" decoding="async" className="w-full h-full object-cover block" />
           </div>
         )}
 
-        {/* 景點（2 欄 grid，桌機 2 欄、手機 1 欄） */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-7">
-          {spots.map((a) => (
-            <SpotBlock key={a.id} activity={a} photoKey={`${day.dayIndex}:${a.id}`} photoUrl={photoUrl} hasPhoto={hasPhoto} />
+        {/* 時間軸（小縮圖 + 文字）*/}
+        <div className="flex flex-col">
+          {spots.map((a, i) => (
+            <TimelineItem
+              key={a.id}
+              activity={a}
+              photoKey={`${day.dayIndex}:${a.id}`}
+              photoUrl={photoUrl}
+              hasPhoto={hasPhoto}
+              last={i === spots.length - 1}
+            />
           ))}
         </div>
-
-        {/* 住宿 */}
-        {day.accommodation && (
-          <AccommodationBlock accommodation={day.accommodation} photoKey={`${day.dayIndex}:acc`} photoUrl={photoUrl} hasPhoto={hasPhoto} />
-        )}
       </div>
     </section>
   )
 }
 
-/** 早午晚宿摘要 */
-function mealSummary(day: ItineraryDay) {
-  const food = (kw: string) =>
-    day.activities.find((a) => a.type === 'food' && (a.mealType?.includes(kw) ?? false))
-  const name = (a?: Activity) => (a ? a.foodItems || a.placeLabel || a.title : '—')
-  return [
-    { icon: '🍳', label: '早', name: name(food('早')) },
-    { icon: '🍱', label: '午', name: name(food('午')) },
-    { icon: '🍽', label: '晚', name: name(food('晚')) },
-    { icon: '🏨', label: '宿', name: day.accommodation?.name ?? '—' },
-  ]
-}
-
-// ── 景點區塊 ──────────────────────────────────────────────
-function SpotBlock({
-  activity, photoKey, photoUrl, hasPhoto,
+function TimelineItem({
+  activity, photoKey, photoUrl, hasPhoto, last,
 }: {
   activity: Activity
   photoKey: string
   photoUrl: (k: string) => string
   hasPhoto: (k: string) => boolean
+  last: boolean
 }) {
   const a = activity
   const body = a.intro?.trim() || a.description?.trim()
   return (
-    <div>
-      <div className="rounded-2xl overflow-hidden shadow-sm mb-3 aspect-[16/10] bg-gray-100">
-        {hasPhoto(photoKey) ? (
-          <img src={photoUrl(photoKey)} alt={a.title} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full bg-gradient-to-br ${gradFor(a.title)} flex items-center justify-center`}>
-            <span className="text-4xl opacity-40">{emojiFor(a)}</span>
-          </div>
-        )}
+    <div className="flex gap-3">
+      {/* 左：時間 + 時間軸線 */}
+      <div className="flex flex-col items-center flex-shrink-0 w-12">
+        <span className="text-xs font-medium text-purple-500 tabular-nums">{a.startTime}</span>
+        <span className="w-2 h-2 rounded-full bg-purple-300 mt-1.5" />
+        {!last && <span className="w-px flex-1 bg-purple-100 my-1" />}
       </div>
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-xs font-medium text-purple-500 tabular-nums flex-shrink-0">{a.startTime}</span>
-        <h3 className="font-medium text-gray-900 leading-snug">{a.title}</h3>
-      </div>
-      {a.highlight && <p className="text-xs text-amber-600 mb-1">✦ {a.highlight}</p>}
-      {body && <p className="text-sm text-gray-600 leading-relaxed">{body}</p>}
-      {a.foodItems && <p className="text-sm text-gray-500 mt-1.5">🍽 {a.foodItems}</p>}
-      {a.recommendation && (
-        <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
-          <span className="text-purple-400">推薦 ·</span> {a.recommendation}
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ── 住宿區塊 ──────────────────────────────────────────────
-function AccommodationBlock({
-  accommodation, photoKey, photoUrl, hasPhoto,
-}: {
-  accommodation: NonNullable<ItineraryDay['accommodation']>
-  photoKey: string
-  photoUrl: (k: string) => string
-  hasPhoto: (k: string) => boolean
-}) {
-  const acc = accommodation
-  return (
-    <div className="mt-8 rounded-2xl border border-gray-100 overflow-hidden bg-gray-50/60">
-      <div className="aspect-[16/9] bg-gray-100">
-        {hasPhoto(photoKey) ? (
-          <img src={photoUrl(photoKey)} alt={acc.name} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full bg-gradient-to-br ${gradFor(acc.name)} flex items-center justify-center`}>
-            <span className="text-4xl opacity-40">🏨</span>
-          </div>
-        )}
-      </div>
-      <div className="px-4 py-3">
-        <p className="text-xs tracking-widest uppercase text-gray-400 mb-0.5">今晚住宿</p>
-        <p className="font-medium text-gray-900">{acc.name}</p>
-        {acc.location?.address && <p className="text-xs text-gray-400 mt-0.5">{acc.location.address}</p>}
+      {/* 右：縮圖 + 內容 */}
+      <div className={`flex gap-3 flex-1 min-w-0 ${last ? '' : 'pb-6'}`}>
+        <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100">
+          {hasPhoto(photoKey) ? (
+            <img src={photoUrl(photoKey)} alt={a.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+          ) : (
+            <div className={`w-full h-full bg-gradient-to-br ${gradFor(a.title)} flex items-center justify-center`}>
+              <span className="text-2xl opacity-40">{emojiFor(a)}</span>
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-medium text-gray-900 leading-snug">{a.title}</h3>
+          {a.highlight && <p className="text-xs text-amber-600 mt-0.5">✦ {a.highlight}</p>}
+          {body && <p className="text-sm text-gray-600 leading-relaxed mt-1">{body}</p>}
+          {a.foodItems && <p className="text-sm text-gray-500 mt-1">🍽 {a.foodItems}</p>}
+        </div>
       </div>
     </div>
   )

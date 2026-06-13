@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { BrochureView } from '@/components/brochure/BrochureView'
 import { BrochureBackButton } from '@/components/brochure/BrochureBackButton'
@@ -7,6 +7,14 @@ import type { BrochureCache } from '@/lib/types/brochure'
 
 // token 讀取、需即時反映開關狀態，不做整頁靜態快取
 export const dynamic = 'force-dynamic'
+
+// 宣傳冊是閱讀型文件 → 覆寫 App 全域的「禁止縮放」，開放雙指縮放
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+}
 
 interface ShareRow {
   data: Itinerary

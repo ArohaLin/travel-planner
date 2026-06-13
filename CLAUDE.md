@@ -107,7 +107,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **宣傳冊重用照片**：產生宣傳冊時先 `fetchAndStoreActivityPhotos` 補齊，再以 `activity.photoRef` 建快取（已抓過不再打 Places）。
 - **DM 風格改版**（參考旅行社範本）：封面加 AI 英文副標＋亮點標語；旅程總覽加 AI 特色簡介＋賣點清單；新增「行程特色」頁（精選景點/特色美食/推薦住宿，從現有資料策展＋照片）；新增「距離參考」（座標 Haversine 概估，每日＋全程公里）；每日章節加「早午晚宿摘要列」＋景點 2 欄排版（桌機 2 欄、手機 1 欄）。
   - AI 文案：`lib/ai/brochureCopy.ts` 的 `generateBrochureCopy()`（支援 LOCAL_AI、失敗回退預設），結果存 `brochure_cache.copy`；距離存 `brochure_cache.dayKm/totalKm`。
-  - 公開頁無瀏覽器外殼，加浮動返回鈕 `components/brochure/BrochureBackButton.tsx`。
+  - 公開頁無瀏覽器外殼，加浮動返回鈕 `components/brochure/BrochureBackButton.tsx`（原生 history.back + 即時回饋 + 防連按）。
+  - 改進版（2026-06-13）：距離參考改用 `travelLegs`（實際開車距離，無 geocode 鋸齒；無則 haversine 淨位移）；總覽＋每日加「純文字行程簡表」；特色去重（同名只一次）並改大圖精選；每日改「簡表＋時間軸（小縮圖）」與特色做出差異化；公開頁覆寫 viewport 開放雙指縮放；圖片 `loading="lazy"`。
 
 ---
 

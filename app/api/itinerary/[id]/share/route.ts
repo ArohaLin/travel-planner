@@ -132,12 +132,17 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
     if (arr.length > 0) {
       dayPoints[day.dayIndex] = arr
       overviewPoints.push({ label: String(day.dayIndex + 1), lat: arr[0].lat, lng: arr[0].lng })
-      // 當天各點依序的直線距離合計
-      let km = 0
-      for (let i = 1; i < arr.length; i++) km += haversineKm(arr[i - 1], arr[i])
-      // 接續前一天最後一點 → 當天第一點（跨日移動）
-      const prevDay = overviewPoints.length >= 2 ? dayPoints[day.dayIndex - 1] : undefined
-      if (prevDay && prevDay.length) km += haversineKm(prevDay[prevDay.length - 1], arr[0])
+    }
+    // 距離：優先用「實際開車路段」（travelLegs，Google Directions 算的，準且無 geocode 來回跳問題）；
+    // 無 travelLegs 才退而用「當天起訖直線位移」概估（避免逐點累加放大錯誤座標的鋸齒）。
+    const legs = day.travelLegs ?? []
+    let km = 0
+    if (legs.length > 0) {
+      km = legs.reduce((s, l) => s + (l.meters || 0), 0) / 1000
+    } else if (arr.length >= 2) {
+      km = haversineKm(arr[0], arr[arr.length - 1])
+    }
+    if (km > 0) {
       dayKm[day.dayIndex] = Math.round(km)
       totalKm += km
     }
