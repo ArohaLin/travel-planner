@@ -254,23 +254,23 @@ interface ItineraryPatch {
 
 ---
 
-## 權限設計
+## 權限設計（多人模式：一層權限）
 
-### 全域角色（global_role）
-| | 使用 App | AI 對話 | 管理帳號 | 看問題追蹤 |
-|---|---|---|---|---|
-| admin | ✅ | ✅ | ✅ | ✅ |
-| regular | ✅ | ✅ | ❌ | ❌ |
-| guest | ✅（唯讀） | ❌ | ❌ | ❌ |
+**模型**：全域角色（global_role）決定「能做什麼」，行程成員（itinerary_members）只決定「看得到什麼」。`itinerary_members.role` 僅保留 `owner` 當「建立者」標記，editor/viewer 不再決定能力。
 
-### 行程角色（member_role）
-| | 檢視 | AI + 修改 | 邀請成員 | 刪除行程 |
-|---|---|---|---|---|
-| owner | ✅ | ✅ | ✅ | ✅ |
-| editor | ✅ | ✅ | ❌ | ❌ |
-| viewer | ✅ | ❌ | ❌ | ❌ |
+| global_role | 可見的行程 | 修改 + AI | 選人/管理成員 | 刪除行程 | 建立行程 | 管理帳號 |
+|---|---|---|---|---|---|---|
+| admin | **全部（自動）** | ✅ | ✅（任何行程） | ✅ | ✅ | ✅ |
+| regular | 被勾選的＋自己建立的 | ✅ | 只有自己建立的 | 只有自己建立的 | ✅ | ❌ |
+| guest | 被勾選的 | ❌（唯讀、無 AI） | ❌ | ❌ | ❌ | ❌ |
 
-> guest 全域角色優先 → 即使是 editor 仍唯讀
+**核心實作**：
+- `lib/auth/access.ts` 的 `getItineraryAccess(db, itineraryId, userId)` 為唯一權限判斷入口，回傳 `{ visible, canEdit, effectiveRole, isAdmin }`。所有 API/頁面統一走它。
+- `effectiveRole` 換算後餵給既有 UI 權限函式（canEdit/canChat…）：建立者或 admin → `owner`；regular 成員 → `editor`；guest 成員 → `viewer`。
+- DB 端 RLS：`supabase/migration_multiuser.sql`，含 `is_admin()` / `can_edit_itinerary()`，所有表都有管理者通道。
+- **行程內選人**：成員管理頁列出所有帳號 + 勾選開關（勾＝可見）；建立者/管理者固定可見不可取消。`PUT /api/itinerary/[id]/members { userId, visible }`。
+- 邀請連結 UI 已移除（後端 token 加入流程仍保留相容）。
+- ⚠️ `itinerary_members` 同時有 `user_id` 與 `invited_by` 兩個 FK 指向 profiles，PostgREST join 須指明 `profiles!itinerary_members_user_id_fkey`。
 
 ---
 
