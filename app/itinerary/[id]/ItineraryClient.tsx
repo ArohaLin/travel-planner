@@ -875,7 +875,6 @@ export function ItineraryClient({
         <ActivityDetailModal
           activity={detailActivity}
           dayNumber={activeDay + 1}
-          itineraryId={itineraryId}
           onClose={() => setDetailActivity(null)}
         />
       )}

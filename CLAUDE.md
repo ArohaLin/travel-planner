@@ -94,7 +94,7 @@ npm run dev        # 開發伺服器 http://localhost:3000
 旅行社 DM 風格的對外行程手冊：任何人有連結即可瀏覽（免登入、不能修改）。
 - **入口**：行程頁 header 的 📄 按鈕（限建立者/管理者）→ 產生／複製連結／重新整理內容／換連結／關閉。元件 `components/brochure/BrochureShareButton.tsx`。
 - **公開頁**：`/share/[token]`（server component，`middleware.ts` 已放行 `/share`、`/api/share`）。雜誌長捲頁 `components/brochure/BrochureView.tsx`：封面 → 旅程總覽（風格標籤＋總覽路線圖＋每日大綱）→ 逐日章節（路線圖＋每景點照片＋介紹）→ 結尾。**依需求不顯示任何金額**，亦不顯示 notes／預約連結／成員個資。
-- **零付費 API 重點**：產生宣傳冊時抓一次照片 reference＋座標，快取進 `itineraries.brochure_cache`（JSONB，與 AI 用的 `data` 分開）；公開訪客只讀快取。照片／地圖一律經自家 proxy（`/api/share/[token]/photo`、`/map`）出圖，Google 金鑰永不出現在公開 HTML，並設 CDN 快取（`s-maxage`）保護成本。
+- **零付費 API 重點**：產生宣傳冊時抓一次照片 reference＋座標，快取進 `itineraries.brochure_cache`（JSONB，與 AI 用的 `data` 分開）；公開訪客只讀快取。地圖經 `/api/share/[token]/map` proxy；**照片改走共用端點 `/api/photo?ref=<photoRef>`**（見下方「共用照片 proxy」），Google 金鑰永不出現在公開 HTML，並設 CDN 快取（`s-maxage`）保護成本。
 - **資料**：`itineraries` 加 `public_share`(bool) / `share_token`(unique) / `brochure_cache`(jsonb)，migration `supabase/migration_brochure.sql`（已執行）。
 - **產生 API**：`/api/itinerary/[id]/share`（owner 限定）GET 狀態、POST `{action: enable|disable|regenerate}`。座標優先沿用景點既有 `location`，Places 查到的當 fallback；查無照片/地圖一律回優雅 SVG 佔位（版面不破）。
 - **server 工具**：`lib/maps/places.ts`（`findPlace` 一次拿照片+座標、`staticMapUrl`、`placePhotoUrl`、`placeholderSvg`）；server 金鑰用 `GOOGLE_MAPS_SERVER_KEY ?? NEXT_PUBLIC_GOOGLE_MAPS_KEY`（實測此金鑰 server 端無 referer 也可呼叫 Places/Static Maps）。型別 `lib/types/brochure.ts`。
@@ -103,7 +103,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 ### ✅ 景點照片 + 宣傳冊 DM 改版（2026-06-13）
 - **景點照片（photoRef）**：`Activity`/`Accommodation` 加 `photoRef` 欄位（背景抓 Google Places 代表照、快取進行程 data）。
   - 生成行程後 `runAfterResponse` 背景抓圖（不卡卡片產生）；舊行程在行程頁載入時自動補抓一次（`POST /api/itinerary/[id]/photos`，只補缺的）。共用 `lib/maps/activityPhotos.ts` 的 `fetchAndStoreActivityPhotos`。
-  - 景點卡「點進去」詳情視窗（`ActivityDetailModal`）頂部顯示 hero 大圖，走登入版 proxy `GET /api/itinerary/[id]/photo?activityId=`（驗權後串流）。
+  - 景點卡「點進去」詳情視窗（`ActivityDetailModal`）頂部顯示 hero 大圖，與宣傳冊**共用** `GET /api/photo?ref=`。
+  - **共用照片 proxy `/api/photo?ref=<photoRef>`（2026-06-14）**：卡片詳情與宣傳冊共用同一端點、以 `photoRef` 為快取鍵（`public, s-maxage, immutable`）→ 同一張照片整站只向 Google 取一次（跨卡片/宣傳冊/所有人共用 CDN）。最貴的 Places「搜尋」本就一次（存 `photoRef`），這裡再讓「取圖」也只算一次。middleware 已放行 `/api/photo`（公開；景點照片為 Google 公開內容、ref 不可枚舉）。原 `/api/share/[token]/photo` 與 `/api/itinerary/[id]/photo` 已移除。
   - `forPrompt()` 也濾掉 `photoRef`（與 travelLegs 同）。
 - **宣傳冊重用照片**：產生宣傳冊時先 `fetchAndStoreActivityPhotos` 補齊，再以 `activity.photoRef` 建快取（已抓過不再打 Places）。
 - **DM 風格改版**（參考旅行社範本）：封面加 AI 英文副標＋亮點標語；旅程總覽加 AI 特色簡介＋賣點清單；新增「行程特色」頁（精選景點/特色美食/推薦住宿，從現有資料策展＋照片）；新增「距離參考」（座標 Haversine 概估，每日＋全程公里）；每日章節加「早午晚宿摘要列」＋景點 2 欄排版（桌機 2 欄、手機 1 欄）。

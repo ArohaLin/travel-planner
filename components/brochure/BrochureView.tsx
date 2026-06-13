@@ -58,7 +58,9 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
   const ver = cache?.generatedAt ? encodeURIComponent(cache.generatedAt) : '0'
   const copy = cache?.copy
 
-  const photoUrl = (k: string) => `/api/share/${token}/photo?k=${encodeURIComponent(k)}&v=${ver}`
+  // 照片走「共用 proxy」（以 photoRef 為鍵）→ 與景點卡詳情共用 CDN 快取，同張圖全站只抓一次
+  const photoRefOf = (k: string) => cache?.photos?.[k]?.photoRef ?? ''
+  const photoUrl = (k: string) => `/api/photo?ref=${encodeURIComponent(photoRefOf(k))}`
   const mapUrl = (day: string) => `/api/share/${token}/map?day=${day}&v=${ver}`
   const hasPhoto = (k: string) => !!cache?.photos?.[k]?.photoRef
   const hasDayMap = (dayIndex: number) => (cache?.dayPoints?.[dayIndex]?.length ?? 0) > 0

@@ -29,8 +29,6 @@ interface ActivityDetailModalProps {
   activity: Activity
   /** 第幾天（1-based，用於標題顯示） */
   dayNumber?: number
-  /** 行程 id（用於載入景點照片） */
-  itineraryId?: string
   onClose: () => void
 }
 
@@ -60,11 +58,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-export function ActivityDetailModal({ activity, dayNumber, itineraryId, onClose }: ActivityDetailModalProps) {
+export function ActivityDetailModal({ activity, dayNumber, onClose }: ActivityDetailModalProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
   const hasDetailInfo =
     activity.transport || activity.recommendation || activity.tips
-  const hasPhoto = !!activity.photoRef && !!itineraryId
+  const hasPhoto = !!activity.photoRef
 
   return (
     <>
@@ -80,7 +78,7 @@ export function ActivityDetailModal({ activity, dayNumber, itineraryId, onClose 
           /* 景點照片 hero（拖曳把手疊在圖上） */
           <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
             <img
-              src={`/api/itinerary/${itineraryId}/photo?activityId=${activity.id}`}
+              src={`/api/photo?ref=${encodeURIComponent(activity.photoRef!)}`}
               alt={activity.title}
               className="w-full h-full object-cover"
             />
