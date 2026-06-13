@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getItineraryAccess } from '@/lib/auth/access'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { formatRelativeTime } from '@/lib/utils/date'
@@ -239,14 +240,8 @@ export default async function HistoryPage({ params }: { params: { id: string } }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) redirect('/dashboard')
+  const access = await getItineraryAccess(createServiceRoleClient(), params.id, user.id)
+  if (!access.visible) redirect('/dashboard')
 
   const { data: changes } = await supabase
     .from('itinerary_changes')

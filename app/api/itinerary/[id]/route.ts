@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getItineraryAccess } from '@/lib/auth/access'
 
 export async function GET(
   _request: Request,
@@ -10,7 +11,11 @@ export async function GET(
 
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
-  const { data, error } = await supabase
+  const db = createServiceRoleClient()
+  const access = await getItineraryAccess(db, params.id, user.id)
+  if (!access.visible) return NextResponse.json({ error: '無存取權限' }, { status: 403 })
+
+  const { data, error } = await db
     .from('itineraries')
     .select('*')
     .eq('id', params.id)
@@ -20,17 +25,7 @@ export async function GET(
     return NextResponse.json({ error: '找不到行程' }, { status: 404 })
   }
 
-  // Check member access (RLS handles this, but explicit check for clarity)
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) return NextResponse.json({ error: '無存取權限' }, { status: 403 })
-
-  return NextResponse.json({ ...data, role: member.role })
+  return NextResponse.json({ ...data, role: access.effectiveRole })
 }
 
 export async function PATCH(
@@ -42,20 +37,12 @@ export async function PATCH(
 
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
-  // Only owner or editor can update metadata
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member || !['owner', 'editor'].includes(member.role)) {
+  // 一層權限：非遊客成員或管理者可編輯
+  const db = createServiceRoleClient()
+  const access = await getItineraryAccess(db, params.id, user.id)
+  if (!access.canEdit) {
     return NextResponse.json({ error: '無編輯權限' }, { status: 403 })
   }
-
-  // Load current itinerary data
-  const db = createServiceRoleClient()
   const { data: row, error: fetchError } = await db
     .from('itineraries')
     .select('data, version')
@@ -119,18 +106,14 @@ export async function DELETE(
 
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member || member.role !== 'owner') {
-    return NextResponse.json({ error: '只有擁有者可以刪除行程' }, { status: 403 })
+  // 一層權限：建立者或管理者可刪除
+  const db = createServiceRoleClient()
+  const access = await getItineraryAccess(db, params.id, user.id)
+  if (access.effectiveRole !== 'owner') {
+    return NextResponse.json({ error: '只有建立者或管理者可以刪除行程' }, { status: 403 })
   }
 
-  await supabase.from('itineraries').delete().eq('id', params.id)
+  await db.from('itineraries').delete().eq('id', params.id)
 
   return NextResponse.json({ success: true })
 }

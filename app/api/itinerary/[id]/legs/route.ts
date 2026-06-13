@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getItineraryAccess } from '@/lib/auth/access'
 import type { ItineraryDay, TravelLeg } from '@/lib/types/itinerary'
 
 /**
@@ -44,15 +45,9 @@ export async function POST(
     return NextResponse.json({ error: '未登入' }, { status: 401 })
   }
 
-  // 確認使用者可存取此行程
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) {
+  // 路線寫回屬於資料寫入：非遊客成員或管理者
+  const access = await getItineraryAccess(createServiceRoleClient(), params.id, user.id)
+  if (!access.canEdit) {
     return NextResponse.json({ error: '無存取權限' }, { status: 403 })
   }
 

@@ -1,91 +1,93 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
-import { Badge } from '@/components/ui/Badge'
-import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import type { ItineraryMember } from '@/lib/types/collaboration'
+import type { GlobalRole } from '@/lib/types/collaboration'
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: '擁有者',
-  editor: '編輯者',
-  viewer: '觀看者',
+/**
+ * 成員管理（多人模式一層權限版）：
+ * - 建立者/管理者：列出「所有帳號」，勾選開關決定誰看得到此行程
+ * - 一般成員：只看目前成員列表
+ * - 能力由全域角色決定（使用者=可改、遊客=唯讀），此頁只管「可見性」
+ */
+
+interface MemberRow {
+  id: string
+  user_id: string
+  role: string
+  profiles: { id: string; display_name: string | null; avatar_url: string | null; global_role: GlobalRole } | null
 }
 
-const ROLE_VARIANTS: Record<string, 'purple' | 'green' | 'default'> = {
-  owner: 'purple',
-  editor: 'green',
-  viewer: 'default',
+interface UserRow {
+  id: string
+  display_name: string | null
+  avatar_url: string | null
+  global_role: GlobalRole
+}
+
+const GLOBAL_LABELS: Record<GlobalRole, string> = {
+  admin: '管理者',
+  regular: '使用者',
+  guest: '遊客',
+}
+
+const GLOBAL_BADGE: Record<GlobalRole, string> = {
+  admin: 'bg-purple-100 text-purple-700',
+  regular: 'bg-blue-50 text-blue-600',
+  guest: 'bg-gray-100 text-gray-500',
 }
 
 export default function MembersPage({ params }: { params: { id: string } }) {
-  const router = useRouter()
   const { showToast } = useToast()
-  const [members, setMembers] = useState<ItineraryMember[]>([])
-  const [currentRole, setCurrentRole] = useState<string | null>(null)
-  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
-  const [inviteRole, setInviteRole] = useState<'editor' | 'viewer'>('editor')
-  const [loading, setLoading] = useState(false)
-  const [generatingInvite, setGeneratingInvite] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [canManage, setCanManage] = useState(false)
+  const [members, setMembers] = useState<MemberRow[]>([])
+  const [allUsers, setAllUsers] = useState<UserRow[]>([])
+  const [busyUserId, setBusyUserId] = useState<string | null>(null)
 
-  useEffect(() => {
-    async function loadMembers() {
-      setLoading(true)
-      const res = await fetch(`/api/itinerary/${params.id}/members`)
-      if (res.ok) {
-        const data = await res.json()
-        setMembers(data)
-        // Determine current user's role by comparing
-        const selfRes = await fetch(`/api/itinerary/${params.id}`)
-        if (selfRes.ok) {
-          const selfData = await selfRes.json()
-          setCurrentRole(selfData.role)
-        }
-      }
-      setLoading(false)
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/itinerary/${params.id}/members`)
+    if (res.ok) {
+      const data = await res.json()
+      setCanManage(data.canManage)
+      setMembers(data.members ?? [])
+      setAllUsers(data.allUsers ?? [])
     }
-    loadMembers()
+    setLoading(false)
   }, [params.id])
 
-  async function generateInvite() {
-    setGeneratingInvite(true)
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const memberIds = new Set(members.map((m) => m.user_id))
+  const creatorId = members.find((m) => m.role === 'owner')?.user_id
+
+  async function toggleUser(userId: string, visible: boolean) {
+    setBusyUserId(userId)
     const res = await fetch(`/api/itinerary/${params.id}/members`, {
-      method: 'POST',
+      method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ role: inviteRole }),
+      body: JSON.stringify({ userId, visible }),
     })
     if (res.ok) {
-      const data = await res.json()
-      setInviteUrl(data.inviteUrl)
+      await load()
+      showToast(visible ? '已加入此行程' : '已移除可見權限', 'success')
     } else {
-      showToast('產生邀請連結失敗', 'error')
+      const data = await res.json().catch(() => ({}))
+      showToast(data.error ?? '操作失敗', 'error')
     }
-    setGeneratingInvite(false)
+    setBusyUserId(null)
   }
 
-  async function copyInvite() {
-    if (!inviteUrl) return
-    await navigator.clipboard.writeText(inviteUrl)
-    showToast('已複製邀請連結！', 'success')
-  }
-
-  async function removeMember(userId: string) {
-    const res = await fetch(`/api/itinerary/${params.id}/members`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    })
-    if (res.ok) {
-      setMembers((prev) => prev.filter((m) => m.user_id !== userId))
-      showToast('成員已移除', 'success')
-    } else {
-      const data = await res.json()
-      showToast(data.error ?? '移除失敗', 'error')
-    }
-  }
+  // 排序：建立者 → 管理者 → 已勾選 → 其他
+  const sortedUsers = [...allUsers].sort((a, b) => {
+    const rank = (u: UserRow) =>
+      u.id === creatorId ? 0 : u.global_role === 'admin' ? 1 : memberIds.has(u.id) ? 2 : 3
+    return rank(a) - rank(b)
+  })
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -104,84 +106,95 @@ export default function MembersPage({ params }: { params: { id: string } }) {
       </div>
 
       <div className="max-w-lg mx-auto p-4 flex flex-col gap-4">
-        {/* Invite section (owner only) */}
-        {currentRole === 'owner' && (
-          <div className="bg-white rounded-2xl border border-gray-100 p-4">
-            <h2 className="font-medium text-gray-900 mb-3">邀請成員</h2>
-            <div className="flex gap-2 mb-3">
-              {(['editor', 'viewer'] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setInviteRole(r)}
-                  className={`flex-1 py-2 rounded-xl text-sm font-medium tap-target transition-colors ${
-                    inviteRole === r
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {ROLE_LABELS[r]}
-                </button>
-              ))}
-            </div>
-            <Button
-              className="w-full"
-              onClick={generateInvite}
-              loading={generatingInvite}
-              variant="secondary"
-            >
-              產生邀請連結（7天有效）
-            </Button>
-            {inviteUrl && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-xl">
-                <p className="text-xs text-gray-500 mb-2 truncate">{inviteUrl}</p>
-                <Button size="sm" onClick={copyInvite} className="w-full">
-                  📋 複製連結
-                </Button>
-              </div>
-            )}
+        {loading ? (
+          <div className="flex justify-center py-10">
+            <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
           </div>
-        )}
-
-        {/* Members list */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h2 className="font-medium text-gray-900 mb-3">目前成員 ({members.length})</h2>
-          {loading ? (
-            <div className="flex justify-center py-4">
-              <div className="w-5 h-5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-            </div>
-          ) : (
+        ) : canManage ? (
+          /* 建立者/管理者：所有帳號勾選清單 */
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <h2 className="font-medium text-gray-900 mb-1">誰可以看到這個行程</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              勾選的帳號會在自己的行程列表看到此行程。能否修改由帳號角色決定（使用者可修改、遊客只能看）。
+            </p>
             <div className="flex flex-col gap-3">
-              {members.map((member) => {
-                const profile = member.profile
+              {sortedUsers.map((u) => {
+                const isCreator = u.id === creatorId
+                const isAdmin = u.global_role === 'admin'
+                const checked = memberIds.has(u.id)
+                const locked = isCreator || isAdmin
                 return (
-                  <div key={member.id} className="flex items-center gap-3">
-                    <Avatar
-                      name={profile?.display_name ?? '?'}
-                      src={profile?.avatar_url}
-                      size="md"
-                    />
+                  <div key={u.id} className="flex items-center gap-3 min-h-[44px]">
+                    <Avatar name={u.display_name ?? '?'} src={u.avatar_url} size="md" />
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {profile?.display_name ?? '成員'}
-                      </p>
-                      <Badge variant={ROLE_VARIANTS[member.role] ?? 'default'}>
-                        {ROLE_LABELS[member.role]}
-                      </Badge>
+                      <p className="font-medium text-gray-900 truncate">{u.display_name ?? '使用者'}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${GLOBAL_BADGE[u.global_role]}`}>
+                          {GLOBAL_LABELS[u.global_role]}
+                        </span>
+                        {isCreator && (
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                            建立者
+                          </span>
+                        )}
+                        {isAdmin && !isCreator && (
+                          <span className="text-[10px] text-gray-400">永遠可見</span>
+                        )}
+                      </div>
                     </div>
-                    {currentRole === 'owner' && member.role !== 'owner' && (
+                    {locked ? (
+                      <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                    ) : (
                       <button
-                        onClick={() => removeMember(member.user_id)}
-                        className="tap-target text-red-400 hover:text-red-600 p-1 text-sm"
+                        onClick={() => toggleUser(u.id, !checked)}
+                        disabled={busyUserId === u.id}
+                        title={checked ? '取消可見' : '設為可見'}
+                        className={`relative w-12 h-7 rounded-full flex-shrink-0 transition-colors disabled:opacity-50 ${
+                          checked ? 'bg-purple-600' : 'bg-gray-200'
+                        }`}
                       >
-                        移除
+                        <span
+                          className={`absolute top-1 w-5 h-5 bg-white rounded-full shadow transition-all ${
+                            checked ? 'left-6' : 'left-1'
+                          }`}
+                        />
                       </button>
                     )}
                   </div>
                 )
               })}
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          /* 一般成員：只看目前成員 */
+          <div className="bg-white rounded-2xl border border-gray-100 p-4">
+            <h2 className="font-medium text-gray-900 mb-3">目前成員（{members.length}）</h2>
+            <div className="flex flex-col gap-3">
+              {members.map((m) => (
+                <div key={m.id} className="flex items-center gap-3">
+                  <Avatar name={m.profiles?.display_name ?? '?'} src={m.profiles?.avatar_url} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{m.profiles?.display_name ?? '成員'}</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {m.profiles && (
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${GLOBAL_BADGE[m.profiles.global_role]}`}>
+                          {GLOBAL_LABELS[m.profiles.global_role]}
+                        </span>
+                      )}
+                      {m.role === 'owner' && (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">
+                          建立者
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

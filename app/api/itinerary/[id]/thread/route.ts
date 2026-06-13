@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getItineraryAccess } from '@/lib/auth/access'
 
 /**
  * GET /api/itinerary/[id]/thread?mode=adjust|consult
@@ -16,15 +17,9 @@ export async function GET(
 
   const db = createServiceRoleClient()
 
-  // Check that user has at least some access to this itinerary
-  const { data: member } = await db
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) return NextResponse.json({ error: '無存取權限' }, { status: 403 })
+  // 可見即可讀取對話串（成員或管理者）
+  const access = await getItineraryAccess(db, params.id, user.id)
+  if (!access.visible) return NextResponse.json({ error: '無存取權限' }, { status: 403 })
 
   const url = new URL(request.url)
   const mode = url.searchParams.get('mode') === 'consult' ? 'consult' : 'adjust'

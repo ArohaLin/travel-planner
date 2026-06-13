@@ -21,6 +21,16 @@ export async function POST(request: Request) {
   // Use service role for DB writes (bypasses RLS — user already verified above)
   const db = createServiceRoleClient()
 
+  // 遊客唯讀：不可建立行程（一層權限）
+  const { data: requesterProfile } = await db
+    .from('profiles')
+    .select('global_role')
+    .eq('id', user.id)
+    .single()
+  if (requesterProfile?.global_role === 'guest') {
+    return NextResponse.json({ error: '遊客帳號為唯讀，無法建立行程' }, { status: 403 })
+  }
+
   const body = await request.json()
   const {
     destination, originCity, startDate, endDate, totalDays,

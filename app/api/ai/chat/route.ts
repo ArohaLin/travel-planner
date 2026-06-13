@@ -6,6 +6,7 @@ import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
 import { runAfterResponse } from '@/lib/push/waitUntil'
+import { getItineraryAccess } from '@/lib/auth/access'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
@@ -53,15 +54,9 @@ export async function POST(request: Request) {
   // Use service role client for all DB operations (RLS bypassed; user already verified above)
   const db = createServiceRoleClient()
 
-  // Check permissions (must be editor or owner)
-  const { data: member } = await db
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', itineraryId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member || !['owner', 'editor'].includes(member.role)) {
+  // 一層權限：AI 對話僅限非遊客成員或管理者（遊客無 AI）
+  const access = await getItineraryAccess(db, itineraryId, user.id)
+  if (!access.canEdit) {
     return new Response('無修改權限', { status: 403 })
   }
 

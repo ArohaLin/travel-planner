@@ -3,6 +3,7 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { ItineraryPatchSchema, AIPlanComparisonItemSchema } from '@/lib/types/patch'
 import { applyPatch, PatchError } from '@/lib/ai/patchApplier'
 import { enrichPatchForHistory } from '@/lib/history/enrich'
+import { getItineraryAccess } from '@/lib/auth/access'
 import type { Itinerary } from '@/lib/types/itinerary'
 import { z } from 'zod'
 
@@ -16,14 +17,9 @@ export async function POST(
 
   const db = createServiceRoleClient()
 
-  const { data: member } = await db
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member || !['owner', 'editor'].includes(member.role)) {
+  // 一層權限：非遊客成員或管理者可修改
+  const access = await getItineraryAccess(db, params.id, user.id)
+  if (!access.canEdit) {
     return NextResponse.json({ error: '無修改權限' }, { status: 403 })
   }
 

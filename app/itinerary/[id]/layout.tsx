@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@/lib/supabase/server'
+import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getItineraryAccess } from '@/lib/auth/access'
 import { ToastProvider } from '@/components/ui/Toast'
 
 export default async function ItineraryLayout({
@@ -14,15 +15,9 @@ export default async function ItineraryLayout({
 
   if (!user) redirect('/login')
 
-  // Verify access
-  const { data: member } = await supabase
-    .from('itinerary_members')
-    .select('role')
-    .eq('itinerary_id', params.id)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) redirect('/dashboard')
+  // 可見性檢查（成員或管理者）
+  const access = await getItineraryAccess(createServiceRoleClient(), params.id, user.id)
+  if (!access.visible) redirect('/dashboard')
 
   return (
     <ToastProvider>
