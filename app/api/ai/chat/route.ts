@@ -1,6 +1,6 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, getOllamaClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO, MODEL_OLLAMA } from '@/lib/ai/client'
-import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
+import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt, buildConsultPromptLocal } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
 
   // Build system prompt based on mode and model (always 1 plan for adjust mode)
   const systemPrompt = mode === 'consult'
-    ? buildConsultPrompt(itinerary)
+    ? (modelProvider === 'local' ? buildConsultPromptLocal(itinerary) : buildConsultPrompt(itinerary))
     : modelProvider === 'minimax'
       ? buildAdjustPromptMinimax(itinerary)
       : modelProvider === 'gemini'

@@ -580,6 +580,40 @@ ${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 - 適時補充小貼士和注意事項`
 }
 
+/**
+ * 咨詢模式 — 本地 AI（小模型）專用精簡版。
+ * 本地 Ollama（gemma4:12b）context 僅約 8192 token，塞完整行程 JSON 會溢位被截斷
+ * → 模型看不到使用者問題、答非所問。改用「行程摘要」（每天城市/主題/時間+活動），
+ *   體積小（約 1–2k 字），小模型才能正常理解並回答。
+ */
+export function buildConsultPromptLocal(itinerary: Itinerary): string {
+  const m = itinerary.metadata
+  const nights = Math.max(0, itinerary.days.length - 1)
+  const dayLines = itinerary.days
+    .map((d) => {
+      const acts = [...d.activities]
+        .sort((a, b) => a.startTime.localeCompare(b.startTime))
+        .map((a) => `${a.startTime} ${a.title}`)
+        .join('；')
+      const acc = d.accommodation ? `｜宿：${d.accommodation.name}` : ''
+      return `Day ${d.dayIndex + 1}（${d.city}${d.theme ? '・' + d.theme : ''}）：${acts || '—'}${acc}`
+    })
+    .join('\n')
+  const mem = m.aiMemory?.trim() ? `\n使用者偏好/記憶：${m.aiMemory.trim()}\n` : ''
+
+  return `你是一位專業的繁體中文旅遊顧問，為以下這趟旅程提供建議與諮詢。
+
+行程：${m.title}｜目的地 ${m.destination}｜${itinerary.days.length} 天 ${nights} 夜｜${m.travelers} 人
+${dayLines}
+${mem}
+規則：
+- 你只提供建議、資訊與諮詢，不能修改行程；嚴禁輸出 <patch>、<plans> 或任何 JSON。
+- 一定要針對使用者的問題具體回答（不要只打招呼）。
+- 永遠以繁體中文回覆，親切實用。
+- 可協助：景點介紹/餐廳/交通/安全/文化禮儀/天氣/行李/時間合理性/預算建議。
+- 若使用者要求「修改行程」，請說明這是「咨詢服務模式」，引導他切換到「行程調整模式」。`
+}
+
 export function buildGeneratePrompt(params: {
   destination: string
   originCity: string
