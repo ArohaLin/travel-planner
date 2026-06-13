@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { nanoid } from 'nanoid'
 import { useItinerary } from '@/lib/hooks/useItinerary'
@@ -109,6 +109,21 @@ export function ItineraryClient({
 
   // ── 全行程移動緩衝掃描（紅燈/黃燈段數）→ 一鍵請 AI 修正時間 ─────────────────
   const bufferWarnings = useMemo(() => scanBufferWarnings(displayItinerary), [displayItinerary])
+
+  // ── 景點照片背景補抓（舊行程未在生成時抓圖）：偵測到缺照片就觸發一次，只補缺的 ──
+  const photoBackfillRef = useRef(false)
+  useEffect(() => {
+    if (photoBackfillRef.current || !userCanEdit) return
+    const missing = liveItinerary.days.some((d) =>
+      d.activities.some((a) => a.type !== 'transport' && !a.photoRef),
+    )
+    if (!missing) return
+    photoBackfillRef.current = true
+    fetch(`/api/itinerary/${itineraryId}/photos`, { method: 'POST' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => { if (res?.updated > 0) refreshItinerary() })
+      .catch(() => {})
+  }, [liveItinerary, userCanEdit, itineraryId, refreshItinerary])
 
   function handleFixTravelTimes() {
     setChatOpen(true)
@@ -860,6 +875,7 @@ export function ItineraryClient({
         <ActivityDetailModal
           activity={detailActivity}
           dayNumber={activeDay + 1}
+          itineraryId={itineraryId}
           onClose={() => setDetailActivity(null)}
         />
       )}

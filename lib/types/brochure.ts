@@ -20,6 +20,18 @@ export interface BrochurePlace {
   photoRef: string | null
 }
 
+/** AI 生成的宣傳文案（封面副標、亮點標語、特色摘要） */
+export interface BrochureCopy {
+  /** 封面英文副標，如 "Taitung, Taiwan" */
+  subtitle: string
+  /** 一句中文亮點標語 */
+  tagline: string
+  /** 行程特色簡介段落（2–3 句） */
+  intro: string
+  /** 賣點亮點一句話清單（3–5 條） */
+  highlights: string[]
+}
+
 export interface BrochureCache {
   /** 產生時間（ISO） */
   generatedAt: string
@@ -33,6 +45,12 @@ export interface BrochureCache {
   dayPoints: Record<number, BrochurePoint[]>
   /** 旅程總覽地圖點位（每天取一點，標日次） */
   overviewPoints: BrochurePoint[]
+  /** AI 生成文案（可能缺，舊快取或生成失敗時） */
+  copy?: BrochureCopy
+  /** 每天直線距離（公里，概估），key = dayIndex */
+  dayKm?: Record<number, number>
+  /** 全程直線距離合計（公里，概估） */
+  totalKm?: number
 }
 
 /** 公開分享狀態（GET /api/itinerary/[id]/share 回傳） */

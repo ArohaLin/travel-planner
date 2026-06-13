@@ -99,6 +99,16 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **server 工具**：`lib/maps/places.ts`（`findPlace` 一次拿照片+座標、`staticMapUrl`、`placePhotoUrl`、`placeholderSvg`）；server 金鑰用 `GOOGLE_MAPS_SERVER_KEY ?? NEXT_PUBLIC_GOOGLE_MAPS_KEY`（實測此金鑰 server 端無 referer 也可呼叫 Places/Static Maps）。型別 `lib/types/brochure.ts`。
 - ⚠️ 公開頁靠 token 當門禁、用 service role 讀取（繞過 RLS），故不需新增 RLS policy。關閉分享（`public_share=false`）即時讓頁面與所有 proxy 失效。
 
+### ✅ 景點照片 + 宣傳冊 DM 改版（2026-06-13）
+- **景點照片（photoRef）**：`Activity`/`Accommodation` 加 `photoRef` 欄位（背景抓 Google Places 代表照、快取進行程 data）。
+  - 生成行程後 `runAfterResponse` 背景抓圖（不卡卡片產生）；舊行程在行程頁載入時自動補抓一次（`POST /api/itinerary/[id]/photos`，只補缺的）。共用 `lib/maps/activityPhotos.ts` 的 `fetchAndStoreActivityPhotos`。
+  - 景點卡「點進去」詳情視窗（`ActivityDetailModal`）頂部顯示 hero 大圖，走登入版 proxy `GET /api/itinerary/[id]/photo?activityId=`（驗權後串流）。
+  - `forPrompt()` 也濾掉 `photoRef`（與 travelLegs 同）。
+- **宣傳冊重用照片**：產生宣傳冊時先 `fetchAndStoreActivityPhotos` 補齊，再以 `activity.photoRef` 建快取（已抓過不再打 Places）。
+- **DM 風格改版**（參考旅行社範本）：封面加 AI 英文副標＋亮點標語；旅程總覽加 AI 特色簡介＋賣點清單；新增「行程特色」頁（精選景點/特色美食/推薦住宿，從現有資料策展＋照片）；新增「距離參考」（座標 Haversine 概估，每日＋全程公里）；每日章節加「早午晚宿摘要列」＋景點 2 欄排版（桌機 2 欄、手機 1 欄）。
+  - AI 文案：`lib/ai/brochureCopy.ts` 的 `generateBrochureCopy()`（支援 LOCAL_AI、失敗回退預設），結果存 `brochure_cache.copy`；距離存 `brochure_cache.dayKm/totalKm`。
+  - 公開頁無瀏覽器外殼，加浮動返回鈕 `components/brochure/BrochureBackButton.tsx`。
+
 ---
 
 ## 專案結構（重點檔案）

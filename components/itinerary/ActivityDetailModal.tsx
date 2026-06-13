@@ -29,6 +29,8 @@ interface ActivityDetailModalProps {
   activity: Activity
   /** 第幾天（1-based，用於標題顯示） */
   dayNumber?: number
+  /** 行程 id（用於載入景點照片） */
+  itineraryId?: string
   onClose: () => void
 }
 
@@ -58,10 +60,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-export function ActivityDetailModal({ activity, dayNumber, onClose }: ActivityDetailModalProps) {
+export function ActivityDetailModal({ activity, dayNumber, itineraryId, onClose }: ActivityDetailModalProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
   const hasDetailInfo =
     activity.transport || activity.recommendation || activity.tips
+  const hasPhoto = !!activity.photoRef && !!itineraryId
 
   return (
     <>
@@ -73,10 +76,24 @@ export function ActivityDetailModal({ activity, dayNumber, onClose }: ActivityDe
         className="fixed left-0 right-0 bottom-0 z-[60] bg-white rounded-t-3xl shadow-2xl flex flex-col"
         style={{ maxHeight: '88dvh' }}
       >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
+        {hasPhoto ? (
+          /* 景點照片 hero（拖曳把手疊在圖上） */
+          <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
+            <img
+              src={`/api/itinerary/${itineraryId}/photo?activityId=${activity.id}`}
+              alt={activity.title}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-x-0 top-0 flex justify-center pt-3 pointer-events-none">
+              <div className="w-10 h-1 bg-white/80 rounded-full shadow" />
+            </div>
+          </div>
+        ) : (
+          /* Handle */
+          <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+            <div className="w-10 h-1 bg-gray-300 rounded-full" />
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-start justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">

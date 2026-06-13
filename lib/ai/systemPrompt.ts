@@ -1,8 +1,10 @@
 import type { Itinerary } from '@/lib/types/itinerary'
 
 /**
- * 餵給 AI 前先移除地圖衍生欄位（travelLegs / routePolyline / travelSig）：
- * 這些是程式自動算出的，與 AI 規劃無關，留著只會膨脹 prompt、也可能讓 AI 誤改。
+ * 餵給 AI 前先移除程式衍生欄位：
+ * - 天層級：travelLegs / routePolyline / travelSig（地圖實測，與規劃無關）
+ * - 景點/住宿層級：photoRef（背景抓的照片 reference，與規劃無關，留著只會膨脹 prompt）
+ * 這些留著只會膨脹 prompt、也可能讓 AI 誤改。
  */
 function forPrompt(itinerary: Itinerary): Itinerary {
   return {
@@ -12,7 +14,21 @@ function forPrompt(itinerary: Itinerary): Itinerary {
       void travelLegs
       void routePolyline
       void travelSig
-      return rest
+      return {
+        ...rest,
+        activities: rest.activities.map((a) => {
+          const { photoRef, ...act } = a
+          void photoRef
+          return act
+        }),
+        accommodation: rest.accommodation
+          ? (() => {
+              const { photoRef, ...acc } = rest.accommodation!
+              void photoRef
+              return acc
+            })()
+          : rest.accommodation,
+      }
     }),
   }
 }

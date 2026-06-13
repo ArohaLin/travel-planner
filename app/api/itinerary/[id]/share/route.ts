@@ -3,14 +3,28 @@ import { nanoid } from 'nanoid'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getItineraryAccess } from '@/lib/auth/access'
 import { findPlace, mapPool, getServerMapsKey } from '@/lib/maps/places'
+import { fetchAndStoreActivityPhotos } from '@/lib/maps/activityPhotos'
+import { generateBrochureCopy } from '@/lib/ai/brochureCopy'
 import type { GeoLocation, Itinerary } from '@/lib/types/itinerary'
 import type { BrochureCache, BrochurePlace, BrochurePoint, ShareStatus } from '@/lib/types/brochure'
 
-// 產生宣傳冊可能要打數十次 Places（每景點一次），放寬執行時限
-export const maxDuration = 60
+// 產生宣傳冊要打數十次 Places + 一次 AI 文案，放寬執行時限
+export const maxDuration = 120
 
 function hasCoords(loc?: GeoLocation | null): boolean {
   return !!loc && (loc.lat !== 0 || loc.lng !== 0)
+}
+
+/** 兩點直線距離（公里，Haversine） */
+function haversineKm(a: BrochurePoint, b: BrochurePoint): number {
+  const R = 6371
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(b.lat - a.lat)
+  const dLng = toRad(b.lng - a.lng)
+  const lat1 = toRad(a.lat)
+  const lat2 = toRad(b.lat)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(h))
 }
 
 function shareUrl(token: string): string {
@@ -25,6 +39,7 @@ interface Lookup {
   dayIndex: number // 封面用 -1
   order: number // 當天順序（決定地圖標記號碼）；封面 -1
   existing: { lat: number; lng: number } | null // 既有座標（優先採用，省一次查詢偏差）
+  existingPhotoRef: string | null // 景點/住宿已快取的照片 ref（背景抓圖後）；有就不再打 Places
 }
 
 /**
@@ -42,6 +57,7 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
     dayIndex: -1,
     order: -1,
     existing: null,
+    existingPhotoRef: null,
   })
 
   // 每天：景點（依時間排序）+ 住宿
@@ -54,6 +70,7 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
         dayIndex: day.dayIndex,
         order: i,
         existing: hasCoords(a.location) ? { lat: a.location!.lat, lng: a.location!.lng } : null,
+        existingPhotoRef: a.photoRef ?? null,
       })
     })
     if (day.accommodation) {
@@ -65,14 +82,20 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
         existing: hasCoords(day.accommodation.location)
           ? { lat: day.accommodation.location.lat, lng: day.accommodation.location.lng }
           : null,
+        existingPhotoRef: day.accommodation.photoRef ?? null,
       })
     }
   }
 
-  // 查 Places（有金鑰才打）：同時拿照片 + 座標
+  // 查 Places：只在「還缺照片或缺座標」時才打（景點照片多半已在背景抓圖時取得 → 大幅省呼叫）
   const results = await mapPool(
     lookups,
-    async (lk) => (key ? findPlace(lk.query, key) : { photoRef: null, lat: null, lng: null }),
+    async (lk) => {
+      const needPhoto = !lk.existingPhotoRef
+      const needCoords = lk.dayIndex >= 0 && !lk.existing
+      if (!key || (!needPhoto && !needCoords)) return { photoRef: null, lat: null, lng: null }
+      return findPlace(lk.query, key)
+    },
     5,
   )
 
@@ -81,7 +104,7 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
 
   lookups.forEach((lk, idx) => {
     const r = results[idx]
-    photos[lk.cacheKey] = { photoRef: r.photoRef }
+    photos[lk.cacheKey] = { photoRef: lk.existingPhotoRef ?? r.photoRef }
 
     if (lk.dayIndex < 0) return // 封面不進地圖
 
@@ -99,14 +122,24 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
     dayPointsMap.get(lk.dayIndex)!.push({ order: lk.order, point })
   })
 
-  // 整理每天點位（依順序）+ 旅程總覽（每天取第一點、標日次）
+  // 整理每天點位（依順序）+ 旅程總覽（每天取第一點、標日次）+ 距離概估
   const dayPoints: Record<number, BrochurePoint[]> = {}
   const overviewPoints: BrochurePoint[] = []
+  const dayKm: Record<number, number> = {}
+  let totalKm = 0
   for (const day of itin.days) {
     const arr = (dayPointsMap.get(day.dayIndex) ?? []).sort((a, b) => a.order - b.order).map((x) => x.point)
     if (arr.length > 0) {
       dayPoints[day.dayIndex] = arr
       overviewPoints.push({ label: String(day.dayIndex + 1), lat: arr[0].lat, lng: arr[0].lng })
+      // 當天各點依序的直線距離合計
+      let km = 0
+      for (let i = 1; i < arr.length; i++) km += haversineKm(arr[i - 1], arr[i])
+      // 接續前一天最後一點 → 當天第一點（跨日移動）
+      const prevDay = overviewPoints.length >= 2 ? dayPoints[day.dayIndex - 1] : undefined
+      if (prevDay && prevDay.length) km += haversineKm(prevDay[prevDay.length - 1], arr[0])
+      dayKm[day.dayIndex] = Math.round(km)
+      totalKm += km
     }
   }
 
@@ -116,6 +149,8 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
     photos,
     dayPoints,
     overviewPoints,
+    dayKm,
+    totalKm: Math.round(totalKm),
   }
 }
 
@@ -181,7 +216,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   // enable / regenerate：重建快取、發 token、開啟公開
   const token = action === 'regenerate' || !row.share_token ? nanoid(24) : row.share_token
-  const cache = await buildBrochureCache(row.data, getServerMapsKey())
+
+  // 先補抓尚缺的景點照片並寫回 data（景點卡與宣傳冊共用），再以最新 data 建快取
+  await fetchAndStoreActivityPhotos(db, params.id).catch(() => {})
+  const { data: fresh } = await db.from('itineraries').select('data').eq('id', params.id).single()
+  const freshData = (fresh?.data ?? row.data) as Itinerary
+
+  // 地圖快取與 AI 文案並行（兩者都吃 freshData）
+  const [baseCache, copy] = await Promise.all([
+    buildBrochureCache(freshData, getServerMapsKey()),
+    generateBrochureCopy(freshData),
+  ])
+  const cache: BrochureCache = { ...baseCache, copy }
 
   const { error } = await db
     .from('itineraries')

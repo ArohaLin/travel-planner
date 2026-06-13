@@ -68,6 +68,8 @@ export const ActivitySchema = z.object({
   foodItems: z.string().optional(),
   /** 特別需強調注意的簡短註解，顯示在卡片下一行（全部類型） */
   highlight: z.string().optional(),
+  /** Google Places 代表照片 reference（背景抓取後快取；詳情視窗與宣傳冊共用） */
+  photoRef: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({
@@ -82,6 +84,8 @@ export const AccommodationSchema = z.object({
     try { new URL(v); return v } catch { return undefined }
   }),
   notes: z.string().optional(),
+  /** Google Places 代表照片 reference（背景抓取後快取；宣傳冊用） */
+  photoRef: z.string().optional(),
 })
 
 export const CityTransportSchema = z.object({

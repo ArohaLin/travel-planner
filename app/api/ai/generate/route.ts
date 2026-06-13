@@ -6,6 +6,7 @@ import { extractItinerary } from '@/lib/ai/patchParser'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
 import { runAfterResponse } from '@/lib/push/waitUntil'
+import { fetchAndStoreActivityPhotos } from '@/lib/maps/activityPhotos'
 import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { ModelProvider } from '@/lib/ai/client'
 
@@ -237,6 +238,13 @@ export async function POST(request: Request) {
         body: `「${itinerary.metadata.title}」已建立完成，點擊查看`,
         url: `/itinerary/${row.id}`,
       }),
+    )
+
+    // 背景為每個景點抓代表照片（不卡回應；之後景點卡詳情與宣傳冊共用）
+    runAfterResponse(
+      fetchAndStoreActivityPhotos(db, row.id)
+        .then((n) => console.log('[generate] photo prefetch:', n))
+        .catch((e) => console.error('[generate] photo prefetch failed', e)),
     )
 
     return NextResponse.json({ itineraryId: row.id, aiInfo: buildInfo(true, null, null) })
