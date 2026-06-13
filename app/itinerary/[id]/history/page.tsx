@@ -3,6 +3,7 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { getItineraryAccess } from '@/lib/auth/access'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
+import { RestoreControls } from '@/components/itinerary/RestoreControls'
 import { formatRelativeTime } from '@/lib/utils/date'
 import type { ItineraryChange, Profile } from '@/lib/types/collaboration'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
@@ -253,6 +254,15 @@ export default async function HistoryPage({ params }: { params: { id: string } }
     .order('created_at', { ascending: false })
     .limit(50)
 
+  // 哪些節點有快照（可還原）；只抓 id，避免把整批快照傳到前端
+  const { data: snapRows } = await supabase
+    .from('itinerary_changes')
+    .select('id')
+    .eq('itinerary_id', params.id)
+    .not('snapshot', 'is', null)
+  const snapshotIds = new Set((snapRows ?? []).map((r) => r.id))
+  const canRestore = access.effectiveRole === 'owner'
+
   // Load itinerary data to get day labels
   let itinerary: Itinerary | null = null
   try {
@@ -326,6 +336,8 @@ export default async function HistoryPage({ params }: { params: { id: string } }
                 (meta?.metadataFields?.length ?? 0) > 0 ||
                 sortedPrimaryDayIndices.length > 0 ||
                 shiftOps.length > 0
+              const hasSnapshot = snapshotIds.has(change.id)
+              const expandable = hasDetail || hasSnapshot
 
               return (
                 <div key={change.id}>
@@ -356,7 +368,7 @@ export default async function HistoryPage({ params }: { params: { id: string } }
                             </span>
                           </div>
                         </div>
-                        {hasDetail && (
+                        {expandable && (
                           <svg className="w-4 h-4 text-gray-300 flex-shrink-0 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                           </svg>
@@ -470,7 +482,12 @@ export default async function HistoryPage({ params }: { params: { id: string } }
                         </div>
                       )}
 
-                      {!hasDetail && <p className="text-xs text-gray-400">無詳細操作記錄</p>}
+                      {!hasDetail && !hasSnapshot && <p className="text-xs text-gray-400">無詳細操作記錄</p>}
+
+                      {/* 還原：有快照的節點可預覽 / 還原（還原限建立者/管理者） */}
+                      {hasSnapshot && (
+                        <RestoreControls itineraryId={params.id} changeId={change.id} canRestore={canRestore} />
+                      )}
                     </div>
                   </details>
                 </div>

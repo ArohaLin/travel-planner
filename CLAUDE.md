@@ -112,6 +112,14 @@ npm run dev        # 開發伺服器 http://localhost:3000
   - 公開頁無瀏覽器外殼，加浮動返回鈕 `components/brochure/BrochureBackButton.tsx`（原生 history.back + 即時回饋 + 防連按）。
   - 改進版（2026-06-13）：距離參考改用 `travelLegs`（實際開車距離，無 geocode 鋸齒；無則 haversine 淨位移）；總覽＋每日加「純文字行程簡表」；特色去重（同名只一次）並改大圖精選；每日改「簡表＋時間軸（小縮圖）」與特色做出差異化；公開頁覆寫 viewport 開放雙指縮放；圖片 `loading="lazy"`。
 
+### ✅ 行程還原機制（2026-06-14）
+隨時把整份行程還原到某個歷史節點。
+- **快照**：`itinerary_changes` 加 `snapshot`(jsonb)，每次修改後存「該次之後的完整行程」。migration `supabase/migration_restore.sql`（已執行，並回填各行程最新節點為基準點）。
+- **記錄點**：patch route（套用方案/手動編輯/住宿/簡介）與**日期/天數 PATCH route**（原本不寫歷程，已補）都會寫一筆變更＋快照。
+- **API** `app/api/itinerary/[id]/restore`：`GET ?changeId=` 回快照供預覽（可見成員）；`POST {changeId}` 還原（限建立者/管理者）→ 樂觀鎖更新 data、**非破壞式新增一筆 `rollback` 節點**（可再還原回去）。
+- **UI**：歷程頁有快照的節點顯示 `RestoreControls`（`components/itinerary/RestoreControls.tsx`）→ 預覽唯讀逐日摘要 modal ＋二次確認還原。`change_type='rollback'`（schema CHECK 已含）。
+- ⚠️ 舊節點（功能上線前）無快照 → 只能看、不能還原。
+
 ---
 
 ## 專案結構（重點檔案）

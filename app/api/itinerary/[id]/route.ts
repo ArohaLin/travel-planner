@@ -94,6 +94,18 @@ export async function PATCH(
     return NextResponse.json({ error: '更新失敗' }, { status: 500 })
   }
 
+  // 記錄歷程節點（含快照，供還原）；日期/天數變更原本不寫歷程，這裡補上
+  const changeDesc = Array.isArray(daysReplace) ? '修改行程日期／天數' : '修改行程資訊'
+  const { error: logErr } = await db.from('itinerary_changes').insert({
+    itinerary_id: params.id,
+    user_id: user.id,
+    change_type: 'manual_edit',
+    description: changeDesc,
+    patch: { patchId: `meta-${Date.now()}`, description: changeDesc, ops: [], proposedBy: 'user' },
+    snapshot: newData,
+  })
+  if (logErr) console.error('[PATCH itinerary] change log failed', logErr)
+
   return NextResponse.json({ success: true, metadata: newMetadata })
 }
 

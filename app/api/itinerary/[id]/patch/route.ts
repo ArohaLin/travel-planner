@@ -75,6 +75,7 @@ export async function POST(
       change_type: patch.proposedBy === 'ai' ? 'ai_patch' : 'manual_edit',
       patch: enrichedPatch,
       description: selectedPlanTitle ?? patch.description,
+      snapshot: updated, // 還原用：存「該次之後」的完整行程快照
     })
 
     // If this patch came from a chat plan selection, update the message status
