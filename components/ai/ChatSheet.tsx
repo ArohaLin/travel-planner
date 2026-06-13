@@ -110,6 +110,13 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 行程調整模式只用 Gemini：本地 AI 僅限咨詢；任何情況下調整模式都鎖回 gemini
+  useEffect(() => {
+    if (chatMode === 'adjust' && modelProvider !== 'gemini') {
+      setModelProvider('gemini')
+    }
+  }, [chatMode, modelProvider, setModelProvider])
+
   async function handleSend() {
     const text = input.trim()
     if (!text || isStreaming) return
@@ -235,7 +242,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
             {/* 模式切換 Toggle */}
             <div className="flex items-center bg-gray-100 rounded-xl p-0.5 gap-0.5">
               <button
-                onClick={() => { setChatMode('adjust'); clearLastPlans() }}
+                onClick={() => { setChatMode('adjust'); setModelProvider('gemini'); clearLastPlans() }}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
                   chatMode === 'adjust'
@@ -268,34 +275,10 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
             </button>
           </div>
 
-          {/* 模型切換列 */}
+          {/* 模型切換列：調整模式只有 Gemini；咨詢模式可選 Gemini 或 本地 AI */}
           <div className="flex items-center gap-2 px-4 pb-2">
             <span className="text-xs text-gray-400">AI 模型：</span>
             <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-              <button
-                onClick={() => setModelProvider('claude')}
-                disabled={isStreaming}
-                className={clsx(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-50',
-                  modelProvider === 'claude'
-                    ? 'bg-white text-purple-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                ✦ Claude
-              </button>
-              <button
-                onClick={() => setModelProvider('minimax')}
-                disabled={isStreaming}
-                className={clsx(
-                  'px-2.5 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-50',
-                  modelProvider === 'minimax'
-                    ? 'bg-white text-emerald-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                ⚡ MiniMax
-              </button>
               <button
                 onClick={() => setModelProvider('gemini')}
                 disabled={isStreaming}
@@ -308,6 +291,20 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
               >
                 ✦ Gemini
               </button>
+              {chatMode === 'consult' && (
+                <button
+                  onClick={() => setModelProvider('local')}
+                  disabled={isStreaming}
+                  className={clsx(
+                    'px-2.5 py-1 rounded-md text-xs font-medium transition-all disabled:opacity-50',
+                    modelProvider === 'local'
+                      ? 'bg-white text-teal-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  )}
+                >
+                  🖥 本地 AI
+                </button>
+              )}
             </div>
 
             {/* AI 完成通知開關（iOS 需從主畫面開啟的 PWA 才支援） */}

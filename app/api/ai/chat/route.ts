@@ -1,5 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { getAnthropicClient, getNvidiaClient, getGeminiClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO } from '@/lib/ai/client'
+import { getAnthropicClient, getNvidiaClient, getGeminiClient, getOllamaClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO, MODEL_OLLAMA } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt } from '@/lib/ai/systemPrompt'
 import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
@@ -22,6 +22,7 @@ const MAX_HISTORY_CHARS: Record<ModelProvider, number> = {
   claude:   30000,  // Claude 200k context，非常寬裕
   gemini:   30000,  // Gemini 1M context，非常寬裕
   minimax:   6000,  // MiniMax 32k tokens，保守限制
+  local:     6000,  // 本地 Ollama gemma4:12b，context 較小，保守限制
 }
 
 export async function POST(request: Request) {
@@ -140,7 +141,35 @@ export async function POST(request: Request) {
       }
 
       try {
-        if (isLocalAI()) {
+        if (modelProvider === 'local') {
+          // ── 本地 AI（自架 Ollama，OpenAI 相容、串流）──────────────────────
+          // 放在 isLocalAI() 之前：使用者明確選「本地 AI」就一律走 Ollama（連本機開發也是）
+          const ollama = getOllamaClient()
+          const openaiStream = await ollama.chat.completions.create({
+            model: MODEL_OLLAMA,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              ...historyMessages,
+              { role: 'user', content: userMessage },
+            ],
+            stream: true,
+            stream_options: { include_usage: true },
+          })
+          for await (const chunk of openaiStream) {
+            const delta = chunk.choices[0]?.delta?.content
+            if (delta) {
+              fullResponse += delta
+              safeEnqueue(delta)
+            }
+            if (chunk.usage) {
+              usage = {
+                inputTokens: chunk.usage.prompt_tokens ?? 0,
+                outputTokens: chunk.usage.completion_tokens ?? 0,
+                totalTokens: chunk.usage.total_tokens ?? 0,
+              }
+            }
+          }
+        } else if (isLocalAI()) {
           // ── 本機測試模式：用 claude -p 取代 API（不計費，非串流）──────────
           // 本機模式不傳歷史（claude -p 是單次生成，歷史會讓 prompt 過大導致逾時）
           const text = await runLocalClaude({
@@ -394,11 +423,13 @@ export async function POST(request: Request) {
       const success = !streamError && !!fullResponse.trim() && !fullResponse.startsWith('[AI 未回應')
       const errInfo = streamError ? classifyError(streamError) : null
       const costUSD = computeCostUSD(modelProvider, usage, actualModel ?? undefined)
+      // 「本機 claude -p」開發覆寫：僅在非 Ollama（local provider）時才算數
+      const usedLocalClaude = isLocalAI() && modelProvider !== 'local'
       const aiInfo: AIResultInfo = {
         timestamp: new Date().toISOString(),
         scene: mode,
-        provider: isLocalAI() ? 'local' : modelProvider,
-        model: isLocalAI()
+        provider: usedLocalClaude ? 'local' : modelProvider,
+        model: usedLocalClaude
           ? 'claude -p（本機訂閱制）'
           : actualModel ?? MODEL_PRICING[modelProvider].label,
         success,

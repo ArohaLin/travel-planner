@@ -6,11 +6,9 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { COMMON_CURRENCIES, getCurrencyName } from '@/lib/utils/currency'
 import type { MemberProfile } from '@/lib/types/itinerary'
-import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { useAIInfoHistory, saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
 import { usePushNotification } from '@/lib/hooks/usePushNotification'
 import { AIInfoBar } from '@/components/ai/AIInfoBar'
-import clsx from 'clsx'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -65,8 +63,6 @@ export default function NewItineraryPage() {
   const [error, setError]             = useState('')
   const [validationError, setValidationError] = useState('')
 
-  // ── Model preference ─────────────────────────────────────────────────────────
-  const { modelProvider, setModelProvider } = useModelPreference()
   const push = usePushNotification()
   const aiInfoHistory = useAIInfoHistory()
 
@@ -151,7 +147,7 @@ export default function NewItineraryPage() {
           style: selectedStyles,
           totalBudget: budget ? parseInt(budget) : undefined,
           specialRequests: specialRequests.trim() || undefined,
-          modelProvider,
+          modelProvider: 'gemini', // 建立行程固定用 Gemini
         }),
       })
       const data = await res.json()
@@ -310,48 +306,6 @@ export default function NewItineraryPage() {
             </div>
           )}
 
-          {/* 模型選擇 */}
-          {!loading && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-4">
-              <p className="text-xs font-medium text-gray-500 mb-2">AI 模型</p>
-              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
-                <button
-                  onClick={() => setModelProvider('claude')}
-                  className={clsx(
-                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
-                    modelProvider === 'claude'
-                      ? 'bg-white text-purple-700 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  ✦ Claude
-                </button>
-                <button
-                  onClick={() => setModelProvider('gemini')}
-                  className={clsx(
-                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
-                    modelProvider === 'gemini'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  ✦ Gemini
-                </button>
-                <button
-                  onClick={() => setModelProvider('minimax')}
-                  className={clsx(
-                    'flex-1 py-1.5 rounded-md text-xs font-medium transition-all',
-                    modelProvider === 'minimax'
-                      ? 'bg-white text-emerald-700 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  )}
-                >
-                  ⚡ MiniMax
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-400 mt-2 px-1">建立行程與對話調整均使用所選模型</p>
-            </div>
-          )}
 
           {!loading && (
             <Button size="lg" className="w-full" onClick={handleGenerate}>

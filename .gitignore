@@ -26,6 +26,11 @@ yarn-error.log*
 # local env files
 .env*.local
 
+# 金鑰／機密（絕不上傳）
+*-api-key.txt
+ollama-api-key.txt
+comfyui-api-key.txt
+
 # vercel
 .vercel
 
@@ -41,3 +46,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 本地 AI 內部文件 / 參考範本（不入庫）
+OLLAMA_*.md
+*.pdf

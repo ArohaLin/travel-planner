@@ -32,7 +32,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `APP_ANTHROPIC_KEY`        ← 注意：不是 ANTHROPIC_API_KEY
-- `NVIDIA_API_KEY`           ← 備用 AI 模型（MiniMax）
+- `NVIDIA_API_KEY`           ← 備用 AI 模型（MiniMax，UI 已不再提供，程式保留）
+- `OLLAMA_API_KEY`           ← 本地 AI（自架 Ollama，OpenAI 相容端點 api.alala.uk）；已設於 Vercel Production
 - `INVITE_JWT_SECRET`
 - `NEXT_PUBLIC_APP_URL`
 
@@ -239,6 +240,16 @@ resolution TEXT, resolved_at TIMESTAMPTZ, created_at TIMESTAMPTZ
 
 ## AI 系統設計
 
+### 模型策略（2026-06-13）
+| 情境 | 可用模型 |
+|---|---|
+| 建立行程（generate） | **只用 Gemini**（wizard 已移除選擇器、固定送 gemini） |
+| 行程調整（adjust） | **只用 Gemini**（ChatSheet 模型列只剩 Gemini，切到調整自動鎖 gemini） |
+| 咨詢服務（consult） | **Gemini ＋ 本地 AI**（使用者可切換） |
+
+- **本地 AI** = 自架 Ollama（OpenAI 相容端點 `https://api.alala.uk/v1`，模型 `gemma4:12b`，串流）。`lib/ai/client.ts` 的 `getOllamaClient()`，provider 值為 `'local'`，定價 0。chat route 的 `local` 分支放在 `isLocalAI()`（claude -p 開發覆寫）**之前** → 明確選本地 AI 一律走 Ollama。需家中電腦＋Ollama 開機，否則 502。
+- Claude / MiniMax 的 UI 選項已移除（後端程式保留，未使用）。`useModelPreference` 只接受 `gemini` / `local`，預設 `gemini`。
+
 ### 兩種模式
 | | 行程調整模式 | 咨詢服務模式 |
 |---|---|---|
@@ -369,3 +380,5 @@ git push    # → Vercel 自動偵測 main branch push 並重新部署
 | 2026-05-24 | `INVITE_JWT_SECRET` 移除 fallback 預設值，缺少時直接拋錯 |
 | 2026-05-24 | `middleware.ts` matcher 移除 `api/` 排除，涵蓋所有路由 |
 | 2026-05-24 | `.claude/` 本機設定資料夾加入 `.gitignore` |
+| 2026-06-13 | git remote URL 內嵌的 PAT（`ghp_…`）移除，改乾淨 URL + `gh` 認證推送；舊 token 已請使用者於 GitHub 撤銷 |
+| 2026-06-13 | `ollama-api-key.txt` / `OLLAMA_*.md` / `*.pdf` 加入 `.gitignore`，避免金鑰與內部文件入庫 |

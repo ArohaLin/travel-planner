@@ -1,5 +1,5 @@
 import type { ModelProvider } from './client'
-import { MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO } from './client'
+import { MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO, MODEL_OLLAMA } from './client'
 
 /**
  * AI 回傳資訊 + 費用估算
@@ -37,6 +37,11 @@ export const MODEL_PRICING: Record<ModelProvider, ModelPrice> = {
     label: MODEL_MINIMAX,     // minimaxai/minimax-m2.7（經 NVIDIA 端點）
     inputPerM: 0.30,
     outputPerM: 1.20,
+  },
+  local: {
+    label: MODEL_OLLAMA,      // 自架 Ollama gemma4:12b（自費電力，API 計價 0）
+    inputPerM: 0,
+    outputPerM: 0,
   },
 }
 
