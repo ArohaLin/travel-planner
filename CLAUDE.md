@@ -259,9 +259,13 @@ resolution TEXT, resolved_at TIMESTAMPTZ, created_at TIMESTAMPTZ
 | UI | PlanSelector 卡片 | 一般聊天泡泡 |
 
 ### Chat Route 餵給 AI 的 input
-1. System prompt（含完整行程 JSON 在 `<current_itinerary>` 標籤）
-2. 最近 14 則聊天記錄（大型行程 6 則）
+1. System prompt（含完整行程 JSON 在 `<current_itinerary>` 標籤；本地 AI 咨詢改用精簡摘要 `buildConsultPromptLocal`）
+2. 最近聊天記錄：`HISTORY_LIMIT = 30` 則，再依模型字元預算 `MAX_HISTORY_CHARS` 從新往舊裁切（Gemini 30,000、本地 AI 4,000）
 3. 使用者當次輸入
+
+> 對話保留設計：訊息永久存 `chat_messages`、依「行程×模式」分對話串。
+> 視窗顯示上限 30 則 / 20,000 字（`useChat`）；AI 實際參考 30 則 + 上述字元預算（兩者對齊）。
+> `aiMemory` 為長期記憶，不受則數限制、每次都帶。
 
 ### Patch 格式
 ```typescript

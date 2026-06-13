@@ -13,8 +13,8 @@ import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
 
 // ── 歷史記錄限制 ─────────────────────────────────────────────────────────────
-// 從 DB 最多載入幾則（粗略上限）
-const HISTORY_LIMIT = 12
+// 從 DB 最多載入幾則餵給 AI（與前端視窗顯示的 30 則對齊：AI 記得 ≈ 你看到的）
+const HISTORY_LIMIT = 30
 
 // 送給 AI 的 history 字元上限（依模型，避免超過 context window）
 // 1 中文字 ≈ 1.5 token；為 system prompt + 回覆保留充分空間
@@ -22,7 +22,7 @@ const MAX_HISTORY_CHARS: Record<ModelProvider, number> = {
   claude:   30000,  // Claude 200k context，非常寬裕
   gemini:   30000,  // Gemini 1M context，非常寬裕
   minimax:   6000,  // MiniMax 32k tokens，保守限制
-  local:     6000,  // 本地 Ollama gemma4:12b，context 較小，保守限制
+  local:     4000,  // 本地 Ollama gemma4:12b，context 僅 8192：prompt+歷史壓低，留足回答空間
 }
 
 export async function POST(request: Request) {
