@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { BrochureView } from '@/components/brochure/BrochureView'
+import { BrochureBackButton } from '@/components/brochure/BrochureBackButton'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { BrochureCache } from '@/lib/types/brochure'
 
@@ -57,6 +58,7 @@ export default async function SharePage({ params }: { params: { token: string } 
 
   return (
     <main className="min-h-screen bg-white">
+      <BrochureBackButton />
       <BrochureView itinerary={row.data} cache={row.brochure_cache} token={params.token} />
     </main>
   )
