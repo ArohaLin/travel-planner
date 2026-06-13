@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { ItineraryPatchSchema } from '@/lib/types/patch'
+import { ItineraryPatchSchema, AIPlanComparisonItemSchema } from '@/lib/types/patch'
 import { applyPatch, PatchError } from '@/lib/ai/patchApplier'
+import { enrichPatchForHistory } from '@/lib/history/enrich'
 import type { Itinerary } from '@/lib/types/itinerary'
+import { z } from 'zod'
 
 export async function POST(
   request: Request,
@@ -30,6 +32,9 @@ export async function POST(
   const chatMessageId = typeof body.chatMessageId === 'string' ? body.chatMessageId : null
   const selectedPlanIndex = typeof body.selectedPlanIndex === 'number' ? body.selectedPlanIndex : null
   const selectedPlanTitle = typeof body.selectedPlanTitle === 'string' ? body.selectedPlanTitle : null
+  // 方案的前後比較表（歷程顯示用，寬鬆驗證、失敗就略過）
+  const comparisonParse = z.array(AIPlanComparisonItemSchema).safeParse(body.selectedPlanComparison)
+  const selectedPlanComparison = comparisonParse.success ? comparisonParse.data : null
 
   const parseResult = ItineraryPatchSchema.safeParse(body.patch)
   if (!parseResult.success) {
@@ -61,12 +66,19 @@ export async function POST(
       return NextResponse.json({ error: '行程已被其他成員更新，請重新整理後再試' }, { status: 409 })
     }
 
+    // 歷程強化：用「修改前」的行程算出人話差異（整天重構/住宿/行程資訊），
+    // 連同方案標題與前後比較表存進歷程（_meta 鍵，applyPatch 用的是原 patch 不受影響）
+    const enrichedPatch = enrichPatchForHistory(itinerary, patch, {
+      title: selectedPlanTitle,
+      comparison: selectedPlanComparison,
+    })
+
     await db.from('itinerary_changes').insert({
       itinerary_id: params.id,
       user_id: user.id,
       change_type: patch.proposedBy === 'ai' ? 'ai_patch' : 'manual_edit',
-      patch: patch,
-      description: patch.description,
+      patch: enrichedPatch,
+      description: selectedPlanTitle ?? patch.description,
     })
 
     // If this patch came from a chat plan selection, update the message status

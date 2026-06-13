@@ -147,6 +147,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
           chatMessageId: lastPlansMessageId,
           selectedPlanIndex: plan.planIndex,
           selectedPlanTitle: plan.title,
+          selectedPlanComparison: plan.comparison ?? null,
         }),
       })
 
