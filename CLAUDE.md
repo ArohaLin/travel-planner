@@ -2,7 +2,7 @@
 
 > 路徑：`/Users/aroha/travel-planner`
 > 語言：所有回覆、commit 訊息、UI 文字一律使用**繁體中文**
-> 最後更新：2026-05-24
+> 最後更新：2026-06-13
 > GitHub：https://github.com/ArohaLin/travel-planner
 > 正式網址：https://travel-planner-delta-blond.vercel.app
 
@@ -80,14 +80,24 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - 重新產生 icon：`node scripts/generate-icon-v4.mjs`（來源圖：scripts/icon-source-v4.png，手繪風地球+飛機+行李箱）
 
 ### ✅ 地圖功能（Google Maps）
-- 套件：`@vis.gl/react-google-maps`，需環境變數 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`（已在 .env.local，**尚未加到 Vercel**）
+- 套件：`@vis.gl/react-google-maps`，需環境變數 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`（已在 .env.local，**也已設定於 Vercel Production**）
 - 行程頁 `行程 / 地圖` Toggle 切換（`ItineraryClient.tsx`）
 - 預設顯示目前選中那天，頂部天數 chips 可複選看多天
 - 每個景點數字 marker（①②③…）依行程順序，連接路線折線（含方向箭頭）；住宿為「宿」方形 marker
 - 多天模式不同天用不同顏色（DAY_COLORS）
 - 座標策略：開地圖時前端用 Maps JS Geocoder 查座標 → 存回 DB 的 `location` 欄位（`/api/itinerary/[id]/geo`），下次開啟即時顯示
 - 相關檔案：`components/map/MapView.tsx`、`components/map/ItineraryMap.tsx`、`lib/maps/geocode.ts`
-- ⚠️ 部署前必須在 Vercel Production 環境新增 `NEXT_PUBLIC_GOOGLE_MAPS_KEY`，否則地圖不顯示
+- `NEXT_PUBLIC_GOOGLE_MAPS_KEY` 已設定於 Vercel Production；Google Cloud 已啟用 **Maps JavaScript API / Places API / Maps Static API**（後兩者為宣傳冊功能所需）
+
+### ✅ 宣傳冊檢視（對外唯讀分享，2026-06-13）
+旅行社 DM 風格的對外行程手冊：任何人有連結即可瀏覽（免登入、不能修改）。
+- **入口**：行程頁 header 的 📄 按鈕（限建立者/管理者）→ 產生／複製連結／重新整理內容／換連結／關閉。元件 `components/brochure/BrochureShareButton.tsx`。
+- **公開頁**：`/share/[token]`（server component，`middleware.ts` 已放行 `/share`、`/api/share`）。雜誌長捲頁 `components/brochure/BrochureView.tsx`：封面 → 旅程總覽（風格標籤＋總覽路線圖＋每日大綱）→ 逐日章節（路線圖＋每景點照片＋介紹）→ 結尾。**依需求不顯示任何金額**，亦不顯示 notes／預約連結／成員個資。
+- **零付費 API 重點**：產生宣傳冊時抓一次照片 reference＋座標，快取進 `itineraries.brochure_cache`（JSONB，與 AI 用的 `data` 分開）；公開訪客只讀快取。照片／地圖一律經自家 proxy（`/api/share/[token]/photo`、`/map`）出圖，Google 金鑰永不出現在公開 HTML，並設 CDN 快取（`s-maxage`）保護成本。
+- **資料**：`itineraries` 加 `public_share`(bool) / `share_token`(unique) / `brochure_cache`(jsonb)，migration `supabase/migration_brochure.sql`（已執行）。
+- **產生 API**：`/api/itinerary/[id]/share`（owner 限定）GET 狀態、POST `{action: enable|disable|regenerate}`。座標優先沿用景點既有 `location`，Places 查到的當 fallback；查無照片/地圖一律回優雅 SVG 佔位（版面不破）。
+- **server 工具**：`lib/maps/places.ts`（`findPlace` 一次拿照片+座標、`staticMapUrl`、`placePhotoUrl`、`placeholderSvg`）；server 金鑰用 `GOOGLE_MAPS_SERVER_KEY ?? NEXT_PUBLIC_GOOGLE_MAPS_KEY`（實測此金鑰 server 端無 referer 也可呼叫 Places/Static Maps）。型別 `lib/types/brochure.ts`。
+- ⚠️ 公開頁靠 token 當門禁、用 service role 讀取（繞過 RLS），故不需新增 RLS policy。關閉分享（`public_share=false`）即時讓頁面與所有 proxy 失效。
 
 ---
 
@@ -279,7 +289,7 @@ interface ItineraryPatch {
 目前**無明確待辦**，Phase 1 + Phase 2 均已完成。
 
 若要繼續開發，參考方向：
-1. **行程分享連結**：允許未登入使用者以唯讀方式預覽行程
+1. ~~**行程分享連結**：允許未登入使用者以唯讀方式預覽行程~~ ✅ 已完成（見上方「宣傳冊檢視」）
 2. **推播通知**：協作者修改時通知其他成員
 3. **地圖整合**：在 ActivityCard 顯示 Google Maps 縮圖
 4. **AI 補強**：行程費用自動加總、當地天氣查詢

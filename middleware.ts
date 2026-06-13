@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 
-const PUBLIC_ROUTES = ['/login', '/register', '/itinerary']
+// /share + /api/share：對外宣傳冊公開頁與其圖片 proxy（免登入）
+const PUBLIC_ROUTES = ['/login', '/register', '/itinerary', '/share', '/api/share']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
