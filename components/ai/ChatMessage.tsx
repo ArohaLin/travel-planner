@@ -94,9 +94,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
         {hasPendingPlans && (
           <div className="bg-purple-50 border border-purple-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
             <p className="text-sm font-semibold text-purple-800">
-              ✨ AI 提供了 {plans!.length} 個調整方案
+              ✨ AI 已提供調整方案
             </p>
-            <p className="text-xs text-purple-500 mt-0.5">請在下方選擇、取消或重新生成</p>
+            <p className="text-xs text-purple-500 mt-0.5">請在下方確認套用或取消</p>
           </div>
         )}
 
@@ -105,15 +105,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <div className="bg-green-50 border border-green-200 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
             {selected ? (
               <>
-                <p className="text-sm font-semibold text-green-800">
-                  ✓ 已套用方案 {selected.planIndex}
-                </p>
+                <p className="text-sm font-semibold text-green-800">✓ 已套用調整</p>
                 {selected.title && (
                   <p className="text-xs text-green-600 mt-0.5">「{selected.title}」</p>
                 )}
               </>
             ) : (
-              <p className="text-sm font-semibold text-green-800">✓ 方案已套用</p>
+              <p className="text-sm font-semibold text-green-800">✓ 已套用調整</p>
             )}
           </div>
         )}

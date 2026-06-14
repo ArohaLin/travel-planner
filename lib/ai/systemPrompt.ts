@@ -480,7 +480,7 @@ CRITICAL RULES for <plans> block:
 [
   {
     "planIndex": 1,
-    "title": "方案一：簡短標題",
+    "title": "最佳方案：簡短標題",
     "description": "具體說明調整內容（2-3句繁體中文）",
     "rationale": "推薦原因（1-2句繁體中文）",
     "comparison": [

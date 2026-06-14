@@ -159,7 +159,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
       })
 
       if (res.ok) {
-        showToast(`方案 ${plan.planIndex}「${plan.title}」已套用！`, 'success')
+        showToast(`「${plan.title}」已套用！`, 'success')
         // Optimistically mark the message as applied so the green badge renders immediately
         if (lastPlansMessageId) {
           markPlanApplied(lastPlansMessageId, plan.planIndex, plan.title)
@@ -352,7 +352,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
               </p>
               <p className="text-xs text-gray-400 mb-4">
                 {chatMode === 'adjust'
-                  ? 'AI 將提供 3 個方案供你選擇'
+                  ? 'AI 會提供 1 個調整方案，你決定是否採用'
                   : 'AI 提供旅遊建議，不修改行程'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center">

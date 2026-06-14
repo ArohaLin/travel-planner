@@ -415,7 +415,7 @@ export async function POST(request: Request) {
             title: mode === 'adjust' ? '✨ AI 調整方案完成' : '💬 AI 咨詢回覆完成',
             body:
               mode === 'adjust'
-                ? `「${tripTitle}」的調整方案已就緒，點擊查看並選擇方案`
+                ? `「${tripTitle}」的調整方案已就緒，點擊查看並確認是否採用`
                 : `「${tripTitle}」的咨詢回覆已完成，點擊查看`,
             url: `/itinerary/${itineraryId}`,
           }),
