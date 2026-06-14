@@ -9,6 +9,12 @@ export function formatDateShort(dateStr: string): string {
   return format(parseISO(dateStr), 'M/d', { locale: zhTW })
 }
 
+/** 該日期是星期幾，回傳單字（日／一／二…六），給「8/15（五）」這種顯示用 */
+const WEEKDAY_TW = ['日', '一', '二', '三', '四', '五', '六']
+export function formatWeekday(dateStr: string): string {
+  return WEEKDAY_TW[parseISO(dateStr).getDay()]
+}
+
 export function formatDateRange(startDate: string, endDate: string): string {
   const start = parseISO(startDate)
   const end = parseISO(endDate)
