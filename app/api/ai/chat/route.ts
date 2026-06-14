@@ -12,6 +12,9 @@ import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
 
+// 行程調整（Gemini Pro）複雜請求可能跑 2–3 分鐘，明確放寬函式逾時上限，避免被中途砍掉
+export const maxDuration = 300
+
 // ── 歷史記錄限制 ─────────────────────────────────────────────────────────────
 // 從 DB 最多載入幾則餵給 AI（與前端視窗顯示的 30 則對齊：AI 記得 ≈ 你看到的）
 const HISTORY_LIMIT = 30
