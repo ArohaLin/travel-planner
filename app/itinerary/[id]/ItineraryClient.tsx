@@ -89,6 +89,7 @@ export function ItineraryClient({
   const [localMetadata, setLocalMetadata] = useState<TripMetadata | null>(null)
   const [modal, setModal] = useState<ModalState>({ open: false })
   const [saving, setSaving] = useState(false)
+  const [fixingTravel, setFixingTravel] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<Activity | null>(null)
   const [conflictDialog, setConflictDialog] = useState<ConflictDialogState | null>(null)
 
@@ -128,14 +129,35 @@ export function ItineraryClient({
       .catch(() => {})
   }, [liveItinerary, userCanEdit, itineraryId, refreshItinerary])
 
-  function handleFixTravelTimes() {
-    setChatOpen(true)
-    chat.queueMessage(
-      '請修正行程中所有移動時間「⚠️不足」與「🟡偏緊」的段落：依系統提供的「實際路程時間」清單，' +
-        '把每段預留的移動時間調整為清單中的「建議預留」值（後移後續活動或縮短前一活動停留）。' +
-        '只調整時間，不要增刪活動、不要更換景點。',
-      modelProvider,
-    )
+  // 一鍵「自動修正路程時間」：伺服器端跑 AI 並直接套用（背景切走也會完成、完成會推播）。
+  // 仍是快照式可還原；套用後靠 Realtime 自動更新畫面。
+  async function handleFixTravelTimes() {
+    if (fixingTravel) return
+    setFixingTravel(true)
+    showToast('AI 正在自動修正路程時間，可先離開 App，完成會通知並自動更新', 'info')
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}/fix-travel-times`, { method: 'POST' })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        if (data.noChange) {
+          showToast('目前沒有需要修正的移動時間', 'info')
+        } else {
+          await refreshItinerary()
+          showToast('已自動修正路程時間 ✅', 'success')
+        }
+      } else if (res.status === 409) {
+        showToast('行程剛被更新，請再試一次', 'error')
+      } else if (res.status === 422) {
+        showToast(data.error ?? 'AI 沒有提供可套用的修正，請改用聊天微調', 'error')
+      } else {
+        showToast(data.error ?? '修正失敗，請再試一次', 'error')
+      }
+    } catch {
+      // 可能是切到背景使請求中斷；伺服器仍會完成並推播，回前景時 Realtime 會更新
+      showToast('已在背景處理，完成會通知並自動更新', 'info')
+    } finally {
+      setFixingTravel(false)
+    }
   }
 
   const handleMetadataUpdated = useCallback((newMetadata: TripMetadata) => {
@@ -605,21 +627,25 @@ export function ItineraryClient({
             <div className="px-4 pt-3">
               <button
                 onClick={handleFixTravelTimes}
-                disabled={chat.isStreaming}
+                disabled={fixingTravel}
                 className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm text-left transition-colors min-h-[44px] ${
                   bufferWarnings.red > 0
                     ? 'bg-red-50 border-red-100 text-red-700 active:bg-red-100'
                     : 'bg-amber-50 border-amber-100 text-amber-700 active:bg-amber-100'
                 } disabled:opacity-50`}
               >
-                <span className="flex-shrink-0">{bufferWarnings.red > 0 ? '⚠️' : '🟡'}</span>
+                <span className="flex-shrink-0">
+                  {fixingTravel ? (
+                    <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-[-2px]" />
+                  ) : bufferWarnings.red > 0 ? '⚠️' : '🟡'}
+                </span>
                 <span className="flex-1">
                   {bufferWarnings.red > 0 && `${bufferWarnings.red} 段移動時間不足`}
                   {bufferWarnings.red > 0 && bufferWarnings.amber > 0 && '、'}
                   {bufferWarnings.amber > 0 && `${bufferWarnings.amber} 段偏緊`}
                 </span>
                 <span className="flex-shrink-0 font-semibold">
-                  {chat.isStreaming ? 'AI 處理中…' : '請 AI 修正 →'}
+                  {fixingTravel ? 'AI 自動修正中…' : '一鍵自動修正 →'}
                 </span>
               </button>
             </div>
