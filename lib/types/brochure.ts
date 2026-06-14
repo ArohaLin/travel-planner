@@ -51,6 +51,11 @@ export interface BrochureCache {
   dayKm?: Record<number, number>
   /** 全程直線距離合計（公里，概估） */
   totalKm?: number
+  /**
+   * 產生這份宣傳冊時，行程的 version。
+   * 之後行程 version 變大 → 代表行程已變動、宣傳冊內容可能過時（stale）。
+   */
+  sourceVersion?: number
 }
 
 /** 公開分享狀態（GET /api/itinerary/[id]/share 回傳） */
@@ -60,4 +65,6 @@ export interface ShareStatus {
   url: string | null
   generatedAt: string | null
   photoCount: number
+  /** 行程在宣傳冊產生後又有變動 → 宣傳冊可能不是最新（提示更新用） */
+  stale: boolean
 }

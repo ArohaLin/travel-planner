@@ -1,13 +1,23 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { ShareStatus } from '@/lib/types/brochure'
 
 /**
- * 建立者/管理者專用：產生並管理「對外宣傳冊」公開連結。
- * 自包含 modal：載入狀態 → 產生（抓照片/地圖）→ 顯示連結可複製 → 重新產生 / 關閉。
+ * 旅程宣傳冊入口（所有「看得到行程」的成員都會看到）。
+ *
+ * - canManage（建立者 / 管理者）：可產生、重新整理、換連結、關閉分享。
+ * - 其他成員：只能檢視 / 複製已產生的宣傳冊連結；尚未產生時顯示提示。
+ * - 行程在宣傳冊產生後又有變動（stale）→ 圖示上出現琥珀色小點，提示需更新。
+ *   掛載即抓一次狀態，讓小點不必開啟 modal 就能顯示。
  */
-export function BrochureShareButton({ itineraryId }: { itineraryId: string }) {
+export function BrochureShareButton({
+  itineraryId,
+  canManage,
+}: {
+  itineraryId: string
+  canManage: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<null | string>(null)
@@ -28,6 +38,11 @@ export function BrochureShareButton({ itineraryId }: { itineraryId: string }) {
       setLoading(false)
     }
   }, [itineraryId])
+
+  // 掛載即抓一次：讓「需更新」小點不必開 modal 就能顯示
+  useEffect(() => {
+    loadStatus()
+  }, [loadStatus])
 
   function openModal() {
     setOpen(true)
@@ -67,14 +82,67 @@ export function BrochureShareButton({ itineraryId }: { itineraryId: string }) {
   }
 
   const enabled = status?.enabled
+  const stale = !!status?.stale
+
+  // 已產生的連結區塊（檢視者與管理者共用）
+  const linkBlock = (
+    <div>
+      <label className="text-xs text-gray-500 mb-1 block">公開連結</label>
+      <div className="flex gap-2">
+        <input
+          readOnly
+          value={status?.url ?? ''}
+          onFocus={(e) => e.currentTarget.select()}
+          className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-gray-50"
+        />
+        <button
+          onClick={copyLink}
+          className="flex-shrink-0 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-xl"
+        >
+          {copied ? '已複製' : '複製'}
+        </button>
+      </div>
+      <div className="flex items-center gap-3 mt-2">
+        <a
+          href={status?.url ?? '#'}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-purple-600 underline"
+        >
+          在新分頁開啟預覽 ↗
+        </a>
+        {status?.photoCount ? (
+          <span className="text-xs text-gray-400">已抓 {status.photoCount} 張照片</span>
+        ) : (
+          <span className="text-xs text-amber-500">無照片（地圖金鑰未啟用）</span>
+        )}
+      </div>
+    </div>
+  )
+
+  // 「需更新」提示橫幅
+  const staleBanner = stale && (
+    <div className="px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-700 text-center leading-relaxed">
+      {canManage
+        ? '⚠️ 行程在宣傳冊產生後又有變動，建議「重新整理內容」讓宣傳冊更新。'
+        : '⚠️ 行程已變動，目前宣傳冊可能不是最新版本。'}
+    </div>
+  )
 
   return (
     <>
-      {/* Header 按鈕 */}
-      <button onClick={openModal} className="tap-target text-gray-500 p-1" title="分享宣傳冊">
+      {/* Header 按鈕（含 stale 小點） */}
+      <button
+        onClick={openModal}
+        className="tap-target text-gray-500 p-1 relative"
+        title={canManage ? '分享宣傳冊' : '檢視宣傳冊'}
+      >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
         </svg>
+        {stale && (
+          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white" />
+        )}
       </button>
 
       {open && (
@@ -83,17 +151,33 @@ export function BrochureShareButton({ itineraryId }: { itineraryId: string }) {
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
             <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-md w-full max-h-[88dvh] overflow-y-auto">
               <div className="text-3xl text-center mb-2">📖</div>
-              <h3 className="font-semibold text-gray-900 text-center mb-1">分享旅程宣傳冊</h3>
+              <h3 className="font-semibold text-gray-900 text-center mb-1">
+                {canManage ? '分享旅程宣傳冊' : '旅程宣傳冊'}
+              </h3>
               <p className="text-xs text-gray-400 text-center mb-5">
-                產生一份對外、唯讀的精裝行程手冊，任何人有連結即可瀏覽（免登入、不能修改）。
+                {canManage
+                  ? '產生一份對外、唯讀的精裝行程手冊，任何人有連結即可瀏覽（免登入、不能修改）。'
+                  : '這是建立者分享的對外、唯讀行程手冊，可開啟或複製連結分享給他人。'}
               </p>
 
               {loading ? (
                 <div className="flex justify-center py-8">
                   <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
                 </div>
+              ) : !canManage ? (
+                /* 檢視者：只能看 / 複製連結 */
+                !enabled ? (
+                  <p className="text-sm text-gray-500 text-center py-6">
+                    建立者尚未產生宣傳冊。
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {staleBanner}
+                    {linkBlock}
+                  </div>
+                )
               ) : !enabled ? (
-                /* 尚未開啟 */
+                /* 管理者・尚未開啟 */
                 <div className="flex flex-col gap-3">
                   <button
                     onClick={() => act('enable', 'enable')}
@@ -114,50 +198,24 @@ export function BrochureShareButton({ itineraryId }: { itineraryId: string }) {
                   </p>
                 </div>
               ) : (
-                /* 已開啟 */
+                /* 管理者・已開啟 */
                 <div className="flex flex-col gap-4">
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1 block">公開連結</label>
-                    <div className="flex gap-2">
-                      <input
-                        readOnly
-                        value={status?.url ?? ''}
-                        onFocus={(e) => e.currentTarget.select()}
-                        className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-xs text-gray-700 bg-gray-50"
-                      />
-                      <button
-                        onClick={copyLink}
-                        className="flex-shrink-0 px-4 py-2 text-sm font-medium text-white bg-purple-600 rounded-xl"
-                      >
-                        {copied ? '已複製' : '複製'}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-3 mt-2">
-                      <a
-                        href={status?.url ?? '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-purple-600 underline"
-                      >
-                        在新分頁開啟預覽 ↗
-                      </a>
-                      {status?.photoCount ? (
-                        <span className="text-xs text-gray-400">已抓 {status.photoCount} 張照片</span>
-                      ) : (
-                        <span className="text-xs text-amber-500">無照片（地圖金鑰未啟用）</span>
-                      )}
-                    </div>
-                  </div>
+                  {staleBanner}
+                  {linkBlock}
 
                   <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
                     <button
                       onClick={() => act('enable', 'refresh')}
                       disabled={busy !== null}
-                      className="w-full py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-2xl disabled:opacity-60 flex items-center justify-center gap-2"
+                      className={`w-full py-2.5 text-sm font-medium rounded-2xl disabled:opacity-60 flex items-center justify-center gap-2 ${
+                        stale
+                          ? 'text-white bg-amber-500'
+                          : 'text-gray-700 border border-gray-200'
+                      }`}
                     >
                       {busy === 'refresh' ? (
                         <>
-                          <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                          <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                           更新中…
                         </>
                       ) : (

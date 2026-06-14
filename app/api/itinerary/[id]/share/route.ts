@@ -161,53 +161,64 @@ async function buildBrochureCache(itin: Itinerary, key: string | null): Promise<
 
 interface ShareRow {
   data: Itinerary
+  version: number
   public_share: boolean
   share_token: string | null
   brochure_cache: BrochureCache | null
 }
 
-/** 共用：驗證登入 + owner 權限，回傳 db 與行程列。失敗回傳 NextResponse。 */
-async function authOwner(id: string) {
+/**
+ * 共用：驗證登入 + 行程可見，回傳 db / 行程列 / 是否可管理。失敗回傳 NextResponse。
+ * - 任何「看得到此行程」的成員（含遊客）都可讀狀態與檢視宣傳冊。
+ * - 只有 owner（建立者或管理者）可管理（產生 / 重新整理 / 換連結 / 關閉）。
+ */
+async function loadShare(id: string) {
   const supabase = createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: NextResponse.json({ error: '未登入' }, { status: 401 }) }
 
   const db = createServiceRoleClient()
   const access = await getItineraryAccess(db, id, user.id)
-  if (access.effectiveRole !== 'owner') {
-    return { error: NextResponse.json({ error: '只有建立者或管理者可以管理分享' }, { status: 403 }) }
+  if (!access.visible) {
+    return { error: NextResponse.json({ error: '無權限' }, { status: 403 }) }
   }
   const { data: row } = await db
     .from('itineraries')
-    .select('data, public_share, share_token, brochure_cache')
+    .select('data, version, public_share, share_token, brochure_cache')
     .eq('id', id)
     .single()
   if (!row) return { error: NextResponse.json({ error: '行程不存在' }, { status: 404 }) }
-  return { db, row: row as ShareRow }
+  return { db, row: row as ShareRow, canManage: access.effectiveRole === 'owner' }
 }
 
-function statusOf(row: ShareRow): ShareStatus {
+function statusOf(row: ShareRow, canManage: boolean): ShareStatus {
   const enabled = row.public_share && !!row.share_token
+  const cache = row.brochure_cache
+  const sourceVersion = cache?.sourceVersion ?? null
   return {
     enabled,
     token: row.share_token,
     url: row.share_token ? shareUrl(row.share_token) : null,
-    generatedAt: row.brochure_cache?.generatedAt ?? null,
-    photoCount: row.brochure_cache
-      ? Object.values(row.brochure_cache.photos).filter((p) => p.photoRef).length
-      : 0,
+    generatedAt: cache?.generatedAt ?? null,
+    photoCount: cache ? Object.values(cache.photos).filter((p) => p.photoRef).length : 0,
+    // 行程在宣傳冊產生後又有變動（version 變大）→ 提示需要更新。
+    // canManage 與否都回報，讓檢視者也知道內容可能不是最新。
+    stale: enabled && sourceVersion != null && row.version > sourceVersion,
   }
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const r = await authOwner(params.id)
+  const r = await loadShare(params.id)
   if ('error' in r) return r.error
-  return NextResponse.json(statusOf(r.row))
+  return NextResponse.json(statusOf(r.row, r.canManage))
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  const r = await authOwner(params.id)
+  const r = await loadShare(params.id)
   if ('error' in r) return r.error
+  if (!r.canManage) {
+    return NextResponse.json({ error: '只有建立者或管理者可以管理分享' }, { status: 403 })
+  }
   const { db, row } = r
 
   const { action } = (await req.json().catch(() => ({}))) as {
@@ -216,23 +227,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   if (action === 'disable') {
     await db.from('itineraries').update({ public_share: false }).eq('id', params.id)
-    return NextResponse.json({ ...statusOf({ ...row, public_share: false }) })
+    return NextResponse.json(statusOf({ ...row, public_share: false }, true))
   }
 
   // enable / regenerate：重建快取、發 token、開啟公開
   const token = action === 'regenerate' || !row.share_token ? nanoid(24) : row.share_token
 
-  // 先補抓尚缺的景點照片並寫回 data（景點卡與宣傳冊共用），再以最新 data 建快取
+  // 先補抓尚缺的景點照片並寫回 data（景點卡與宣傳冊共用），再以最新 data 建快取。
+  // fetchAndStoreActivityPhotos 只寫 data、不會動 version，所以這裡讀到的 version
+  // 即「此宣傳冊對應的行程版本」，存進快取當 stale 比對基準。
   await fetchAndStoreActivityPhotos(db, params.id).catch(() => {})
-  const { data: fresh } = await db.from('itineraries').select('data').eq('id', params.id).single()
+  const { data: fresh } = await db.from('itineraries').select('data, version').eq('id', params.id).single()
   const freshData = (fresh?.data ?? row.data) as Itinerary
+  const sourceVersion = (fresh?.version ?? row.version) as number
 
   // 地圖快取與 AI 文案並行（兩者都吃 freshData）
   const [baseCache, copy] = await Promise.all([
     buildBrochureCache(freshData, getServerMapsKey()),
     generateBrochureCopy(freshData),
   ])
-  const cache: BrochureCache = { ...baseCache, copy }
+  const cache: BrochureCache = { ...baseCache, copy, sourceVersion }
 
   const { error } = await db
     .from('itineraries')
@@ -243,6 +257,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   return NextResponse.json(
-    statusOf({ ...row, public_share: true, share_token: token, brochure_cache: cache }),
+    statusOf({ ...row, version: sourceVersion, public_share: true, share_token: token, brochure_cache: cache }, true),
   )
 }
