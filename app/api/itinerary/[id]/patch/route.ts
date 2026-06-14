@@ -4,6 +4,8 @@ import { ItineraryPatchSchema, AIPlanComparisonItemSchema } from '@/lib/types/pa
 import { applyPatch, PatchError } from '@/lib/ai/patchApplier'
 import { enrichPatchForHistory } from '@/lib/history/enrich'
 import { getItineraryAccess } from '@/lib/auth/access'
+import { fetchAndStoreActivityPhotos } from '@/lib/maps/activityPhotos'
+import { runAfterResponse } from '@/lib/push/waitUntil'
 import type { Itinerary } from '@/lib/types/itinerary'
 import { z } from 'zod'
 
@@ -77,6 +79,11 @@ export async function POST(
       description: selectedPlanTitle ?? patch.description,
       snapshot: updated, // 還原用：存「該次之後」的完整行程快照
     })
+
+    // 背景補「新景點/住宿」缺的座標與照片（不卡回應）：AI 調整新增的景點才會有正確路程時間
+    runAfterResponse(
+      fetchAndStoreActivityPhotos(db, params.id).catch((e) => console.error('[patch] enrich failed', e)),
+    )
 
     // If this patch came from a chat plan selection, update the message status
     if (chatMessageId && selectedPlanIndex !== null) {

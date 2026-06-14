@@ -102,7 +102,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 
 ### ✅ 景點照片 + 宣傳冊 DM 改版（2026-06-13）
 - **景點照片（photoRef）**：`Activity`/`Accommodation` 加 `photoRef` 欄位（背景抓 Google Places 代表照、快取進行程 data）。
-  - 生成行程後 `runAfterResponse` 背景抓圖（不卡卡片產生）；舊行程在行程頁載入時自動補抓一次（`POST /api/itinerary/[id]/photos`，只補缺的）。共用 `lib/maps/activityPhotos.ts` 的 `fetchAndStoreActivityPhotos`。
+  - `lib/maps/activityPhotos.ts` 的 `fetchAndStoreActivityPhotos` 背景**補「照片＋座標」**（只補缺的、不覆寫既有、同名共用一次搜尋）。觸發點：① 生成行程後 ② **每次 patch 套用後**（`runAfterResponse`，AI 調整新增景點自動補座標）③ 行程頁載入偵測到缺照片/座標時 `POST /api/itinerary/[id]/photos` ④ 產生宣傳冊前。
+  - **為何補座標**：座標缺的景點算路程時會被跳過 → 該段移動時間算成「跳過該點」的錯誤距離（曾發生「六十石山→市區 3 小時」其實是花蓮→台東）。補座標後 RoutePrefetcher 因路線指紋改變會自動重算正確分段。座標一律來自 Places（查詢帶城市）、只補缺的。
   - 景點卡「點進去」詳情視窗（`ActivityDetailModal`）頂部顯示 hero 大圖，與宣傳冊**共用** `GET /api/photo?ref=`。
   - **共用照片 proxy `/api/photo?ref=<photoRef>`（2026-06-14）**：卡片詳情與宣傳冊共用同一端點、以 `photoRef` 為快取鍵（`public, s-maxage, immutable`）→ 同一張照片整站只向 Google 取一次（跨卡片/宣傳冊/所有人共用 CDN）。最貴的 Places「搜尋」本就一次（存 `photoRef`），這裡再讓「取圖」也只算一次。middleware 已放行 `/api/photo`（公開；景點照片為 Google 公開內容、ref 不可枚舉）。原 `/api/share/[token]/photo` 與 `/api/itinerary/[id]/photo` 已移除。
   - `forPrompt()` 也濾掉 `photoRef`（與 travelLegs 同）。

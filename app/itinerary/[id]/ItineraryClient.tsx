@@ -110,12 +110,15 @@ export function ItineraryClient({
   // ── 全行程移動緩衝掃描（紅燈/黃燈段數）→ 一鍵請 AI 修正時間 ─────────────────
   const bufferWarnings = useMemo(() => scanBufferWarnings(displayItinerary), [displayItinerary])
 
-  // ── 景點照片背景補抓（舊行程未在生成時抓圖）：偵測到缺照片就觸發一次，只補缺的 ──
+  // ── 背景補景點「照片＋座標」（舊行程或缺座標時）：偵測到缺就觸發一次，只補缺的 ──
+  // 缺座標會讓路程時間算錯（中途點被跳過），所以照片或座標任一缺就補。
   const photoBackfillRef = useRef(false)
   useEffect(() => {
     if (photoBackfillRef.current || !userCanEdit) return
+    const noCoords = (loc?: { lat: number; lng: number } | null) => !loc || (loc.lat === 0 && loc.lng === 0)
     const missing = liveItinerary.days.some((d) =>
-      d.activities.some((a) => a.type !== 'transport' && !a.photoRef),
+      d.activities.some((a) => a.type !== 'transport' && (!a.photoRef || noCoords(a.location)))
+      || (!!d.accommodation && noCoords(d.accommodation.location)),
     )
     if (!missing) return
     photoBackfillRef.current = true
