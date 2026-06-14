@@ -126,7 +126,8 @@ CREATE TABLE IF NOT EXISTS public.chat_messages (
   role          TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
   content       TEXT NOT NULL,
   patch         JSONB,
-  patch_status  TEXT NOT NULL DEFAULT 'none' CHECK (patch_status IN ('none', 'applied', 'rejected')),
+  -- none=無方案；pending_selection=AI 已產生方案待使用者選擇；applied=已套用；cancelled=已取消；rejected=保留
+  patch_status  TEXT NOT NULL DEFAULT 'none' CHECK (patch_status IN ('none', 'pending_selection', 'applied', 'cancelled', 'rejected')),
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 

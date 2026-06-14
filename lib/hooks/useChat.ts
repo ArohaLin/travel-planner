@@ -122,7 +122,12 @@ export function useChat(itineraryId: string): UseChatReturn {
             const msg = payload.new as ChatMessage
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev
-              return [...prev, msg]
+              // 真實 user 訊息到達 → 移除同內容的樂觀暫存，避免重複顯示
+              const base =
+                msg.role === 'user'
+                  ? prev.filter((m) => !(m.id.startsWith('optimistic-') && m.content === msg.content))
+                  : prev
+              return [...base, msg]
             })
             // When the DB assistant message arrives, clear the streaming display
             if (msg.role === 'assistant') {
@@ -176,9 +181,15 @@ export function useChat(itineraryId: string): UseChatReturn {
   // ── 補救式重新載入 ─────────────────────────────────────────────────────────
   // 行動裝置鎖屏/切 App 時，串流 fetch 與 Realtime websocket 都可能中斷；
   // 伺服器端其實已把 AI 回應（含待選方案）存進 DB，但前端漏接、畫面上什麼都沒有。
-  // 這裡重新抓最新訊息並還原 pending_selection 方案，於「回前景／重開視窗」時呼叫。
-  const refreshMessages = useCallback(() => {
-    if (!threadId || isStreaming) return
+  // 從 DB 重新抓最新訊息並還原 pending_selection 方案。
+
+  // 最新 isStreaming（給 visibilitychange 監聽器用，避免閉包抓到舊值）
+  const isStreamingRef = useRef(false)
+  useEffect(() => { isStreamingRef.current = isStreaming }, [isStreaming])
+
+  // 真正的重載（無防護）：呼叫端自行決定時機
+  const reloadFromDb = useCallback(() => {
+    if (!threadId) return
     const supabase = getSupabaseBrowserClient()
     supabase
       .from('chat_messages')
@@ -205,17 +216,33 @@ export function useChat(itineraryId: string): UseChatReturn {
         setLastPlans(null)
         setLastPlansMessageId(null)
       })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threadId, isStreaming])
+  }, [threadId])
 
-  // 頁面回到前景（手機解鎖/切回 App）時自動補載
+  // 開啟視窗/手動補載：串流進行中不打擾（避免蓋掉正在串流的畫面）
+  const refreshMessages = useCallback(() => {
+    if (isStreaming) return
+    reloadFromDb()
+  }, [isStreaming, reloadFromDb])
+
+  // 頁面回到前景（手機解鎖/切回 App）時自動補救
+  // 重點：背景化會讓串流 fetch 卡死、isStreaming 卡在 true。若仍沿用「isStreaming 就跳過」
+  // 會永遠補不回來 → 這裡先中止已失效的串流、清掉串流畫面狀態，再「無條件」從 DB 重載，
+  // 確保 AI 已存進 DB 的回覆與待選方案不會「消失」。
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') refreshMessages()
+      if (document.visibilityState !== 'visible') return
+      if (isStreamingRef.current) {
+        // 背景期間串流必定失效 → 丟掉它，改用伺服器已存好的 DB 結果
+        abortRef.current?.abort()
+        setIsStreaming(false)
+        setStreamingText('')
+        setIsGeneratingPlans(false)
+      }
+      reloadFromDb()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [refreshMessages])
+  }, [reloadFromDb])
 
   const sendMessage = useCallback(
     async (text: string, iId: string, modelProvider: ModelProvider = 'claude') => {
@@ -226,6 +253,24 @@ export function useChat(itineraryId: string): UseChatReturn {
       setIsGeneratingPlans(false)
       setLastPlans(null)
       setLastPlansMessageId(null)
+
+      // 樂觀顯示自己送出的訊息：原本要等 Realtime 回傳才看得到，
+      // 行動裝置一送完就切背景時會漏接 → 畫面看起來「訊息不見了」。
+      // 先以暫時 id 顯示，真實訊息（同內容）由 Realtime 送達時再替換。
+      const optimisticId = `optimistic-${Date.now()}`
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: optimisticId,
+          thread_id: threadId,
+          user_id: null,
+          role: 'user',
+          content: text,
+          patch: null,
+          patch_status: 'none',
+          created_at: new Date().toISOString(),
+        },
+      ])
 
       abortRef.current = new AbortController()
       let completedSuccessfully = false
