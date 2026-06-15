@@ -63,7 +63,7 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
 
   const sensors = useSensors(
     useSensor(MouseOnlySensor, { activationConstraint: { distance: 8 } as PointerActivationConstraint }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 1000, tolerance: 15 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 500, tolerance: 15 } }),
   )
 
   const activeActs = actsOf(active)
