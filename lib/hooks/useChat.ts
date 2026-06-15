@@ -87,14 +87,17 @@ export function useChat(itineraryId: string): UseChatReturn {
         .order('created_at', { ascending: true })
         .limit(DISPLAY_MSG_LIMIT)
 
-      // 字元數限制：從最新往最舊累加，超過就捨棄
+      // 字元數限制：從最新往最舊累加，超過就停止往更舊收（但「絕不丟棄較新的訊息」）。
+      // 舊版用 filter：若某一則特別長（例如殘缺 JSON）會被整則丟掉 → 對話看起來「突然消失」。
+      // 改為一旦超量就 break，保證最新對話一定保留。
       let charSum = 0
-      const msgs = (allMsgs ?? []).slice().reverse().filter(m => {
-        const len = (m.content ?? '').length
-        if (charSum + len > DISPLAY_CHAR_LIMIT) return false
-        charSum += len
-        return true
-      }).reverse()
+      const msgs: typeof allMsgs = []
+      for (const m of (allMsgs ?? []).slice().reverse()) {
+        msgs.push(m)
+        charSum += (m.content ?? '').length
+        if (charSum > DISPLAY_CHAR_LIMIT) break
+      }
+      msgs.reverse()
 
       if (cancelled) return
       const typedMsgs = (msgs as ChatMessage[]) ?? []

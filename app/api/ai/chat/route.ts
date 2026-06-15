@@ -1,7 +1,7 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, getOllamaClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO, MODEL_OLLAMA } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt, buildConsultPromptLocal } from '@/lib/ai/systemPrompt'
-import { extractPlans, stripPlansTag, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
+import { extractPlans, stripPlansTag, stripLeakedPlanJson, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
@@ -359,6 +359,8 @@ export async function POST(request: Request) {
       // #15：擷取並更新行程記憶，並從顯示文字移除 <memory> 區塊
       const newMemory = extractMemory(fullResponse)
       let displayText = stripMemoryTag(stripPlansTag(fullResponse))
+      // adjust 模式：再清掉「漏包 <plans> 標籤」的方案 JSON（code fence / 裸陣列），避免外漏
+      if (mode === 'adjust') displayText = stripLeakedPlanJson(displayText)
 
       if (newMemory && newMemory !== itinerary.metadata.aiMemory) {
         try {
@@ -373,9 +375,18 @@ export async function POST(request: Request) {
         }
       }
 
-      // 若 adjust 模式下 displayText 為空但有 plans，補上提示文字
-      if (!displayText && mode === 'adjust') {
-        displayText = '已根據您的需求生成調整方案，請確認是否套用。'
+      // adjust 模式的顯示文字補強：
+      //   有方案但沒說明文字 → 補一句確認提示；
+      //   嘗試輸出方案卻解析失敗（多半是項目太多、輸出在 token 上限被截斷）→ 明確引導分批，
+      //   避免顯示「請確認是否套用」卻沒有方案、或讓殘缺 JSON 外漏。
+      if (mode === 'adjust') {
+        if (plans && plans.length > 0) {
+          if (!displayText) displayText = '已根據您的需求生成調整方案，請確認是否套用。'
+        } else if (/<plans>|"planIndex"|"ops"\s*:|"add_activity"/.test(fullResponse)) {
+          // 嘗試輸出方案卻解析失敗（截斷、或漏包 <plans> 標籤）→ 明確引導，不顯示殘缺 JSON
+          displayText =
+            '這次要調整的內容較多，AI 產生的方案格式不完整、無法直接套用。建議分批處理（例如一次只加入 3–5 個願望清單景點），或直接再試一次。'
+        }
       }
 
       // ── 寫入 AI 對話 log ────────────────────────────────────────────────────
