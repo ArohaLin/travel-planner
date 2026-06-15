@@ -17,7 +17,7 @@ export interface Recommendation {
   lat: number | null
   lng: number | null
   address: string | null
-  /** 我方精選短評（非 Google 內容） */
+  /** 我方精選短評（非 Google 內容）；longlist 為空字串 */
   editorialReason: string
   /** best_for：親子友善 / 海景 / 雨天備案… */
   tags: string[]
@@ -30,6 +30,8 @@ export interface Recommendation {
   reviewsSnapshot: number | null
   photoRef: string | null
   status: 'published' | 'hidden'
+  /** featured = 人工策展精選；longlist = 名額外漏網之魚（僅依評價排序） */
+  tier: 'featured' | 'longlist'
   builtAt: string
 }
 
@@ -73,6 +75,7 @@ export function mapRecommendation(row: any): Recommendation {
     reviewsSnapshot: row.reviews_snapshot ?? null,
     photoRef: row.photo_ref ?? null,
     status: row.status,
+    tier: (row.tier ?? 'featured') as 'featured' | 'longlist',
     builtAt: row.built_at,
   }
 }

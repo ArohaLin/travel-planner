@@ -17,6 +17,7 @@ export function getServerMapsKey(): string | null {
 }
 
 export interface PlaceLookup {
+  placeId: string | null
   photoRef: string | null
   lat: number | null
   lng: number | null
@@ -27,7 +28,7 @@ export interface PlaceLookup {
  * 查無 / 失敗一律回 null 欄位，絕不拋錯（避免中斷整批產生）。
  */
 export async function findPlace(query: string, key: string): Promise<PlaceLookup> {
-  const empty: PlaceLookup = { photoRef: null, lat: null, lng: null }
+  const empty: PlaceLookup = { placeId: null, photoRef: null, lat: null, lng: null }
   const q = query.trim()
   if (!q) return empty
 
@@ -35,7 +36,7 @@ export async function findPlace(query: string, key: string): Promise<PlaceLookup
     'https://maps.googleapis.com/maps/api/place/findplacefromtext/json' +
     `?input=${encodeURIComponent(q)}` +
     '&inputtype=textquery' +
-    '&fields=place_id,name,geometry,photos' +
+    '&fields=place_id,geometry,photos' +
     '&language=zh-TW&region=tw' +
     `&key=${key}`
 
@@ -52,6 +53,7 @@ export async function findPlace(query: string, key: string): Promise<PlaceLookup
     const c = json.candidates?.[0]
     if (!c) return empty
     return {
+      placeId: (c as { place_id?: string }).place_id ?? null,
       photoRef: c.photos?.[0]?.photo_reference ?? null,
       lat: c.geometry?.location?.lat ?? null,
       lng: c.geometry?.location?.lng ?? null,

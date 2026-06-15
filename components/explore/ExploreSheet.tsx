@@ -74,7 +74,8 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   // 已在行程：以名稱比對（不論 A 智慧加入或 C 由 AI 排入都能反映）
   const titles = new Set(days.flatMap((d) => d.activities.map((a) => a.title)))
   const cats = CATEGORY_ORDER.filter((c) => (recs ?? []).some((r) => r.category === c))
-  const shown = (recs ?? []).filter((r) => r.category === cat)
+  const featured = (recs ?? []).filter((r) => r.category === cat && r.tier === 'featured')
+  const longlist = (recs ?? []).filter((r) => r.category === cat && r.tier === 'longlist')
 
   // B：依離 targetDay 遠近排序
   const sortedWishlist = targetDayIndex == null
@@ -157,9 +158,18 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
                   ))}
                 </div>
                 <div className="px-4 py-3 space-y-3">
-                  {shown.map((r) => (
+                  {featured.map((r) => (
                     <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
                   ))}
+                  {longlist.length > 0 && (
+                    <LonglistSection
+                      items={longlist}
+                      inWishlist={inWishlist}
+                      titles={titles}
+                      busyId={busyId}
+                      onAdd={addToWishlist}
+                    />
+                  )}
                 </div>
               </>
             )
@@ -223,6 +233,69 @@ function RecCard({ rec, added, busy, onAdd }: { rec: Recommendation; added: bool
       )}
       <button onClick={onAdd} disabled={added || busy} className={clsx('w-full py-2.5 text-sm font-medium border-t border-gray-100 flex items-center justify-center gap-1.5', added ? 'text-gray-400' : 'text-purple-600 active:bg-purple-50')}>
         {busy ? '加入中…' : added ? '✓ 已加入' : '♡ 加入願望清單'}
+      </button>
+    </div>
+  )
+}
+
+/* ── 漏網之魚展開區 ───────────────────────────────────────────────────────── */
+function LonglistSection({ items, inWishlist, titles, busyId, onAdd }: {
+  items: Recommendation[]
+  inWishlist: Set<string>
+  titles: Set<string>
+  busyId: string | null
+  onAdd: (r: Recommendation) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2 py-2 text-xs text-gray-400"
+      >
+        <span className="flex-1 h-px bg-gray-100" />
+        <span className="flex-shrink-0">{open ? '▴' : '▾'} 其他不錯的選擇（{items.length}）</span>
+        <span className="flex-1 h-px bg-gray-100" />
+      </button>
+      {open && (
+        <div className="space-y-2">
+          <p className="text-[11px] text-gray-400 text-center">以下未經精選策展，依評分排序，供參考</p>
+          {items.map((r) => (
+            <LongCard
+              key={r.id}
+              rec={r}
+              added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)}
+              busy={busyId === r.id}
+              onAdd={() => onAdd(r)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── 漏網之魚卡（精簡版）──────────────────────────────────────────────────── */
+function LongCard({ rec, added, busy, onAdd }: { rec: Recommendation; added: boolean; busy: boolean; onAdd: () => void }) {
+  const img = photoUrl(rec.photoRef)
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex items-center gap-2.5 px-3 py-2.5">
+      {img
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={img} alt={rec.name} loading="lazy" className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-100" />
+        : <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200" />}
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-gray-900 text-sm truncate">{rec.name}</p>
+        {rec.ratingSnapshot != null && (
+          <p className="text-xs text-amber-500">★ {rec.ratingSnapshot}{rec.reviewsSnapshot != null && <span className="text-gray-400">（{rec.reviewsSnapshot}）</span>}</p>
+        )}
+      </div>
+      <button
+        onClick={onAdd}
+        disabled={added || busy}
+        className={clsx('flex-shrink-0 text-sm px-2.5 py-1.5 rounded-lg', added ? 'text-gray-400' : 'text-purple-600 border border-purple-200 active:bg-purple-50')}
+      >
+        {busy ? '…' : added ? '✓' : '♡'}
       </button>
     </div>
   )
