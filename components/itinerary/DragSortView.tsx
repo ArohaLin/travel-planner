@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { clsx } from 'clsx'
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors, useDroppable,
@@ -24,14 +24,19 @@ interface Props {
   initialDayIndex: number
   onApply: (ops: PatchOp[], changedCount: number) => void | Promise<void>
   onCancel: () => void
+  onDirtyChange?: (dirty: boolean) => void
   saving?: boolean
 }
 
-export function DragSortView({ days, initialDayIndex, onApply, onCancel, saving }: Props) {
+export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirtyChange, saving }: Props) {
   const [active, setActive] = useState(initialDayIndex)
   // 本地工作副本（只放有改動的天）；未改動的天讀原始 days
   const [working, setWorking] = useState<Record<number, Activity[]>>({})
   const [dragId, setDragId] = useState<string | null>(null)
+
+  useEffect(() => {
+    onDirtyChange?.(Object.keys(working).length > 0)
+  }, [working, onDirtyChange])
 
   const origOf = (di: number) => days.find((d) => d.dayIndex === di)?.activities ?? []
   const actsOf = (di: number) => working[di] ?? origOf(di)

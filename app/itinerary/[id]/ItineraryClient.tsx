@@ -76,6 +76,8 @@ export function ItineraryClient({
   const [exploreTargetDay, setExploreTargetDay] = useState<number | null>(null)
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
+  const [dragHasChanges, setDragHasChanges] = useState(false)
+  const [dragSwitchConfirm, setDragSwitchConfirm] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
@@ -350,6 +352,7 @@ export function ItineraryClient({
     const ok = await submitPatch(patch)
     if (ok) {
       setDragMode(false)
+      setDragHasChanges(false)
       showToast('已套用新順序，路程時間將自動重算', 'success')
     }
   }
@@ -680,9 +683,14 @@ export function ItineraryClient({
           </button>
           <button
             onClick={() => {
-              // 行程 → 地圖：同步到目前檢視的那一天
+              // 行程 → 地圖：有未套用的拖拉調整時先確認
+              if (dragMode && dragHasChanges) {
+                setDragSwitchConfirm(true)
+                return
+              }
               setMapSelectedDays([activeDay])
               setDragMode(false)
+              setDragHasChanges(false)
               setViewMode('map')
             }}
             className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
@@ -701,7 +709,8 @@ export function ItineraryClient({
             initialDayIndex={activeDay}
             saving={saving}
             onApply={handleApplyReorder}
-            onCancel={() => setDragMode(false)}
+            onCancel={() => { setDragMode(false); setDragHasChanges(false) }}
+            onDirtyChange={setDragHasChanges}
           />
         ) : (
         <>
@@ -1022,6 +1031,40 @@ export function ItineraryClient({
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* 拖拉排序未套用時切換地圖的確認 dialog */}
+      {dragSwitchConfirm && (
+        <>
+          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={() => setDragSwitchConfirm(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full">
+              <div className="text-3xl text-center mb-3">⇅</div>
+              <h3 className="font-semibold text-gray-900 text-center mb-2">拖拉排序尚未套用</h3>
+              <p className="text-sm text-gray-500 text-center mb-5">切換到地圖後，目前的排序調整將會消失。</p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => setDragSwitchConfirm(false)}
+                  className="w-full py-3 text-sm font-semibold text-white bg-purple-600 rounded-2xl"
+                >
+                  繼續編輯
+                </button>
+                <button
+                  onClick={() => {
+                    setDragSwitchConfirm(false)
+                    setDragMode(false)
+                    setDragHasChanges(false)
+                    setMapSelectedDays([activeDay])
+                    setViewMode('map')
+                  }}
+                  className="w-full py-3 text-sm font-semibold text-gray-700 border border-gray-200 rounded-2xl"
+                >
+                  放棄調整，切換地圖
+                </button>
+              </div>
             </div>
           </div>
         </>
