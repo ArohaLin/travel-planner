@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { usePathname } from 'next/navigation'
 import { clsx } from 'clsx'
 import type { GlobalRole } from '@/lib/types/collaboration'
@@ -502,11 +502,18 @@ function TrackerList() {
 
 // ── 主元件：BugReportSheet ──────────────────────────────────────────────────
 
-interface BugReportSheetProps {
-  globalRole: GlobalRole
+export interface BugReportImperativeRef {
+  openReport(): void
+  openTracker(): void
 }
 
-export function BugReportSheet({ globalRole }: BugReportSheetProps) {
+interface BugReportSheetProps {
+  globalRole: GlobalRole
+  hideTrigger?: boolean
+}
+
+export const BugReportSheet = forwardRef<BugReportImperativeRef, BugReportSheetProps>(
+function BugReportSheet({ globalRole, hideTrigger }, ref) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'report' | 'tracker'>('report')
@@ -525,40 +532,47 @@ export function BugReportSheet({ globalRole }: BugReportSheetProps) {
     setSuccessBugNumber(null)
   }
 
+  useImperativeHandle(ref, () => ({
+    openReport: () => { setTab('report'); setOpen(true) },
+    openTracker: () => { setTab('tracker'); setOpen(true) },
+  }))
+
   return (
     <>
-      {/* Trigger button group */}
-      <div className="flex items-center gap-1">
-        {/* Bug report button */}
-        <button
-          onClick={() => { setTab('report'); setOpen(true) }}
-          className="tap-target text-gray-400 hover:text-red-500 p-1 transition-colors"
-          title="回報問題"
-          aria-label="回報問題"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round"
-              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-            />
-          </svg>
-        </button>
-
-        {/* Admin tracker button */}
-        {isAdmin && (
+      {/* Trigger button group — hideTrigger=true 時由父層透過 ref 呼叫 */}
+      {!hideTrigger && (
+        <div className="flex items-center gap-1">
+          {/* Bug report button */}
           <button
-            onClick={() => { setTab('tracker'); setOpen(true) }}
-            className="tap-target text-gray-400 hover:text-amber-500 p-1 transition-colors"
-            title="問題追蹤（管理員）"
-            aria-label="問題追蹤"
+            onClick={() => { setTab('report'); setOpen(true) }}
+            className="tap-target text-gray-400 hover:text-red-500 p-1 transition-colors"
+            title="回報問題"
+            aria-label="回報問題"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round"
-                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
               />
             </svg>
           </button>
-        )}
-      </div>
+
+          {/* Admin tracker button */}
+          {isAdmin && (
+            <button
+              onClick={() => { setTab('tracker'); setOpen(true) }}
+              className="tap-target text-gray-400 hover:text-amber-500 p-1 transition-colors"
+              title="問題追蹤（管理員）"
+              aria-label="問題追蹤"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Sheet */}
       {open && (
@@ -659,7 +673,7 @@ export function BugReportSheet({ globalRole }: BugReportSheetProps) {
       )}
     </>
   )
-}
+})
 
 // ── 回饋留言串（#16）────────────────────────────────────────────────────────
 interface BugComment {

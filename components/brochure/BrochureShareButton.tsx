@@ -1,23 +1,28 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useImperativeHandle, forwardRef } from 'react'
 import type { ShareStatus } from '@/lib/types/brochure'
+
+export interface BrochureImperativeRef {
+  open(): void
+}
 
 /**
  * 旅程宣傳冊入口（所有「看得到行程」的成員都會看到）。
- *
- * - canManage（建立者 / 管理者）：可產生、重新整理、換連結、關閉分享。
- * - 其他成員：只能檢視 / 複製已產生的宣傳冊連結；尚未產生時顯示提示。
- * - 行程在宣傳冊產生後又有變動（stale）→ 圖示上出現琥珀色小點，提示需更新。
- *   掛載即抓一次狀態，讓小點不必開啟 modal 就能顯示。
+ * - hideTrigger=true：隱藏觸發按鈕（由父層透過 ref.open() 控制）。
+ * - onStaleChange：stale 狀態改變時通知父層（用於更多選單的小點提示）。
  */
-export function BrochureShareButton({
-  itineraryId,
-  canManage,
-}: {
+export const BrochureShareButton = forwardRef<BrochureImperativeRef, {
   itineraryId: string
   canManage: boolean
-}) {
+  hideTrigger?: boolean
+  onStaleChange?: (stale: boolean) => void
+}>(function BrochureShareButton({
+  itineraryId,
+  canManage,
+  hideTrigger,
+  onStaleChange,
+}, ref) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<null | string>(null)
@@ -43,6 +48,16 @@ export function BrochureShareButton({
   useEffect(() => {
     loadStatus()
   }, [loadStatus])
+
+  const stale = !!status?.stale
+
+  // 通知父層 stale 狀態（供更多選單顯示小點）
+  useEffect(() => {
+    onStaleChange?.(stale)
+  }, [stale, onStaleChange])
+
+  // 暴露 open() 給父層透過 ref 呼叫
+  useImperativeHandle(ref, () => ({ open: openModal }), []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function openModal() {
     setOpen(true)
@@ -82,7 +97,6 @@ export function BrochureShareButton({
   }
 
   const enabled = status?.enabled
-  const stale = !!status?.stale
 
   // 已產生的連結區塊（檢視者與管理者共用）
   const linkBlock = (
@@ -131,19 +145,21 @@ export function BrochureShareButton({
 
   return (
     <>
-      {/* Header 按鈕（含 stale 小點） */}
-      <button
-        onClick={openModal}
-        className="tap-target text-gray-500 p-1 relative"
-        title={canManage ? '分享宣傳冊' : '檢視宣傳冊'}
-      >
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
-        </svg>
-        {stale && (
-          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white" />
-        )}
-      </button>
+      {/* Header 按鈕（含 stale 小點）— hideTrigger=true 時由父層透過 ref.open() 呼叫 */}
+      {!hideTrigger && (
+        <button
+          onClick={openModal}
+          className="tap-target text-gray-500 p-1 relative"
+          title={canManage ? '分享宣傳冊' : '檢視宣傳冊'}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" />
+          </svg>
+          {stale && (
+            <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-white" />
+          )}
+        </button>
+      )}
 
       {open && (
         <>
@@ -254,4 +270,4 @@ export function BrochureShareButton({
       )}
     </>
   )
-}
+})
