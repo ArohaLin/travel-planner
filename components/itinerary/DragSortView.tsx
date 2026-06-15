@@ -5,6 +5,7 @@ import { clsx } from 'clsx'
 import {
   DndContext, DragOverlay, PointerSensor, TouchSensor, useSensor, useSensors, useDroppable,
   pointerWithin, closestCenter, type DragStartEvent, type DragEndEvent, type CollisionDetection,
+  type PointerActivationConstraint,
 } from '@dnd-kit/core'
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
@@ -13,6 +14,17 @@ import { CSS } from '@dnd-kit/utilities'
 import type { Activity, ItineraryDay } from '@/lib/types/itinerary'
 import type { PatchOp } from '@/lib/types/patch'
 import { buildBlocks, applyReorder, moveBlockToDay, changedTimeIds, type Block } from '@/lib/itinerary/reschedule'
+
+// PointerSensor 只接受滑鼠事件，避免在觸控裝置上與 TouchSensor 衝突（distance:6 太靈敏）
+class MouseOnlySensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent }: { nativeEvent: PointerEvent }) =>
+        nativeEvent.pointerType === 'mouse',
+    },
+  ]
+}
 
 const TYPE_ICONS: Record<string, string> = {
   sightseeing: '🏛️', food: '🍽️', shopping: '🛍️', transport: '🚌',
@@ -42,8 +54,8 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
   const actsOf = (di: number) => working[di] ?? origOf(di)
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(MouseOnlySensor, { activationConstraint: { distance: 8 } as PointerActivationConstraint }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 400, tolerance: 10 } }),
   )
 
   const activeActs = actsOf(active)
