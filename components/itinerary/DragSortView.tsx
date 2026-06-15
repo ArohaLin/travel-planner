@@ -46,6 +46,14 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
   const [working, setWorking] = useState<Record<number, Activity[]>>({})
   const [dragId, setDragId] = useState<string | null>(null)
 
+  // 進入拖拉模式時手指仍在螢幕上；短暫封鎖事件讓 touchend 沉澱，
+  // 避免 pointerup 落在新畫面造成誤點或文字反白
+  const [settling, setSettling] = useState(true)
+  useEffect(() => {
+    const t = setTimeout(() => setSettling(false), 300)
+    return () => clearTimeout(t)
+  }, [])
+
   useEffect(() => {
     onDirtyChange?.(Object.keys(working).length > 0)
   }, [working, onDirtyChange])
@@ -110,7 +118,7 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
   }
 
   return (
-    <div className="pb-28">
+    <div className={clsx('pb-28 select-none', settling && 'pointer-events-none')}>
       {/* 標頭 + 提示 */}
       <div className="px-4 pt-3 pb-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-purple-700">
