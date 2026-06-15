@@ -27,6 +27,12 @@ function photoUrl(ref: string | null): string | null {
   return ref ? `/api/photo?ref=${encodeURIComponent(ref)}` : null
 }
 
+interface PlaceResult {
+  placeId: string; name: string; address: string | null
+  rating: number | null; reviews: number | null
+  photoRef: string | null; lat: number | null; lng: number | null
+}
+
 // ── 營業時間判斷 ─────────────────────────────────────────────────────────────
 interface Hours { businessStatus: string | null; periods: { open?: { day: number; time: string }; close?: { day: number; time: string } }[] | null }
 const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(2))
@@ -49,12 +55,17 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
 
 export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
-  const [tab, setTab] = useState<'recommend' | 'wishlist'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
+  const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
   const [recs, setRecs] = useState<Recommendation[] | null>(null)
   const [wishlist, setWishlist] = useState<WishlistItem[]>([])
   const [cat, setCat] = useState<RecommendationCategory>('景點')
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
+
+  // 搜尋分頁狀態
+  const [searchQ, setSearchQ] = useState('')
+  const [searchRes, setSearchRes] = useState<{ curated: Recommendation[]; places: PlaceResult[] } | null>(null)
+  const [searching, setSearching] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -69,6 +80,25 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   }, [itineraryId, destination])
 
   useEffect(() => { load() }, [load])
+
+  // 搜尋：debounce 400ms、最少 2 字
+  useEffect(() => {
+    const q = searchQ.trim()
+    if (q.length < 2) { setSearchRes(null); setSearching(false); return }
+    setSearching(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/places/search?q=${encodeURIComponent(q)}&near=${encodeURIComponent(destination)}`)
+        const data = res.ok ? await res.json() : { curated: [], places: [] }
+        setSearchRes({ curated: data.curated ?? [], places: data.places ?? [] })
+      } catch {
+        setSearchRes({ curated: [], places: [] })
+      } finally {
+        setSearching(false)
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [searchQ, destination])
 
   const inWishlist = new Set(wishlist.map((w) => w.googlePlaceId).filter(Boolean) as string[])
   // 已在行程：以名稱比對（不論 A 智慧加入或 C 由 AI 排入都能反映）
@@ -96,6 +126,20 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) { setWishlist((prev) => [data.item, ...prev]); showToast(`已加入願望清單：${r.name}`, 'success') }
+      else if (res.status === 409) showToast('已在願望清單中', 'info')
+      else showToast(data.error ?? '加入失敗', 'error')
+    } catch { showToast('網路錯誤', 'error') } finally { setBusyId(null) }
+  }
+
+  async function addPlace(p: PlaceResult) {
+    setBusyId(p.placeId)
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}/wishlist`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'search', googlePlaceId: p.placeId, name: p.name, lat: p.lat, lng: p.lng, photoRef: p.photoRef }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { setWishlist((prev) => [data.item, ...prev]); showToast(`已加入願望清單：${p.name}`, 'success') }
       else if (res.status === 409) showToast('已在願望清單中', 'info')
       else showToast(data.error ?? '加入失敗', 'error')
     } catch { showToast('網路錯誤', 'error') } finally { setBusyId(null) }
@@ -137,9 +181,10 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
             </button>
           </div>
           {targetDayIndex == null && (
-            <div className="flex gap-0.5 px-4 pb-2">
+            <div className="flex gap-1 px-4 pb-2">
               <button onClick={() => setTab('recommend')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'recommend' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>精選推薦</button>
-              <button onClick={() => setTab('wishlist')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium ml-1', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>願望清單{wishlist.length ? `（${wishlist.length}）` : ''}</button>
+              <button onClick={() => setTab('search')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'search' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>🔍 搜尋</button>
+              <button onClick={() => setTab('wishlist')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>願望清單{wishlist.length ? `（${wishlist.length}）` : ''}</button>
             </div>
           )}
         </div>
@@ -173,6 +218,54 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
                 </div>
               </>
             )
+          ) : tab === 'search' ? (
+            <div className="flex flex-col h-full">
+              <div className="sticky top-0 bg-white z-10 px-4 py-2.5 border-b border-gray-50">
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300">🔍</span>
+                  <input
+                    autoFocus
+                    value={searchQ}
+                    onChange={(e) => setSearchQ(e.target.value)}
+                    placeholder={`搜尋地點${destination ? `（如「${destination}」附近）` : ''}…`}
+                    className="w-full bg-gray-100 rounded-xl pl-9 pr-9 py-2.5 text-base text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-200"
+                  />
+                  {searchQ && (
+                    <button onClick={() => setSearchQ('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 p-1">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="px-4 py-3 space-y-3">
+                {searchQ.trim().length < 2 ? (
+                  <p className="text-center text-gray-400 text-sm py-12 px-6">輸入地點名稱搜尋，可加入願望清單。<br />精選清單命中會置頂，其餘為 Google 即時資料。</p>
+                ) : searching && !searchRes ? (
+                  <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
+                ) : searchRes && (searchRes.curated.length + searchRes.places.length) === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-12 px-6">找不到「{searchQ.trim()}」相關地點。</p>
+                ) : searchRes ? (
+                  <>
+                    {searchRes.curated.length > 0 && (
+                      <>
+                        <p className="text-[11px] tracking-wide text-purple-400 font-medium">精選清單命中</p>
+                        {searchRes.curated.map((r) => (
+                          <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
+                        ))}
+                      </>
+                    )}
+                    {searchRes.places.length > 0 && (
+                      <>
+                        {searchRes.curated.length > 0 && <p className="text-[11px] tracking-wide text-gray-400 font-medium pt-2">Google 搜尋結果</p>}
+                        {searchRes.places.map((p) => (
+                          <SearchCard key={p.placeId} place={p} added={inWishlist.has(p.placeId) || titles.has(p.name)} busy={busyId === p.placeId} onAdd={() => addPlace(p)} />
+                        ))}
+                      </>
+                    )}
+                  </>
+                ) : null}
+              </div>
+            </div>
           ) : (
             wishlist.length === 0 ? (
               <p className="text-center text-gray-400 text-sm py-16 px-6">願望清單還是空的。到「精選推薦」按 ♡ 加入想去的地方。</p>
@@ -246,7 +339,7 @@ function LonglistSection({ items, inWishlist, titles, busyId, onAdd }: {
   busyId: string | null
   onAdd: (r: Recommendation) => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   return (
     <div>
       <button
@@ -258,7 +351,7 @@ function LonglistSection({ items, inWishlist, titles, busyId, onAdd }: {
         <span className="flex-1 h-px bg-gray-100" />
       </button>
       {open && (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <p className="text-[11px] text-gray-400 text-center">以下未經精選策展，依評分排序，供參考</p>
           {items.map((r) => (
             <LongCard
@@ -275,28 +368,66 @@ function LonglistSection({ items, inWishlist, titles, busyId, onAdd }: {
   )
 }
 
-/* ── 漏網之魚卡（精簡版）──────────────────────────────────────────────────── */
+/* ── 漏網之魚卡（精簡版，含簡介）─────────────────────────────────────────── */
 function LongCard({ rec, added, busy, onAdd }: { rec: Recommendation; added: boolean; busy: boolean; onAdd: () => void }) {
   const img = photoUrl(rec.photoRef)
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex items-center gap-2.5 px-3 py-2.5">
-      {img
-        // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={img} alt={rec.name} loading="lazy" className="w-12 h-12 rounded-lg object-cover flex-shrink-0 bg-gray-100" />
-        : <div className="w-12 h-12 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200" />}
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-gray-900 text-sm truncate">{rec.name}</p>
-        {rec.ratingSnapshot != null && (
-          <p className="text-xs text-amber-500">★ {rec.ratingSnapshot}{rec.reviewsSnapshot != null && <span className="text-gray-400">（{rec.reviewsSnapshot}）</span>}</p>
-        )}
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="flex gap-2.5 p-2.5">
+        {img
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={img} alt={rec.name} loading="lazy" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-gray-100" />
+          : <div className="w-14 h-14 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200" />}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-2">
+            <p className="font-medium text-gray-900 text-sm leading-snug flex-1 min-w-0">{rec.name}</p>
+            <button
+              onClick={onAdd}
+              disabled={added || busy}
+              className={clsx('flex-shrink-0 text-sm px-2.5 py-1 rounded-lg', added ? 'text-gray-400' : 'text-purple-600 border border-purple-200 active:bg-purple-50')}
+            >
+              {busy ? '…' : added ? '✓' : '♡'}
+            </button>
+          </div>
+          {rec.ratingSnapshot != null && (
+            <p className="text-xs text-amber-500 mt-0.5">★ {rec.ratingSnapshot}{rec.reviewsSnapshot != null && <span className="text-gray-400">（{rec.reviewsSnapshot}）</span>}</p>
+          )}
+          {rec.editorialReason && (
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-2">{rec.editorialReason}</p>
+          )}
+        </div>
       </div>
-      <button
-        onClick={onAdd}
-        disabled={added || busy}
-        className={clsx('flex-shrink-0 text-sm px-2.5 py-1.5 rounded-lg', added ? 'text-gray-400' : 'text-purple-600 border border-purple-200 active:bg-purple-50')}
-      >
-        {busy ? '…' : added ? '✓' : '♡'}
-      </button>
+    </div>
+  )
+}
+
+/* ── 搜尋結果卡（Google 即時）─────────────────────────────────────────────── */
+function SearchCard({ place, added, busy, onAdd }: { place: PlaceResult; added: boolean; busy: boolean; onAdd: () => void }) {
+  const img = photoUrl(place.photoRef)
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="flex gap-2.5 p-2.5">
+        {img
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={img} alt={place.name} loading="lazy" className="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-gray-100" />
+          : <div className="w-14 h-14 rounded-lg flex-shrink-0 bg-gradient-to-br from-gray-100 to-gray-200" />}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-2">
+            <p className="font-medium text-gray-900 text-sm leading-snug flex-1 min-w-0">{place.name}</p>
+            <button
+              onClick={onAdd}
+              disabled={added || busy}
+              className={clsx('flex-shrink-0 text-sm px-2.5 py-1 rounded-lg', added ? 'text-gray-400' : 'text-purple-600 border border-purple-200 active:bg-purple-50')}
+            >
+              {busy ? '…' : added ? '✓' : '♡'}
+            </button>
+          </div>
+          {place.rating != null && (
+            <p className="text-xs text-amber-500 mt-0.5">★ {place.rating}{place.reviews != null && <span className="text-gray-400">（{place.reviews}）</span>}</p>
+          )}
+          {place.address && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{place.address}</p>}
+        </div>
+      </div>
     </div>
   )
 }
