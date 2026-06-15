@@ -22,6 +22,8 @@ import { DayTabs } from '@/components/itinerary/DayTabs'
 import { DayView } from '@/components/itinerary/DayView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
+import { ExploreSheet } from '@/components/explore/ExploreSheet'
+import type { WishlistItem } from '@/lib/types/recommendation'
 import { AINotesSheet } from '@/components/ai/AINotesSheet'
 import { AddNoteModal } from '@/components/ai/AddNoteModal'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
@@ -69,6 +71,7 @@ export function ItineraryClient({
 }: ItineraryClientProps) {
   const [activeDay, setActiveDay] = useState(0)
   const [chatOpen, setChatOpen] = useState(false)
+  const [exploreOpen, setExploreOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
@@ -328,6 +331,54 @@ export function ItineraryClient({
     } finally {
       setSaving(false)
     }
+  }
+
+  // ── 願望清單 → 加入某一天（#103）────────────────────────────────────────────
+  // 用既有 add_activity patch 把願望清單項目變成當天活動（沿用歷程/還原機制），
+  // 開始時間預設排在當天最後一個活動之後一小時（沒有活動就 10:00），之後可再用 AI 調整。
+  async function handleAddWishlistToDay(item: WishlistItem, dayIndex: number): Promise<boolean> {
+    const typeMap: Record<string, Activity['type']> = {
+      景點: 'sightseeing', 美食: 'food', 住宿: 'other', 親子: 'experience',
+    }
+    const addMin = (t: string, m: number) => {
+      const [h, mm] = t.split(':').map(Number)
+      const tot = Math.min(h * 60 + mm + m, 23 * 60 + 30)
+      return `${String(Math.floor(tot / 60)).padStart(2, '0')}:${String(tot % 60).padStart(2, '0')}`
+    }
+    const day = displayItinerary.days.find((d) => d.dayIndex === dayIndex)
+    let startTime = '10:00'
+    if (day && day.activities.length) {
+      const last = day.activities.reduce((a, b) =>
+        (a.endTime || a.startTime) > (b.endTime || b.startTime) ? a : b,
+      )
+      startTime = addMin(last.endTime || last.startTime, 60)
+    }
+    const activity: Activity = {
+      id: nanoid(8),
+      type: typeMap[item.category ?? ''] ?? 'other',
+      title: item.name,
+      startTime,
+      bookingRequired: false,
+      placeLabel: item.name,
+      ...(item.lat != null && item.lng != null ? { location: { lat: item.lat, lng: item.lng } } : {}),
+      ...(item.photoRef ? { photoRef: item.photoRef } : {}),
+    }
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `從願望清單加入：${item.name}（第 ${dayIndex + 1} 天）`,
+      proposedBy: 'user',
+      ops: [{ op: 'add_activity', dayIndex, payload: activity }],
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      // 標記願望清單項目已加入（失敗不影響行程已更新）
+      fetch(`/api/itinerary/${itineraryId}/wishlist`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id, status: 'added' }),
+      }).catch(() => {})
+    }
+    return ok
   }
 
   // ── Helper: 偵測「強制修改」後的時間衝突，並顯示 toast ─────────────────────
@@ -623,6 +674,18 @@ export function ItineraryClient({
 
       {viewMode === 'list' ? (
         <>
+          {userCanEdit && (
+            <div className="px-4 pt-3">
+              <button
+                onClick={() => setExploreOpen(true)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-purple-100 bg-purple-50 text-purple-700 text-sm text-left active:bg-purple-100 transition-colors min-h-[44px]"
+              >
+                <span className="flex-shrink-0">✨</span>
+                <span className="flex-1 font-medium">探索精選推薦・加入願望清單</span>
+                <span className="flex-shrink-0 text-purple-400">→</span>
+              </button>
+            </div>
+          )}
           {bufferWarnings.total > 0 && userCanEdit && canChat(role) && (
             <div className="px-4 pt-3">
               <button
@@ -786,6 +849,16 @@ export function ItineraryClient({
           chat={chat}
           onClose={() => setChatOpen(false)}
           onPatchApplied={refreshItinerary}
+        />
+      )}
+
+      {exploreOpen && (
+        <ExploreSheet
+          itineraryId={itineraryId}
+          destination={[displayItinerary.metadata.destination, displayItinerary.metadata.title].filter(Boolean).join(' ')}
+          days={displayItinerary.days.map((d) => ({ dayIndex: d.dayIndex, date: d.date, city: d.city }))}
+          onClose={() => setExploreOpen(false)}
+          onAddToDay={handleAddWishlistToDay}
         />
       )}
 
