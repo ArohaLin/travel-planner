@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { clsx } from 'clsx'
 import { Avatar } from '@/components/ui/Avatar'
@@ -119,6 +120,23 @@ export function ProfileClient({ currentUser, allUsers: initialUsers, allItinerar
             </button>
           </div>
         </div>
+
+        {/* 管理員：開發報告入口 */}
+        {isAdmin && (
+          <Link
+            href="/admin/reports"
+            className="flex items-center gap-3 bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 active:bg-gray-50 transition-colors"
+          >
+            <span className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center text-lg flex-shrink-0">📄</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-gray-900 text-sm">開發報告</p>
+              <p className="text-xs text-gray-500">推薦評選等開發過程報告（僅管理員）</p>
+            </div>
+            <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+            </svg>
+          </Link>
+        )}
 
         {/* 管理員：帳號管理區 */}
         {isAdmin && (
