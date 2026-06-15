@@ -1,6 +1,9 @@
+'use client'
+
 import type { Activity, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { formatDuration } from './ActivityDetailModal'
+import { useLongPress } from '@/lib/hooks/useLongPress'
 
 /** Google Maps 導航連結：有座標用座標（較精準），否則用地址文字 */
 export function mapsNavUrl(loc: GeoLocation): string {
@@ -95,10 +98,14 @@ interface ActivityCardProps {
   onAddNote?: (activity: Activity) => void
   /** 此活動是否已有 AI 備註（顯示提示點） */
   hasNote?: boolean
+  /** 長按卡片（進入拖拉排序模式）；提供時啟用，不影響點擊開詳情 */
+  onLongPress?: (activity: Activity) => void
 }
 
-export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick, onAddNote, hasNote }: ActivityCardProps) {
+export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick, onAddNote, hasNote, onLongPress }: ActivityCardProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
+  const longPress = useLongPress(() => onLongPress?.(activity))
+  const lpHandlers = onLongPress ? longPress : undefined
 
   return (
     <div className="flex gap-3">
@@ -113,6 +120,8 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
         role="button"
         tabIndex={0}
         onClick={() => onClick?.(activity)}
+        {...lpHandlers}
+        style={onLongPress ? { touchAction: 'pan-y' } : undefined}
         className={clsx(
           'flex-1 rounded-2xl border p-3 mb-3 relative cursor-pointer transition-shadow hover:shadow-md active:scale-[0.99]',
           TYPE_COLORS[activity.type] ?? TYPE_COLORS.other,

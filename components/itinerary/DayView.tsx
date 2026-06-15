@@ -278,6 +278,8 @@ interface DayViewProps {
   hasNoteForAccommodation?: boolean
   /** 編輯每日簡介（theme）*/
   onEditTheme?: () => void
+  /** 長按景點卡 → 進入拖拉排序模式（只景點卡可觸發）*/
+  onLongPressActivity?: (activity: Activity) => void
 }
 
 /** 小型「+」插入按鈕，顯示在兩個活動之間或最後一個活動之後 */
@@ -297,7 +299,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme }: DayViewProps) {
+export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme, onLongPressActivity }: DayViewProps) {
   // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
   const acts = day.activities
@@ -416,6 +418,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
                   onClick={onActivityClick}
                   onAddNote={onAddNote}
                   hasNote={hasNoteFor?.(activity.id)}
+                  onLongPress={onLongPressActivity}
                 />
                 {addBtn}
               </div>

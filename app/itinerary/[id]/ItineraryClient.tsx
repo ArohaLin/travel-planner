@@ -20,6 +20,7 @@ import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
 import { ItineraryHeader } from '@/components/itinerary/ItineraryHeader'
 import { DayTabs } from '@/components/itinerary/DayTabs'
 import { DayView } from '@/components/itinerary/DayView'
+import { DragSortView } from '@/components/itinerary/DragSortView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
 import { ExploreSheet } from '@/components/explore/ExploreSheet'
@@ -73,6 +74,8 @@ export function ItineraryClient({
   const [chatOpen, setChatOpen] = useState(false)
   const [exploreOpen, setExploreOpen] = useState(false)
   const [exploreTargetDay, setExploreTargetDay] = useState<number | null>(null)
+  // 拖拉排序模式（長按景點卡進入）
+  const [dragMode, setDragMode] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
@@ -331,6 +334,23 @@ export function ItineraryClient({
       return false
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ── 拖拉排序：套用重排（規則自動重算時間，整批一筆歷程、可還原）─────────────
+  async function handleApplyReorder(ops: PatchOp[], changedCount: number) {
+    if (ops.length === 0) { setDragMode(false); return }
+    const dayList = ops.map((o) => (o.op === 'update_day' ? o.dayIndex + 1 : 0)).filter(Boolean)
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `拖拉重排：調整第 ${dayList.join('、')} 天順序與時間（${changedCount} 項）`,
+      proposedBy: 'user',
+      ops,
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      setDragMode(false)
+      showToast('已套用新順序，路程時間將自動重算', 'success')
     }
   }
 
@@ -662,6 +682,7 @@ export function ItineraryClient({
             onClick={() => {
               // 行程 → 地圖：同步到目前檢視的那一天
               setMapSelectedDays([activeDay])
+              setDragMode(false)
               setViewMode('map')
             }}
             className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
@@ -674,6 +695,15 @@ export function ItineraryClient({
       </div>
 
       {viewMode === 'list' ? (
+        dragMode ? (
+          <DragSortView
+            days={displayItinerary.days}
+            initialDayIndex={activeDay}
+            saving={saving}
+            onApply={handleApplyReorder}
+            onCancel={() => setDragMode(false)}
+          />
+        ) : (
         <>
           {userCanEdit && (
             <div className="px-4 pt-3">
@@ -721,13 +751,22 @@ export function ItineraryClient({
           />
 
           {userCanEdit && (
-            <div className="px-4 pt-2">
+            <div className="px-4 pt-2 flex items-center justify-between gap-3">
               <button
                 onClick={() => { setExploreTargetDay(activeDay); setExploreOpen(true) }}
                 className="text-xs text-purple-600 active:text-purple-800"
               >
                 ＋ 從願望清單加入第 {activeDay + 1} 天
               </button>
+              {(currentDayData?.activities.some((a) => a.type !== 'transport')) && (
+                <button
+                  onClick={() => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) }}
+                  className="text-xs text-gray-500 active:text-gray-800 flex items-center gap-1 flex-shrink-0"
+                  title="長按卡片也可進入"
+                >
+                  ⇅ 拖拉排序
+                </button>
+              )}
             </div>
           )}
 
@@ -760,9 +799,11 @@ export function ItineraryClient({
               onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
+              onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
           )}
         </>
+        )
       ) : (
         <div className="mt-3" style={{ height: 'calc(100dvh - 240px)' }}>
           <MapView

@@ -16,7 +16,7 @@ export interface Slot {
   distanceKm: number | null
 }
 
-function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const R = 6371
   const toRad = (d: number) => (d * Math.PI) / 180
   const dLat = toRad(bLat - aLat)
