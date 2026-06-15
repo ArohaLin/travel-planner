@@ -3,32 +3,53 @@
 import { useEffect, useState, useCallback } from 'react'
 import { clsx } from 'clsx'
 import { useToast } from '@/components/ui/Toast'
+import type { ItineraryDay } from '@/lib/types/itinerary'
 import type { Recommendation, RecommendationCategory, WishlistItem } from '@/lib/types/recommendation'
+import { suggestSlots, slotForTargetDay, type Slot } from '@/lib/explore/placement'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
-
-interface DayOpt {
-  dayIndex: number
-  date: string
-  city?: string
-}
 
 interface Props {
   itineraryId: string
   destination: string
-  days: DayOpt[]
+  days: ItineraryDay[]
   onClose: () => void
-  /** 把願望清單項目加入某一天（ItineraryClient 實作：送 patch + 標記 added）。回傳成功與否。 */
-  onAddToDay: (item: WishlistItem, dayIndex: number) => Promise<boolean>
+  /** 把願望清單項目加入某一天（指定開始時間）。回傳成功與否。 */
+  onAddToDay: (item: WishlistItem, dayIndex: number, startTime: string) => Promise<boolean>
+  /** 交給 AI 一次排進行程（C）。 */
+  onAiArrange: (items: WishlistItem[]) => void
+  initialTab?: 'recommend' | 'wishlist'
+  /** B：從某一天進來 → 願望清單依離該天遠近排序、一鍵加入該天 */
+  targetDayIndex?: number | null
 }
 
 function photoUrl(ref: string | null): string | null {
   return ref ? `/api/photo?ref=${encodeURIComponent(ref)}` : null
 }
 
-export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay }: Props) {
+// ── 營業時間判斷 ─────────────────────────────────────────────────────────────
+interface Hours { businessStatus: string | null; periods: { open?: { day: number; time: string }; close?: { day: number; time: string } }[] | null }
+const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(2))
+function isOpenAt(h: Hours | null, weekday: number, minutes: number): boolean | null {
+  if (!h || !h.periods) return null
+  if (h.businessStatus && h.businessStatus !== 'OPERATIONAL') return false
+  if (h.periods.length === 1 && h.periods[0].open?.time === '0000' && !h.periods[0].close) return true
+  const cand = weekday * 1440 + minutes
+  for (const p of h.periods) {
+    if (!p.open || !p.close) continue
+    const o = p.open.day * 1440 + hhmm(p.open.time)
+    let c = p.close.day * 1440 + hhmm(p.close.time)
+    if (c <= o) c += 7 * 1440
+    if ((cand >= o && cand < c) || (cand + 7 * 1440 >= o && cand + 7 * 1440 < c)) return true
+  }
+  return false
+}
+const weekdayOf = (date: string) => new Date(date + 'T00:00:00').getDay()
+const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+
+export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
-  const [tab, setTab] = useState<'recommend' | 'wishlist'>('recommend')
+  const [tab, setTab] = useState<'recommend' | 'wishlist'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
   const [recs, setRecs] = useState<Recommendation[] | null>(null)
   const [wishlist, setWishlist] = useState<WishlistItem[]>([])
   const [cat, setCat] = useState<RecommendationCategory>('景點')
@@ -37,9 +58,7 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
 
   const load = useCallback(async () => {
     setLoading(true)
-    // 兩個請求各自獨立容錯：任一失敗（含非 JSON 回應）都不該讓另一個一起變空
-    const safe = (url: string) =>
-      fetch(url).then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }))
+    const safe = (url: string) => fetch(url).then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }))
     const [r, w] = await Promise.all([
       safe(`/api/recommendations?q=${encodeURIComponent(destination)}`),
       safe(`/api/itinerary/${itineraryId}/wishlist`),
@@ -51,42 +70,34 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
 
   useEffect(() => { load() }, [load])
 
-  // 已在願望清單的 place_id（用來標記推薦卡「已加入」）
   const inWishlist = new Set(wishlist.map((w) => w.googlePlaceId).filter(Boolean) as string[])
+  // 已在行程：以名稱比對（不論 A 智慧加入或 C 由 AI 排入都能反映）
+  const titles = new Set(days.flatMap((d) => d.activities.map((a) => a.title)))
   const cats = CATEGORY_ORDER.filter((c) => (recs ?? []).some((r) => r.category === c))
   const shown = (recs ?? []).filter((r) => r.category === cat)
+
+  // B：依離 targetDay 遠近排序
+  const sortedWishlist = targetDayIndex == null
+    ? wishlist
+    : [...wishlist].sort((a, b) => {
+        const da = slotForTargetDay(a, days, targetDayIndex)?.distanceKm ?? Infinity
+        const db = slotForTargetDay(b, days, targetDayIndex)?.distanceKm ?? Infinity
+        return da - db
+      })
+  const openCount = wishlist.filter((w) => !titles.has(w.name)).length
 
   async function addToWishlist(r: Recommendation) {
     setBusyId(r.id)
     try {
       const res = await fetch(`/api/itinerary/${itineraryId}/wishlist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          source: 'recommendation',
-          recommendationId: r.id,
-          googlePlaceId: r.googlePlaceId,
-          name: r.name,
-          category: r.category,
-          lat: r.lat,
-          lng: r.lng,
-          photoRef: r.photoRef,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'recommendation', recommendationId: r.id, googlePlaceId: r.googlePlaceId, name: r.name, category: r.category, lat: r.lat, lng: r.lng, photoRef: r.photoRef }),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setWishlist((prev) => [data.item, ...prev])
-        showToast(`已加入願望清單：${r.name}`, 'success')
-      } else if (res.status === 409) {
-        showToast('已在願望清單中', 'info')
-      } else {
-        showToast(data.error ?? '加入失敗', 'error')
-      }
-    } catch {
-      showToast('網路錯誤', 'error')
-    } finally {
-      setBusyId(null)
-    }
+      if (res.ok) { setWishlist((prev) => [data.item, ...prev]); showToast(`已加入願望清單：${r.name}`, 'success') }
+      else if (res.status === 409) showToast('已在願望清單中', 'info')
+      else showToast(data.error ?? '加入失敗', 'error')
+    } catch { showToast('網路錯誤', 'error') } finally { setBusyId(null) }
   }
 
   async function removeFromWishlist(item: WishlistItem) {
@@ -95,111 +106,85 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
       const res = await fetch(`/api/itinerary/${itineraryId}/wishlist?itemId=${item.id}`, { method: 'DELETE' })
       if (res.ok) setWishlist((prev) => prev.filter((w) => w.id !== item.id))
       else showToast('刪除失敗', 'error')
-    } finally {
-      setBusyId(null)
-    }
+    } finally { setBusyId(null) }
   }
 
-  async function addToDay(item: WishlistItem, dayIndex: number) {
+  async function addToDay(item: WishlistItem, dayIndex: number, startTime: string) {
     setBusyId(item.id)
     try {
-      const ok = await onAddToDay(item, dayIndex)
+      const ok = await onAddToDay(item, dayIndex, startTime)
       if (ok) {
         setWishlist((prev) => prev.map((w) => (w.id === item.id ? { ...w, status: 'added' } : w)))
         showToast(`已加入第 ${dayIndex + 1} 天：${item.name}`, 'success')
       }
-    } finally {
-      setBusyId(null)
-    }
+    } finally { setBusyId(null) }
   }
 
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={onClose} />
-      <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl sheet-enter flex flex-col"
-        style={{ height: '86dvh', maxHeight: 'calc(100dvh - env(safe-area-inset-top) - 12px)' }}
-      >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
-          <div className="w-10 h-1 bg-gray-300 rounded-full" />
-        </div>
+      <div className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl sheet-enter flex flex-col" style={{ height: '86dvh', maxHeight: 'calc(100dvh - env(safe-area-inset-top) - 12px)' }}>
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 bg-gray-300 rounded-full" /></div>
 
-        {/* Header + tabs */}
         <div className="flex-shrink-0 border-b border-gray-100">
           <div className="flex items-center justify-between px-4 py-2">
-            <h2 className="font-semibold text-gray-900">✨ 探索{recs && recs[0] ? ` ${recs[0].region}` : ''}</h2>
+            <h2 className="font-semibold text-gray-900">
+              {targetDayIndex != null ? `第 ${targetDayIndex + 1} 天・從願望清單加入` : `✨ 探索${recs && recs[0] ? ` ${recs[0].region}` : ''}`}
+            </h2>
             <button onClick={onClose} className="tap-target text-gray-400 p-1">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
-          <div className="flex gap-0.5 px-4 pb-2">
-            <button
-              onClick={() => setTab('recommend')}
-              className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'recommend' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}
-            >
-              精選推薦
-            </button>
-            <button
-              onClick={() => setTab('wishlist')}
-              className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium ml-1', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}
-            >
-              願望清單{wishlist.length ? `（${wishlist.length}）` : ''}
-            </button>
-          </div>
+          {targetDayIndex == null && (
+            <div className="flex gap-0.5 px-4 pb-2">
+              <button onClick={() => setTab('recommend')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'recommend' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>精選推薦</button>
+              <button onClick={() => setTab('wishlist')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium ml-1', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>願望清單{wishlist.length ? `（${wishlist.length}）` : ''}</button>
+            </div>
+          )}
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto scroll-touch" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
           {loading ? (
-            <div className="flex justify-center py-16">
-              <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
-            </div>
+            <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
           ) : tab === 'recommend' ? (
             (recs ?? []).length === 0 ? (
               <p className="text-center text-gray-400 text-sm py-16 px-6">此地區目前還沒有精選推薦。</p>
             ) : (
               <>
-                {/* 分類 chips */}
                 <div className="sticky top-0 bg-white z-10 px-4 py-2 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-50">
                   {cats.map((c) => (
-                    <button
-                      key={c}
-                      onClick={() => setCat(c)}
-                      className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}
-                    >
-                      {c}
-                    </button>
+                    <button key={c} onClick={() => setCat(c)} className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}>{c}</button>
                   ))}
                 </div>
                 <div className="px-4 py-3 space-y-3">
                   {shown.map((r) => (
-                    <RecCard
-                      key={r.id}
-                      rec={r}
-                      added={!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)}
-                      busy={busyId === r.id}
-                      onAdd={() => addToWishlist(r)}
-                    />
+                    <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
                   ))}
                 </div>
               </>
             )
           ) : (
-            /* 願望清單 tab */
             wishlist.length === 0 ? (
               <p className="text-center text-gray-400 text-sm py-16 px-6">願望清單還是空的。到「精選推薦」按 ♡ 加入想去的地方。</p>
             ) : (
               <div className="px-4 py-3 space-y-3">
-                {wishlist.map((item) => (
+                {targetDayIndex == null && openCount > 0 && (
+                  <button
+                    onClick={() => { onAiArrange(wishlist.filter((w) => !titles.has(w.name))); onClose() }}
+                    className="w-full py-2.5 rounded-2xl bg-purple-600 text-white text-sm font-medium active:bg-purple-700"
+                  >
+                    ✨ 讓 AI 幫我排進行程（{openCount} 個未排）
+                  </button>
+                )}
+                {sortedWishlist.map((item) => (
                   <WishCard
                     key={item.id}
                     item={item}
                     days={days}
+                    targetDayIndex={targetDayIndex ?? null}
+                    inItinerary={titles.has(item.name)}
                     busy={busyId === item.id}
-                    onAddToDay={(d) => addToDay(item, d)}
+                    onAdd={(dayIndex, startTime) => addToDay(item, dayIndex, startTime)}
                     onRemove={() => removeFromWishlist(item)}
                   />
                 ))}
@@ -218,98 +203,131 @@ function RecCard({ rec, added, busy, onAdd }: { rec: Recommendation; added: bool
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       <div className="flex gap-3 p-3">
-        {img ? (
+        {img
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt={rec.name} loading="lazy" className="w-20 h-20 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
-        ) : (
-          <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-gradient-to-br from-purple-100 to-blue-100" />
-        )}
+          ? <img src={img} alt={rec.name} loading="lazy" className="w-20 h-20 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
+          : <div className="w-20 h-20 rounded-xl flex-shrink-0 bg-gradient-to-br from-purple-100 to-blue-100" />}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold text-gray-900 text-sm leading-snug">{rec.name}</h3>
-          </div>
+          <h3 className="font-semibold text-gray-900 text-sm leading-snug">{rec.name}</h3>
           {rec.ratingSnapshot != null && (
-            <p className="text-xs text-amber-600 mt-0.5">
-              ★ {rec.ratingSnapshot}
-              {rec.reviewsSnapshot != null && <span className="text-gray-400">（{rec.reviewsSnapshot}）</span>}
-            </p>
+            <p className="text-xs text-amber-600 mt-0.5">★ {rec.ratingSnapshot}{rec.reviewsSnapshot != null && <span className="text-gray-400">（{rec.reviewsSnapshot}）</span>}</p>
           )}
           <p className="text-xs text-gray-600 mt-1 leading-relaxed line-clamp-3">{rec.editorialReason}</p>
         </div>
       </div>
       {(rec.sourceBadges.length > 0 || rec.tags.length > 0) && (
         <div className="px-3 pb-2 flex flex-wrap gap-1">
-          {rec.sourceBadges.map((b) => (
-            <span key={b} className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full">{b}</span>
-          ))}
-          {rec.tags.slice(0, 4).map((t) => (
-            <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>
-          ))}
+          {rec.sourceBadges.map((b) => <span key={b} className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-full">{b}</span>)}
+          {rec.tags.slice(0, 4).map((t) => <span key={t} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">{t}</span>)}
         </div>
       )}
-      <button
-        onClick={onAdd}
-        disabled={added || busy}
-        className={clsx(
-          'w-full py-2.5 text-sm font-medium border-t border-gray-100 flex items-center justify-center gap-1.5',
-          added ? 'text-gray-400' : 'text-purple-600 active:bg-purple-50',
-        )}
-      >
-        {busy ? '加入中…' : added ? '✓ 已在願望清單' : '♡ 加入願望清單'}
+      <button onClick={onAdd} disabled={added || busy} className={clsx('w-full py-2.5 text-sm font-medium border-t border-gray-100 flex items-center justify-center gap-1.5', added ? 'text-gray-400' : 'text-purple-600 active:bg-purple-50')}>
+        {busy ? '加入中…' : added ? '✓ 已加入' : '♡ 加入願望清單'}
       </button>
     </div>
   )
 }
 
-/* ── 願望清單卡 ─────────────────────────────────────────────────────────── */
+/* ── 願望清單卡（A 智慧建議 / B 加入指定天）──────────────────────────────── */
 function WishCard({
-  item, days, busy, onAddToDay, onRemove,
+  item, days, targetDayIndex, inItinerary, busy, onAdd, onRemove,
 }: {
   item: WishlistItem
-  days: DayOpt[]
+  days: ItineraryDay[]
+  targetDayIndex: number | null
+  inItinerary: boolean
   busy: boolean
-  onAddToDay: (dayIndex: number) => void
+  onAdd: (dayIndex: number, startTime: string) => void
   onRemove: () => void
 }) {
   const img = photoUrl(item.photoRef)
-  const added = item.status === 'added'
+  const [open, setOpen] = useState(false)
+  const [hours, setHours] = useState<Hours | null>(null)
+
+  useEffect(() => {
+    if (!open || !item.googlePlaceId || hours) return
+    fetch(`/api/place/hours?placeId=${encodeURIComponent(item.googlePlaceId)}`)
+      .then((r) => r.ok ? r.json() : null).then((h) => h && setHours(h)).catch(() => {})
+  }, [open, item.googlePlaceId, hours])
+
+  const dayCity = (di: number) => days.find((d) => d.dayIndex === di)?.city
+  const dayDate = (di: number) => days.find((d) => d.dayIndex === di)?.date ?? ''
+  const closedWarn = (s: Slot) => (isOpenAt(hours, weekdayOf(dayDate(s.dayIndex)), toMin(s.startTime)) === false ? '⚠ 此時段可能未營業' : null)
+
+  const slots = targetDayIndex != null
+    ? ([slotForTargetDay(item, days, targetDayIndex)].filter(Boolean) as Slot[])
+    : suggestSlots(item, days)
+  const top = slots[0]
+  const alts = slots.slice(1, 3)
+
   return (
-    <div className={clsx('bg-white rounded-2xl border shadow-sm overflow-hidden', added ? 'border-green-100' : 'border-gray-100')}>
+    <div className={clsx('bg-white rounded-2xl border shadow-sm overflow-hidden', inItinerary ? 'border-green-100' : 'border-gray-100')}>
       <div className="flex gap-3 p-3 items-center">
-        {img ? (
+        {img
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={img} alt={item.name} loading="lazy" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
-        ) : (
-          <div className="w-14 h-14 rounded-xl flex-shrink-0 bg-gradient-to-br from-purple-100 to-blue-100" />
-        )}
+          ? <img src={img} alt={item.name} loading="lazy" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
+          : <div className="w-14 h-14 rounded-xl flex-shrink-0 bg-gradient-to-br from-purple-100 to-blue-100" />}
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 text-sm leading-snug truncate">{item.name}</h3>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {item.category ?? ''}{added && <span className="text-green-600 ml-1">・已加入行程</span>}
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">{item.category ?? ''}{inItinerary && <span className="text-green-600 ml-1">・已在行程</span>}</p>
         </div>
         <button onClick={onRemove} disabled={busy} className="tap-target text-gray-300 hover:text-red-500 p-1 flex-shrink-0" title="移除">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-          </svg>
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
         </button>
       </div>
-      {/* 加入某天：天數選擇 */}
-      <div className="px-3 pb-3">
-        <select
-          disabled={busy}
-          value=""
-          onChange={(e) => { const v = e.target.value; if (v !== '') onAddToDay(Number(v)) }}
-          className="w-full text-sm border border-purple-200 text-purple-700 rounded-xl px-3 py-2 bg-purple-50 disabled:opacity-50"
-        >
-          <option value="">{busy ? '加入中…' : added ? '再加入其他天 ▾' : '＋ 加入某一天 ▾'}</option>
-          {days.map((d) => (
-            <option key={d.dayIndex} value={d.dayIndex}>
-              第 {d.dayIndex + 1} 天{d.city ? `・${d.city}` : ''}
-            </option>
-          ))}
-        </select>
-      </div>
+
+      {!inItinerary && (
+        <div className="px-3 pb-3">
+          {targetDayIndex != null ? (
+            top && (
+              <button onClick={() => onAdd(top.dayIndex, top.startTime)} disabled={busy} className="w-full text-sm bg-purple-50 text-purple-700 rounded-xl px-3 py-2 disabled:opacity-50">
+                {busy ? '加入中…' : `加入第 ${top.dayIndex + 1} 天　${top.startTime}${top.distanceKm != null ? `・約 ${top.distanceKm.toFixed(1)}km` : ''}`}
+              </button>
+            )
+          ) : !open ? (
+            <button onClick={() => setOpen(true)} disabled={busy} className="w-full text-sm border border-purple-200 text-purple-700 rounded-xl px-3 py-2 active:bg-purple-50 disabled:opacity-50">📍 排入行程</button>
+          ) : (
+            <div className="space-y-2">
+              {top && (
+                <div className="bg-purple-50 rounded-xl p-2.5">
+                  <p className="text-xs text-purple-900">
+                    建議 <span className="font-semibold">第 {top.dayIndex + 1} 天　{top.startTime}</span>{dayCity(top.dayIndex) ? `・${dayCity(top.dayIndex)}` : ''}
+                  </p>
+                  <p className="text-[11px] text-purple-500 mt-0.5">
+                    {top.anchorTitle ? `接在「${top.anchorTitle}」之後` : '接在當天行程之後'}{top.distanceKm != null ? `・約 ${top.distanceKm.toFixed(1)}km` : ''}
+                  </p>
+                  {closedWarn(top) && <p className="text-[11px] text-amber-600 mt-0.5">{closedWarn(top)}</p>}
+                  <button onClick={() => onAdd(top.dayIndex, top.startTime)} disabled={busy} className="mt-2 w-full text-sm bg-purple-600 text-white rounded-lg py-1.5 disabled:opacity-50">
+                    {busy ? '加入中…' : '採用此建議'}
+                  </button>
+                </div>
+              )}
+              {alts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {alts.map((s) => (
+                    <button key={s.dayIndex} onClick={() => onAdd(s.dayIndex, s.startTime)} disabled={busy} className="text-xs border border-gray-200 text-gray-600 rounded-full px-2.5 py-1 active:bg-gray-50 disabled:opacity-50">
+                      第 {s.dayIndex + 1} 天 {s.startTime}{s.distanceKm != null ? `（${s.distanceKm.toFixed(0)}km）` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <details>
+                <summary className="text-xs text-gray-400 cursor-pointer">其他天／手動選</summary>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {days.map((d) => {
+                    const s = slotForTargetDay(item, days, d.dayIndex)!
+                    return (
+                      <button key={d.dayIndex} onClick={() => onAdd(d.dayIndex, s.startTime)} disabled={busy} className="text-xs border border-gray-200 text-gray-600 rounded-full px-2.5 py-1 active:bg-gray-50 disabled:opacity-50">
+                        第 {d.dayIndex + 1} 天 {s.startTime}
+                      </button>
+                    )
+                  })}
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
