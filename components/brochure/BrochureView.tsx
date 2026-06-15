@@ -257,7 +257,7 @@ function curateFeatures(itin: Itinerary, hasPhoto: (k: string) => boolean) {
       g.push(item)
       byDay.set(day, g)
     }
-    for (const [d, items] of byDay) {
+    for (const [d, items] of Array.from(byDay.entries())) {
       byDay.set(d, [...items].sort((a, b) => (hasPhoto(b.k) ? 1 : 0) - (hasPhoto(a.k) ? 1 : 0)))
     }
     const groups = Array.from(byDay.values())
