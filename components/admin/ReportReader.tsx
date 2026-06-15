@@ -1,11 +1,10 @@
 'use client'
 
-import { useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { Components } from 'react-markdown'
 import type { DevReport } from '@/lib/reports'
+import { BackButton } from '@/components/admin/BackButton'
 
 /**
  * 開發報告閱讀器（iPhone 16 Pro 優化）：react-markdown + remark-gfm，
@@ -51,8 +50,6 @@ const components: Components = {
 }
 
 export function ReportReader({ report }: { report: DevReport }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
   // 內文已有 H1 標題 → 移除首個 H1，避免與頁首重複
   const body = report.content.replace(/^\s*#\s+.*\n/, '')
 
@@ -61,23 +58,7 @@ export function ReportReader({ report }: { report: DevReport }) {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="px-4 py-3 flex items-center gap-3">
-          <button
-            onClick={() => startTransition(() => router.push('/admin/reports'))}
-            disabled={isPending}
-            className="tap-target -ml-1 text-gray-500 flex-shrink-0 disabled:opacity-60"
-            aria-label="返回報告列表"
-          >
-            {isPending ? (
-              <svg className="w-6 h-6 animate-spin text-purple-600" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-              </svg>
-            )}
-          </button>
+          <BackButton fallback="/admin/reports" />
           <div className="flex-1 min-w-0">
             <h1 className="font-bold text-gray-900 text-[15px] leading-tight truncate">{report.title}</h1>
             <p className="text-xs text-gray-400">

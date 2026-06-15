@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { REPORTS } from '@/lib/reports'
+import { BackButton } from '@/components/admin/BackButton'
 
 export default function ReportsListPage() {
   return (
@@ -7,11 +8,7 @@ export default function ReportsListPage() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b border-gray-100 shadow-sm" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="px-4 py-3 flex items-center gap-3">
-          <Link href="/profile" className="tap-target -ml-1 text-gray-500 flex-shrink-0">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-            </svg>
-          </Link>
+          <BackButton fallback="/profile" />
           <div className="flex-1 min-w-0">
             <h1 className="font-bold text-gray-900 text-base leading-tight">開發報告</h1>
             <p className="text-xs text-gray-400">僅管理員可見</p>
