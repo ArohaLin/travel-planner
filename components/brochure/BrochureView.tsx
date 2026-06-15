@@ -248,9 +248,32 @@ function curateFeatures(itin: Itinerary, hasPhoto: (k: string) => boolean) {
       }
     }
   }
-  // 有照片優先、限量（大圖精選 → 少量）
-  const pick = (arr: FeatureItem[], n: number) =>
-    [...arr].sort((a, b) => (hasPhoto(b.k) ? 1 : 0) - (hasPhoto(a.k) ? 1 : 0)).slice(0, n)
+  // 每天輪流取（round-robin），每天內部有照片優先，確保後面天數的景點也出現
+  const pick = (arr: FeatureItem[], n: number) => {
+    const byDay = new Map<string, FeatureItem[]>()
+    for (const item of arr) {
+      const day = item.k.split(':')[0]
+      const g = byDay.get(day) ?? []
+      g.push(item)
+      byDay.set(day, g)
+    }
+    for (const [d, items] of byDay) {
+      byDay.set(d, [...items].sort((a, b) => (hasPhoto(b.k) ? 1 : 0) - (hasPhoto(a.k) ? 1 : 0)))
+    }
+    const groups = Array.from(byDay.values())
+    const result: FeatureItem[] = []
+    let round = 0
+    while (result.length < n) {
+      let any = false
+      for (const g of groups) {
+        if (result.length >= n) break
+        if (round < g.length) { result.push(g[round]); any = true }
+      }
+      if (!any) break
+      round++
+    }
+    return result
+  }
   return { scenic: pick(scenic, 4), food: pick(food, 3), stay: pick(stay, 3) }
 }
 

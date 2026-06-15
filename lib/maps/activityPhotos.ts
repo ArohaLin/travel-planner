@@ -73,7 +73,8 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
 
   // 同名地點（如同一飯店出現在多天）共用「一次搜尋」→ 省 Places 呼叫
   const uniqueQueries = Array.from(new Set(targets.map((t) => t.query)))
-  const looked = await mapPool(uniqueQueries, (q) => findPlace(q, key), 5)
+  // 並發 2 避免觸發 Places OVER_QUERY_LIMIT（預設 1 QPS 限制）
+  const looked = await mapPool(uniqueQueries, (q) => findPlace(q, key), 2)
   const byQuery = new Map<string, (typeof looked)[number]>()
   uniqueQueries.forEach((q, i) => byQuery.set(q, looked[i]))
 
