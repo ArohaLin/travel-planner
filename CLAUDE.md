@@ -121,6 +121,20 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **UI**：歷程頁有快照的節點顯示 `RestoreControls`（`components/itinerary/RestoreControls.tsx`）→ 預覽唯讀逐日摘要 modal ＋二次確認還原。`change_type='rollback'`（schema CHECK 已含）。
 - ⚠️ 舊節點（功能上線前）無快照 → 只能看、不能還原。
 
+### ✅ 精選推薦 + 願望清單（建置中，2026-06-15）
+「真實資料為底、人工策展把關」的區域精選推薦，搭配願望清單。**定位**：幫使用者方便挑出專屬行程，非 AI 自動排程；資料一律來自 Google Places / 官方開放資料，非 LLM 幻覺。
+- **資料表**：`recommendations`（靜態策展精選）、`wishlist_items`（每行程願望清單）。migration `supabase/migration_recommendations.sql`（**已用 SUPABASE_DB_URL 直連執行**）。型別 `lib/types/recommendation.ts`。
+- **模型**：靜態策展 + 即時補事實——長期只存 `google_place_id` ＋策展欄位（短評/標籤/徽章/座標/快照分），評分/照片/營業顯示時用 place_id 即時補（不過時、零維護、合 Google 條款）。
+- **建置方式（低 token、按需重建）**：程式蒐集候選（Places Text Search＋定向補查）→ 程式查證/算分/初篩（信賴下界貝氏校正 C=4.2 M=120）→ 我人工策展寫短評/標籤 → 寫入 DB。瀏覽時 0 AI token。
+- **🔑 建置與取捨準則（未來所有區域一律遵循）**：見 `reports/recommendation-criteria.md`（App 內「開發報告」可讀）。核心：**灌水 ≠ 淘汰；灌水 = 不採信星等**；先問「值不值得推薦（要有獨立證據）」再問「星等可不可信」（2×2 取捨表）。新增/重建區域時必讀並遵循。
+- **現況**：台東已建置（景點12/美食13/住宿10/親子10，共 45）。瀏覽 UI（task #102）與願望清單→拖進每天（#103）尚未做。
+
+### ✅ 管理員「開發報告」閱讀介面（2026-06-15）
+管理員專屬、與行程介面完全分離的報告閱讀區（手機優化）。
+- **路由**：`/admin`（獨立 route tree，`app/admin/layout.tsx` 做 admin guard、非管理員導回 dashboard，不套用行程外殼）；`/admin/reports` 列表、`/admin/reports/[slug]` 閱讀。入口在 `/profile` 底（限管理員）。
+- **報告來源**：`reports/*.md`（含 frontmatter title/date/category/summary）→ 執行 **`npm run build:reports`** 打包成 `lib/reports/index.ts`（TS 模組，避免 Vercel fs tracing 不確定性）。新增/改報告後務必重跑此指令。
+- **渲染**：`components/admin/ReportReader.tsx` 用 react-markdown + remark-gfm，iPhone 16 Pro 優化（表格可橫向捲動、程式區塊深色框）。報告內容以**表格**為主、利於比較。
+
 ---
 
 ## 專案結構（重點檔案）
