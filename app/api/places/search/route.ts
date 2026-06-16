@@ -17,16 +17,20 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const q = (searchParams.get('q') ?? '').trim()
   const near = (searchParams.get('near') ?? '').trim()
+  // region：'all' 或地區名（來自地區選擇器）。指定時優先用它限定策展與偏向 Google 查詢。
+  const region = (searchParams.get('region') ?? '').trim()
   if (q.length < 2) return NextResponse.json({ curated: [], places: [] })
 
   const db = createServiceRoleClient()
 
-  // 1) 策展清單命中（名稱模糊比對；near 有值時限該地區）
+  // 1) 策展清單命中（名稱模糊比對）
+  //    指定地區（非 all）→ 限該區；否則用目的地文字 near 比對地區（全部則不限）。
   const { data: recRows } = await db
     .from('recommendations').select('*').eq('status', 'published').ilike('name', `%${q}%`)
   const curated = (recRows ?? [])
     .map(mapRecommendation)
-    .filter((r: Recommendation) => !near || near.includes(r.region))
+    .filter((r: Recommendation) =>
+      region && region !== 'all' ? r.region === region : (!near || near.includes(r.region)))
     .slice(0, 8)
   const curatedPlaceIds = new Set(curated.map((r: Recommendation) => r.googlePlaceId))
 
@@ -38,7 +42,9 @@ export async function GET(req: Request) {
     photoRef: string | null; lat: number | null; lng: number | null
   }> = []
   if (key) {
-    const query = near && !q.includes(near) ? `${q} ${near}` : q
+    // 偏向地區：明確選的地區優先，否則用目的地文字
+    const bias = region && region !== 'all' ? region : near
+    const query = bias && !q.includes(bias) ? `${q} ${bias}` : q
     const url = 'https://maps.googleapis.com/maps/api/place/textsearch/json' +
       `?query=${encodeURIComponent(query)}&language=zh-TW&region=tw&key=${key}`
     try {

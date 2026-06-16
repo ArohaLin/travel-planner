@@ -3,8 +3,11 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { mapRecommendation } from '@/lib/types/recommendation'
 
 /**
- * 精選推薦讀取：依行程目的地文字 q 比對 region（q 含 region 即回傳）。
- * 任何登入者可讀；資料為靜態策展，瀏覽不耗 AI。
+ * 精選推薦讀取。
+ * - 任何登入者可讀；資料為靜態策展，瀏覽不耗 AI。
+ * - `regions`：永遠回傳所有已發布地區（供前端地區選擇器）。
+ * - `region` 參數：`all`＝全部地區；指定地區名＝只該區；未帶＝用目的地文字 q 比對的預設區
+ *   （比對不到則回全部）。回傳 `region` 為實際生效的地區，供前端高亮對應 chip。
  */
 export async function GET(req: Request) {
   const supabase = createServerClient()
@@ -13,6 +16,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url)
   const q = (searchParams.get('q') ?? '').trim()
+  const region = (searchParams.get('region') ?? '').trim()
 
   const db = createServiceRoleClient()
   const { data, error } = await db
@@ -22,9 +26,16 @@ export async function GET(req: Request) {
     .order('credibility', { ascending: false })
   if (error) return NextResponse.json({ error: '讀取失敗' }, { status: 500 })
 
-  // 以目的地文字比對 region（例：destination「台東」⊇ region「台東」）
-  const rows = (data ?? []).filter((r: { region: string }) => !q || q.includes(r.region))
+  const all = data ?? []
+  const regions: string[] = Array.from(new Set(all.map((r: { region: string }) => r.region as string)))
+
+  // 決定生效地區：明確指定 > 目的地比對 > 全部
+  let effective: string
+  if (region === 'all') effective = 'all'
+  else if (region) effective = region
+  else effective = regions.find((rg) => q && q.includes(rg)) ?? 'all'
+
+  const rows = effective === 'all' ? all : all.filter((r: { region: string }) => r.region === effective)
   const items = rows.map(mapRecommendation)
-  const regions = Array.from(new Set(items.map((r: { region: string }) => r.region)))
-  return NextResponse.json({ items, regions })
+  return NextResponse.json({ items, regions, region: effective })
 }

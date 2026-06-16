@@ -62,33 +62,46 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
 
+  // 地區選擇：selectedRegion=null 表示「跟著目的地預設」；activeRegion 為伺服器實際生效地區
+  const [regions, setRegions] = useState<string[]>([])
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
+  const [activeRegion, setActiveRegion] = useState<string>('all')
+
   // 搜尋分頁狀態
   const [searchQ, setSearchQ] = useState('')
   const [searchRes, setSearchRes] = useState<{ curated: Recommendation[]; places: PlaceResult[] } | null>(null)
   const [searching, setSearching] = useState(false)
 
-  const load = useCallback(async () => {
+  // 精選推薦：隨地區改變重抓
+  const loadRecs = useCallback(async () => {
     setLoading(true)
-    const safe = (url: string) => fetch(url).then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }))
-    const [r, w] = await Promise.all([
-      safe(`/api/recommendations?q=${encodeURIComponent(destination)}`),
-      safe(`/api/itinerary/${itineraryId}/wishlist`),
-    ])
-    setRecs(r.items ?? [])
-    setWishlist(w.items ?? [])
+    const url = `/api/recommendations?q=${encodeURIComponent(destination)}` +
+      (selectedRegion ? `&region=${encodeURIComponent(selectedRegion)}` : '')
+    const r = await fetch(url).then((x) => (x.ok ? x.json() : null)).catch(() => null)
+    setRecs(r?.items ?? [])
+    setRegions(r?.regions ?? [])
+    setActiveRegion(r?.region ?? 'all')
     setLoading(false)
-  }, [itineraryId, destination])
+  }, [destination, selectedRegion])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { loadRecs() }, [loadRecs])
+
+  // 願望清單：只需 itineraryId，不隨地區重抓
+  useEffect(() => {
+    fetch(`/api/itinerary/${itineraryId}/wishlist`)
+      .then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }))
+      .then((w) => setWishlist(w.items ?? []))
+  }, [itineraryId])
 
   // 搜尋：debounce 400ms、最少 2 字
   useEffect(() => {
     const q = searchQ.trim()
     if (q.length < 2) { setSearchRes(null); setSearching(false); return }
     setSearching(true)
+    const regionParam = activeRegion && activeRegion !== 'all' ? `&region=${encodeURIComponent(activeRegion)}` : ''
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/places/search?q=${encodeURIComponent(q)}&near=${encodeURIComponent(destination)}`)
+        const res = await fetch(`/api/places/search?q=${encodeURIComponent(q)}&near=${encodeURIComponent(destination)}${regionParam}`)
         const data = res.ok ? await res.json() : { curated: [], places: [] }
         setSearchRes({ curated: data.curated ?? [], places: data.places ?? [] })
       } catch {
@@ -98,7 +111,7 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
       }
     }, 400)
     return () => clearTimeout(t)
-  }, [searchQ, destination])
+  }, [searchQ, destination, activeRegion])
 
   const inWishlist = new Set(wishlist.map((w) => w.googlePlaceId).filter(Boolean) as string[])
   // 已在行程：以名稱比對（不論 A 智慧加入或 C 由 AI 排入都能反映）
@@ -174,7 +187,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
         <div className="flex-shrink-0 border-b border-gray-100">
           <div className="flex items-center justify-between px-4 py-2">
             <h2 className="font-semibold text-gray-900">
-              {targetDayIndex != null ? `第 ${targetDayIndex + 1} 天・從願望清單加入` : `✨ 探索${recs && recs[0] ? ` ${recs[0].region}` : ''}`}
+              {targetDayIndex != null
+                ? `第 ${targetDayIndex + 1} 天・從願望清單加入`
+                : `✨ 探索${activeRegion === 'all' ? (regions.length > 1 ? ' 全部地區' : '') : ` ${activeRegion}`}`}
             </h2>
             <button onClick={onClose} className="tap-target text-gray-400 p-1">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -185,6 +200,15 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
               <button onClick={() => setTab('recommend')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'recommend' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>精選推薦</button>
               <button onClick={() => setTab('search')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'search' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>🔍 搜尋</button>
               <button onClick={() => setTab('wishlist')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>願望清單{wishlist.length ? `（${wishlist.length}）` : ''}</button>
+            </div>
+          )}
+          {/* 地區選擇器：精選/搜尋分頁、且有多個地區時才出現 */}
+          {targetDayIndex == null && (tab === 'recommend' || tab === 'search') && regions.length > 1 && (
+            <div className="flex gap-1.5 px-4 pb-2 overflow-x-auto no-scrollbar">
+              <RegionChip label="全部" active={activeRegion === 'all'} onClick={() => setSelectedRegion('all')} />
+              {regions.map((rg) => (
+                <RegionChip key={rg} label={rg} active={activeRegion === rg} onClick={() => setSelectedRegion(rg)} />
+              ))}
             </div>
           )}
         </div>
@@ -297,6 +321,18 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
         </div>
       </div>
     </>
+  )
+}
+
+/* ── 地區選擇 chip ───────────────────────────────────────────────────────── */
+function RegionChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx('flex-shrink-0 px-3 py-1 rounded-full text-xs font-medium border', active ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-500 border-gray-200')}
+    >
+      {label}
+    </button>
   )
 }
 
