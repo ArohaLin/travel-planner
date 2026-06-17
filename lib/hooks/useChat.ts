@@ -104,15 +104,15 @@ export function useChat(itineraryId: string): UseChatReturn {
       const typedMsgs = (msgs as ChatMessage[]) ?? []
       setMessages(typedMsgs)
 
-      // Restore any pending plans from the most recent pending_selection message
-      const pendingMsg = [...typedMsgs].reverse().find(
-        (m) => m.role === 'assistant' && m.patch_status === 'pending_selection',
-      )
-      if (pendingMsg?.patch) {
-        const plans = extractPlansFromPatch(pendingMsg.patch)
+      // 還原待選方案：只有當「待選方案是對話的最後一則」才彈出。
+      // 若後面還有更新的訊息（使用者已往下做別的、把舊方案放生了），就不再彈——
+      // 那是陳舊 patch（基於當時行程算的），現在行程早已改變，硬套會錯位。
+      const lastMsg = typedMsgs[typedMsgs.length - 1]
+      if (lastMsg?.role === 'assistant' && lastMsg.patch_status === 'pending_selection' && lastMsg.patch) {
+        const plans = extractPlansFromPatch(lastMsg.patch)
         if (plans && plans.length > 0) {
           setLastPlans(plans)
-          setLastPlansMessageId(pendingMsg.id)
+          setLastPlansMessageId(lastMsg.id)
         }
       }
 
@@ -208,18 +208,18 @@ export function useChat(itineraryId: string): UseChatReturn {
         // 清掉可能殘留的串流畫面狀態（DB 已存好的回覆才是正確結果）
         setStreamingText('')
         setIsGeneratingPlans(false)
-        const pendingMsg = [...typedMsgs].reverse().find(
-          (m) => m.role === 'assistant' && m.patch_status === 'pending_selection',
-        )
-        if (pendingMsg?.patch) {
-          const plans = extractPlansFromPatch(pendingMsg.patch)
+        // 只有「待選方案是對話最後一則」才彈出（同 loadThread）：
+        // 後面有更新訊息＝舊方案已被放生，硬套會基於過時行程而錯位。
+        const lastMsg = typedMsgs[typedMsgs.length - 1]
+        if (lastMsg?.role === 'assistant' && lastMsg.patch_status === 'pending_selection' && lastMsg.patch) {
+          const plans = extractPlansFromPatch(lastMsg.patch)
           if (plans && plans.length > 0) {
             setLastPlans(plans)
-            setLastPlansMessageId(pendingMsg.id)
+            setLastPlansMessageId(lastMsg.id)
             return
           }
         }
-        // 沒有待選方案（可能已在他處套用/取消）→ 清掉殘留狀態
+        // 沒有待選方案（可能已在他處套用/取消，或非最後一則）→ 清掉殘留狀態
         setLastPlans(null)
         setLastPlansMessageId(null)
       })
