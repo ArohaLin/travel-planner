@@ -41,6 +41,13 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        {/* iOS PWA 啟動畫面：點開 App 立即顯示品牌圖，蓋掉「等伺服器回應」的空白期。
+            尺寸須精確對應裝置（iPhone 16 Pro：402×874 @3x = 1206×2622），否則 iOS 忽略。 */}
+        <link
+          rel="apple-touch-startup-image"
+          media="screen and (device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3)"
+          href="/splash/iphone16pro.png"
+        />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
