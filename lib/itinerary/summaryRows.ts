@@ -49,13 +49,10 @@ const toMin = (t?: string): number | null => {
   return h * 60 + m
 }
 
-/** 分鐘 → 中文時長：「35 分」/「1 時」/「1 時 30 分」 */
+/** 分鐘 → 時長（純分鐘表示）：「90 分」 */
 function fmtDurZh(min: number): string {
   if (min <= 0) return ''
-  if (min < 60) return `${min} 分`
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  return m ? `${h} 時 ${m} 分` : `${h} 時`
+  return `${min} 分`
 }
 
 /** 類型圖示；餐飲再依餐別細分 */
@@ -78,18 +75,40 @@ function iconFor(a: Activity): string {
   }
 }
 
-/** 取首句並精簡到 maxLen 字（去尾標點），給「內容」欄用 */
-function shortText(s?: string, maxLen = 16): string {
+/** 取首句（切到第一個句讀），給「內容」欄用；長度交由版面 line-clamp 控制 */
+function firstClause(s?: string): string {
   if (!s) return ''
-  const first = s.split(/[。\n；;]/)[0].trim()
-  const clipped = first.length > maxLen ? first.slice(0, maxLen) + '…' : first
-  return clipped
+  return s.split(/[。\n；;！？]/)[0].trim()
 }
 
-/** 內容欄：餐飲優先用 foodItems，其它用 intro/recommendation 首句 */
+/** 取較短的工具：給「備註」欄精簡用 */
+function shortText(s?: string, maxLen = 14): string {
+  const first = firstClause(s)
+  return first.length > maxLen ? first.slice(0, maxLen) + '…' : first
+}
+
+/** 類型的通用簡述（所有具體欄位都沒寫時的保底，避免「內容」整片空白） */
+function genericContent(type: Activity['type']): string {
+  switch (type) {
+    case 'food': return '用餐'
+    case 'sightseeing': return '參觀遊覽'
+    case 'nature': return '自然景觀'
+    case 'experience': return '體驗活動'
+    case 'shopping': return '購物'
+    case 'rest': return '休息'
+    default: return ''
+  }
+}
+
+/**
+ * 內容欄：盡量寫得出東西（多來源備援）、又不過長（取首句，版面再 line-clamp 2 行）。
+ * 餐飲優先 foodItems；其它依 intro→recommendation→description→tags；都沒有才用類型通用簡述。
+ */
 function contentOf(a: Activity): string {
-  if (a.type === 'food' && a.foodItems) return shortText(a.foodItems)
-  return shortText(a.intro || a.recommendation || a.foodItems)
+  if (a.type === 'food' && a.foodItems) return firstClause(a.foodItems)
+  const tagText = a.tags && a.tags.length ? a.tags.slice(0, 2).join('、') : ''
+  const main = firstClause(a.intro || a.recommendation || a.description || a.foodItems || tagText)
+  return main || genericContent(a.type)
 }
 
 /** 備註欄：highlight 優先，其次 tips 首句；都沒有就空 */

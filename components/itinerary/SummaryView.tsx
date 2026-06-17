@@ -71,8 +71,8 @@ export function SummaryView({ day, dateLabel, departure, arrival }: SummaryViewP
             <thead>
               <tr className="text-left text-[10.5px] text-[#B89A72]">
                 <td className="w-[46px] px-0.5 pb-1">時間</td>
-                <td className="w-[42px] px-0.5 pb-1">時長</td>
-                <td className="w-[78px] px-0.5 pb-1">景點</td>
+                <td className="w-[34px] px-0.5 pb-1">時長</td>
+                <td className="w-[74px] px-0.5 pb-1">景點</td>
                 <td className="px-0.5 pb-1">內容</td>
                 <td className="w-[46px] px-0.5 pb-1 text-center">備註</td>
               </tr>
@@ -103,7 +103,9 @@ export function SummaryView({ day, dateLabel, departure, arrival }: SummaryViewP
                     <td className="px-0.5 py-1.5 align-top leading-snug">
                       <span className="text-[13px]">{r.icon}</span> {r.place}
                     </td>
-                    <td className="px-0.5 py-1.5 align-top leading-snug text-[#6B5B47]">{r.content}</td>
+                    <td className="px-0.5 py-1.5 align-top leading-snug text-[#6B5B47]">
+                      <span className="line-clamp-2">{r.content}</span>
+                    </td>
                     <td className="px-0.5 py-1.5 text-center align-top">
                       {r.needBooking ? (
                         <span className="inline-block rounded-[5px] bg-[#FBE0B0] px-1 py-[1px] text-[9.5px] leading-tight text-[#9A6B1F]">
