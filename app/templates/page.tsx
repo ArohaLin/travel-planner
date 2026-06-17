@@ -76,7 +76,14 @@ export default function TemplatesPreview() {
   return (
     <div style={{ maxWidth: 400, margin: '0 auto', padding: '20px 14px 60px', fontFamily: '-apple-system, "PingFang TC", sans-serif' }}>
       <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 4 }}>簡表樣版預覽</h1>
-      <p style={{ fontSize: 13, color: '#888', marginBottom: 24 }}>台東 Day 4 範例。看完跟 Claude 說選 A / B / C。</p>
+      <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>台東 Day 4 範例。看完跟 Claude 說選 A / B / C。</p>
+
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 2 }}>AI 插圖草稿（樣版 A 頁首）</div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 10 }}>本地 ComfyUI schnell 生成 · 方向示意</div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/draft-illust-A.png" alt="AI 插圖草稿" style={{ width: '100%', borderRadius: 14, border: '1px solid #eee' }} />
+      </div>
       <Block label="樣版 A · 手帳貼紙風" desc="奶油米底、紙膠帶、虛線框，溫馨可愛" html={tplA} />
       <Block label="樣版 B · 清新天空插畫風" desc="天空藍漸層頂、雲朵小飛機，清爽好讀" html={tplB} />
       <Block label="樣版 C · 復古車票印章風" desc="墨綠＋米黃、郵戳徽章、選孔虛線" html={tplC} />
