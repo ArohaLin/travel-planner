@@ -76,23 +76,24 @@ export function useChat(itineraryId: string): UseChatReturn {
 
       setThreadId(tid)
 
-      // 最多載入 30 則，並以字元數為二次過濾（保留最新訊息）
+      // 最多載入 30 則（最新的 30 則），並以字元數為二次過濾（保留最新訊息）
       const DISPLAY_MSG_LIMIT = 30
       const DISPLAY_CHAR_LIMIT = 20000 // 超過就從最舊的開始丟棄
 
+      // descending = 最新的先回（確保 pending_selection 方案在 limit 範圍內）
       const { data: allMsgs } = await supabase
         .from('chat_messages')
         .select('*')
         .eq('thread_id', tid)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(DISPLAY_MSG_LIMIT)
 
-      // 字元數限制：從最新往最舊累加，超過就停止往更舊收（但「絕不丟棄較新的訊息」）。
-      // 舊版用 filter：若某一則特別長（例如殘缺 JSON）會被整則丟掉 → 對話看起來「突然消失」。
-      // 改為一旦超量就 break，保證最新對話一定保留。
+      // 字元數限制：allMsgs 已是 newest-first，從頭迭代（最新→最舊）累加，
+      // 超過就 break；最後 reverse 成 oldest-first 顯示。
+      // 「絕不丟棄較新的訊息」—— 若某一則特別長也只是讓更舊的訊息被截去。
       let charSum = 0
       const msgs: typeof allMsgs = []
-      for (const m of (allMsgs ?? []).slice().reverse()) {
+      for (const m of (allMsgs ?? [])) {
         msgs.push(m)
         charSum += (m.content ?? '').length
         if (charSum > DISPLAY_CHAR_LIMIT) break
@@ -198,11 +199,11 @@ export function useChat(itineraryId: string): UseChatReturn {
       .from('chat_messages')
       .select('*')
       .eq('thread_id', threadId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
       .limit(30)
       .then(({ data }) => {
         if (!data) return
-        const typedMsgs = data as ChatMessage[]
+        const typedMsgs = (data as ChatMessage[]).reverse()
         setMessages(typedMsgs)
         // 清掉可能殘留的串流畫面狀態（DB 已存好的回覆才是正確結果）
         setStreamingText('')
