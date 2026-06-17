@@ -82,7 +82,7 @@ export default function TemplatesPreview() {
         <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 2 }}>AI 插圖草稿（樣版 A 頁首）</div>
         <div style={{ fontSize: 13, color: '#888', marginBottom: 10 }}>本地 ComfyUI schnell 生成 · 方向示意</div>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/draft-illust-A.png" alt="AI 插圖草稿" style={{ width: '100%', borderRadius: 14, border: '1px solid #eee' }} />
+        <img src="/draft-illust-A.png?v=2" alt="AI 插圖草稿" style={{ width: '100%', borderRadius: 14, border: '1px solid #eee' }} />
       </div>
       <Block label="樣版 A · 手帳貼紙風" desc="奶油米底、紙膠帶、虛線框，溫馨可愛" html={tplA} />
       <Block label="樣版 B · 清新天空插畫風" desc="天空藍漸層頂、雲朵小飛機，清爽好讀" html={tplB} />
