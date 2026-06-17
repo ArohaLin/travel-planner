@@ -40,6 +40,16 @@ function modeInfo(a?: Activity): { icon: string; label: string; driving: boolean
 }
 
 /**
+ * 「複合交通」判斷：移動段落裡其實夾帶了實際動作（還車/候船/轉乘/報到…），
+ * 整段時間不只是移動（例：「還車與候船 1 時 30 分」＝騎車幾分鐘＋還車＋走到碼頭＋候船）。
+ * 這類段落視覺上份量比純過場重 → 改用獨立小卡片呈現，不再混在細灰移動列裡。
+ * 關鍵字清單與 AI prompt 的「交通卡 title 規則」一致（雙邊閉環）。
+ */
+function isCompositeTransport(title?: string): boolean {
+  return /還車|取車|候船|候機|報到|託運|安檢|轉乘|等候|排隊|寄放|手續/.test(title ?? '')
+}
+
+/**
  * 緩衝判斷門檻：充足 = 路程 + 路程的一半（最少 5 分、最多 15 分）。
  * 用比例制避免短程被絕對門檻誤判（例：路程 6 分留 15 分，明明很夠卻被 +15 分規則標偏緊）。
  */
@@ -100,8 +110,8 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, o
     const to = transport.toLabel?.trim()
     // 複合用途的交通卡（還車/候船/轉乘…）：時段不只是移動，用原標題才不會讓人誤會
     // 「騎車要 1 小時」（實際是騎車幾分鐘 + 還車 + 候船的整段時間）。
-    // 關鍵字清單與 AI prompt 的「交通卡 title 規則」一致（雙邊閉環：AI 保證標明、這裡保證接住）
-    const composite = /還車|取車|候船|候機|報到|託運|安檢|轉乘|等候|排隊|寄放|手續/.test(transport.title)
+    // 註：這類段落正常會走 CompositeTransportCard 獨立卡片；此處仍保留判斷當保險（標題誤判時）
+    const composite = isCompositeTransport(transport.title)
     main = `${!composite && to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}`
     const budget = allottedSec ?? cardSec
     if (hasDriveLeg && leg && budget != null && budget > 0) {
@@ -174,6 +184,84 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, o
             <span>{status.text}</span>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+interface CompositeTransportCardProps {
+  transport: Activity
+  canEdit?: boolean
+  onEdit?: (a: Activity) => void
+  onDelete?: (a: Activity) => void
+  onClick?: (a: Activity) => void
+}
+
+/**
+ * 複合交通卡：還車/候船/轉乘…這類「移動＋實際動作」的段落，
+ * 視覺份量比純過場連接線重，改用獨立小卡片（虛線框＋淺底）呈現，
+ * 與純移動列（細灰一條）做出層次，但仍比景點主卡輕，不喧賓奪主。
+ */
+function CompositeTransportCard({ transport, canEdit, onEdit, onDelete, onClick }: CompositeTransportCardProps) {
+  const { icon } = modeInfo(transport)
+
+  // 時間：有完整起迄就顯示區間，否則只顯示出發時間
+  const s = toMin(transport.startTime)
+  const e = toMin(transport.endTime)
+  const timeRange =
+    transport.startTime && transport.endTime ? `${transport.startTime} — ${transport.endTime}` : transport.startTime || null
+  const durSec = s != null && e != null && e > s ? (e - s) * 60 : null
+
+  const clickable = !!onClick
+
+  return (
+    <div className="flex gap-3">
+      {/* 時間軸：延續直線，圖示節點略大於純移動列以示份量 */}
+      <div className="flex flex-col items-center flex-shrink-0 w-8">
+        <div className="w-0.5 h-2 bg-gray-200" />
+        <span className="text-sm leading-none my-0.5">{icon}</span>
+        <div className="w-0.5 flex-1 bg-gray-200" />
+      </div>
+
+      <div
+        role={clickable ? 'button' : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onClick={clickable ? () => onClick!(transport) : undefined}
+        className={clsx(
+          'flex-1 rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 px-3 py-2.5 mb-2 min-w-0',
+          clickable && 'cursor-pointer active:opacity-70',
+        )}
+      >
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          {timeRange && <span className="text-xs font-semibold text-gray-600 tabular-nums">{timeRange}</span>}
+          {durSec && <span className="text-[11px] text-gray-400">{fmtDur(durSec)}</span>}
+          <span className="text-[11px] text-gray-400">交通／轉乘</span>
+          {canEdit && (
+            <span className="flex items-center gap-0.5 flex-shrink-0 ml-auto text-gray-400">
+              <button
+                onClick={(ev) => { ev.stopPropagation(); onEdit?.(transport) }}
+                title="編輯交通"
+                className="w-6 h-6 flex items-center justify-center rounded hover:text-purple-600"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                </svg>
+              </button>
+              <button
+                onClick={(ev) => { ev.stopPropagation(); onDelete?.(transport) }}
+                title="刪除交通"
+                className="w-6 h-6 flex items-center justify-center rounded hover:text-red-500"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          )}
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="font-medium text-gray-700 leading-snug text-sm">{transport.title}</span>
+        </div>
       </div>
     </div>
   )
@@ -369,8 +457,22 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               />
             )
 
-            // 交通活動 → 移動列（吸收 Google 時間；緊接景點時帶該段路段）
+            // 交通活動：複合交通（還車/候船/轉乘…）→ 獨立小卡；純移動 → 細灰移動列
             if (activity.type === 'transport') {
+              if (isCompositeTransport(activity.title)) {
+                return (
+                  <div key={activity.id}>
+                    <CompositeTransportCard
+                      transport={activity}
+                      canEdit={canEdit}
+                      onEdit={onEditActivity}
+                      onDelete={onDeleteActivity}
+                      onClick={onActivityClick}
+                    />
+                    {addBtn}
+                  </div>
+                )
+              }
               const leg = next && next.type !== 'transport' ? legByTo.get(next.id) : undefined
               const s = toMin(activity.startTime)
               const e = toMin(activity.endTime)
