@@ -389,6 +389,15 @@ export async function POST(request: Request) {
         }
       }
 
+      // 安全上限：displayText 是存進 DB 的顯示文字，不應超過 8000 字元。
+      // 若 stripLeakedPlanJson 因未知格式未能完整清除 JSON，此處作最後防線，
+      // 避免超長 content 影響前端字元限制邏輯或 DB 效能。
+      const MAX_DISPLAY_CHARS = 8000
+      if (displayText.length > MAX_DISPLAY_CHARS) {
+        console.warn(`[chat] displayText truncated: ${displayText.length} → ${MAX_DISPLAY_CHARS} chars`)
+        displayText = displayText.slice(0, MAX_DISPLAY_CHARS) + '…'
+      }
+
       // ── 寫入 AI 對話 log ────────────────────────────────────────────────────
       logAIConversation({
         timestamp: new Date().toISOString(),

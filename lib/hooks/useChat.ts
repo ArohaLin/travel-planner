@@ -204,6 +204,9 @@ export function useChat(itineraryId: string): UseChatReturn {
         if (!data) return
         const typedMsgs = data as ChatMessage[]
         setMessages(typedMsgs)
+        // 清掉可能殘留的串流畫面狀態（DB 已存好的回覆才是正確結果）
+        setStreamingText('')
+        setIsGeneratingPlans(false)
         const pendingMsg = [...typedMsgs].reverse().find(
           (m) => m.role === 'assistant' && m.patch_status === 'pending_selection',
         )
@@ -221,6 +224,11 @@ export function useChat(itineraryId: string): UseChatReturn {
       })
   }, [threadId])
 
+  // reloadFromDb 的 ref：讓 visibilitychange 監聽器不需隨 threadId 重裝，
+  // 消滅「舊監聽器剛移除、新監聽器尚未掛上」時 visibilitychange 被整個漏掉的空窗期。
+  const reloadFromDbRef = useRef(reloadFromDb)
+  useEffect(() => { reloadFromDbRef.current = reloadFromDb }, [reloadFromDb])
+
   // 開啟視窗/手動補載：串流進行中不打擾（避免蓋掉正在串流的畫面）
   const refreshMessages = useCallback(() => {
     if (isStreaming) return
@@ -231,6 +239,7 @@ export function useChat(itineraryId: string): UseChatReturn {
   // 重點：背景化會讓串流 fetch 卡死、isStreaming 卡在 true。若仍沿用「isStreaming 就跳過」
   // 會永遠補不回來 → 這裡先中止已失效的串流、清掉串流畫面狀態，再「無條件」從 DB 重載，
   // 確保 AI 已存進 DB 的回覆與待選方案不會「消失」。
+  // 使用 ref 版本的 reloadFromDb（而非直接依賴 reloadFromDb）→ 效果不重裝，消滅空窗期。
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return
@@ -241,11 +250,11 @@ export function useChat(itineraryId: string): UseChatReturn {
         setStreamingText('')
         setIsGeneratingPlans(false)
       }
-      reloadFromDb()
+      reloadFromDbRef.current()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [reloadFromDb])
+  }, []) // 空 deps：只裝一次，透過 ref 拿最新的 reloadFromDb，消滅空窗期
 
   const sendMessage = useCallback(
     async (text: string, iId: string, modelProvider: ModelProvider = 'claude') => {
@@ -364,6 +373,14 @@ export function useChat(itineraryId: string): UseChatReturn {
           setStreamingText('')
           setIsGeneratingPlans(false)
         }
+      }
+
+      // 串流完成：主動從 DB 補載，確保 assistant message 進 messages 陣列。
+      // 原本依賴 Realtime INSERT，但手機背景期間 WebSocket 可能斷線、INSERT 被漏接。
+      // 伺服器在送 __DONE__ 之前已把訊息存入 DB，這裡 400ms 延遲讓 Realtime 有機會先到
+      // （避免兩者競爭時多一次無謂的 DB 讀）；若 Realtime 已到，重載只是冪等覆蓋。
+      if (completedSuccessfully) {
+        setTimeout(() => reloadFromDbRef.current(), 400)
       }
     },
     [threadId, isStreaming, chatMode],
