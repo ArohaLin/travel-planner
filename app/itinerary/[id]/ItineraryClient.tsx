@@ -21,6 +21,7 @@ import { ItineraryHeader } from '@/components/itinerary/ItineraryHeader'
 import { DayTabs } from '@/components/itinerary/DayTabs'
 import { DayView } from '@/components/itinerary/DayView'
 import { DragSortView } from '@/components/itinerary/DragSortView'
+import { SummaryView } from '@/components/itinerary/SummaryView'
 import { TripInfoCard } from '@/components/itinerary/TripInfoCard'
 import { ChatSheet } from '@/components/ai/ChatSheet'
 import { ExploreSheet } from '@/components/explore/ExploreSheet'
@@ -42,7 +43,15 @@ import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { daysBetweenInclusive, getDaysInRange } from '@/lib/utils/date'
 
-type ViewMode = 'list' | 'map'
+type ViewMode = 'list' | 'map' | 'summary'
+
+/** YYYY-MM-DD → 「M/D（週X）」 */
+function fmtDateLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return dateStr
+  const w = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()]
+  return `${d.getMonth() + 1}/${d.getDate()}（${w}）`
+}
 
 interface ItineraryClientProps {
   itineraryId: string
@@ -77,7 +86,8 @@ export function ItineraryClient({
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
   const [dragHasChanges, setDragHasChanges] = useState(false)
-  const [dragSwitchConfirm, setDragSwitchConfirm] = useState(false)
+  // 拖拉未套用時、切到哪個檢視的待確認目標（map / summary）
+  const [dragSwitchConfirm, setDragSwitchConfirm] = useState<'map' | 'summary' | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
@@ -703,7 +713,7 @@ export function ItineraryClient({
             onClick={() => {
               // 行程 → 地圖：有未套用的拖拉調整時先確認
               if (dragMode && dragHasChanges) {
-                setDragSwitchConfirm(true)
+                setDragSwitchConfirm('map')
                 return
               }
               setMapSelectedDays([activeDay])
@@ -716,6 +726,23 @@ export function ItineraryClient({
             }`}
           >
             地圖
+          </button>
+          <button
+            onClick={() => {
+              // 行程 → 簡表：有未套用的拖拉調整時先確認
+              if (dragMode && dragHasChanges) {
+                setDragSwitchConfirm('summary')
+                return
+              }
+              setDragMode(false)
+              setDragHasChanges(false)
+              setViewMode('summary')
+            }}
+            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+              viewMode === 'summary' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+            }`}
+          >
+            簡表
           </button>
         </div>
       </div>
@@ -831,6 +858,32 @@ export function ItineraryClient({
           )}
         </>
         )
+      ) : viewMode === 'summary' ? (
+        <>
+          <DayTabs
+            days={displayItinerary.days}
+            activeDay={activeDay}
+            onDayChange={setActiveDay}
+          />
+          {currentDayData && (
+            <SummaryView
+              day={currentDayData}
+              dateLabel={fmtDateLabel(currentDayData.date)}
+              departure={(() => {
+                const prevAcc = displayItinerary.days.find((d) => d.dayIndex === activeDay - 1)?.accommodation
+                if (prevAcc) return { name: prevAcc.name }
+                const origin = displayItinerary.metadata.originCity
+                if (activeDay === 0 && origin) return { name: origin }
+                return null
+              })()}
+              arrival={(() => {
+                if (activeDay !== displayItinerary.days.length - 1) return null
+                const name = displayItinerary.metadata.returnCity ?? displayItinerary.metadata.originCity
+                return name ? { name } : null
+              })()}
+            />
+          )}
+        </>
       ) : (
         <div className="mt-3" style={{ height: 'calc(100dvh - 240px)' }}>
           <MapView
@@ -1054,33 +1107,36 @@ export function ItineraryClient({
         </>
       )}
 
-      {/* 拖拉排序未套用時切換地圖的確認 dialog */}
+      {/* 拖拉排序未套用時切換檢視的確認 dialog（地圖／簡表共用） */}
       {dragSwitchConfirm && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={() => setDragSwitchConfirm(false)} />
+          <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={() => setDragSwitchConfirm(null)} />
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
             <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full">
               <div className="text-3xl text-center mb-3">⇅</div>
               <h3 className="font-semibold text-gray-900 text-center mb-2">拖拉排序尚未套用</h3>
-              <p className="text-sm text-gray-500 text-center mb-5">切換到地圖後，目前的排序調整將會消失。</p>
+              <p className="text-sm text-gray-500 text-center mb-5">
+                切換到{dragSwitchConfirm === 'map' ? '地圖' : '簡表'}後，目前的排序調整將會消失。
+              </p>
               <div className="flex flex-col gap-2">
                 <button
-                  onClick={() => setDragSwitchConfirm(false)}
+                  onClick={() => setDragSwitchConfirm(null)}
                   className="w-full py-3 text-sm font-semibold text-white bg-purple-600 rounded-2xl"
                 >
                   繼續編輯
                 </button>
                 <button
                   onClick={() => {
-                    setDragSwitchConfirm(false)
+                    const target = dragSwitchConfirm
+                    setDragSwitchConfirm(null)
                     setDragMode(false)
                     setDragHasChanges(false)
-                    setMapSelectedDays([activeDay])
-                    setViewMode('map')
+                    if (target === 'map') setMapSelectedDays([activeDay])
+                    setViewMode(target)
                   }}
                   className="w-full py-3 text-sm font-semibold text-gray-700 border border-gray-200 rounded-2xl"
                 >
-                  放棄調整，切換地圖
+                  放棄調整，切換{dragSwitchConfirm === 'map' ? '地圖' : '簡表'}
                 </button>
               </div>
             </div>
