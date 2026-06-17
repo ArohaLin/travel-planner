@@ -138,6 +138,24 @@ export function ItineraryClient({
       .catch(() => {})
   }, [liveItinerary, userCanEdit, itineraryId, refreshItinerary])
 
+  // ── 回前景自動重抓行程 ─────────────────────────────────────────────────────
+  // 手機背景化會切斷 Realtime websocket：背景期間伺服器套用的修改（一鍵修正路程、
+  // 協作者編輯、AI 方案於他處套用…）其 UPDATE 事件會被漏接、且不補播 → 回前景畫面停在舊資料。
+  // 這裡在頁面回到前景時無條件從 DB 重抓，補上漏接的更新。拖拉模式中略過（不蓋掉預覽）。
+  const refreshRef = useRef(refreshItinerary)
+  useEffect(() => { refreshRef.current = refreshItinerary })
+  const dragModeRef = useRef(dragMode)
+  useEffect(() => { dragModeRef.current = dragMode }, [dragMode])
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      if (dragModeRef.current) return // 拖拉預覽進行中 → 不重抓
+      refreshRef.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, []) // 只裝一次，透過 ref 取最新 refresh / dragMode
+
   // 一鍵「自動修正路程時間」：伺服器端跑 AI 並直接套用（背景切走也會完成、完成會推播）。
   // 仍是快照式可還原；套用後靠 Realtime 自動更新畫面。
   async function handleFixTravelTimes() {
