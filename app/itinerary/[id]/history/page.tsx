@@ -8,6 +8,7 @@ import { formatRelativeTime } from '@/lib/utils/date'
 import type { ItineraryChange, Profile } from '@/lib/types/collaboration'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { Itinerary } from '@/lib/types/itinerary'
+import { deriveDayCity } from '@/lib/itinerary/deriveCity'
 import type { EnrichedPatch, HistoryMeta } from '@/lib/history/enrich'
 
 const CHANGE_TYPE_LABELS: Record<string, string> = {
@@ -205,7 +206,7 @@ function getDayLabel(
   if (dayIndex === -1) return '整體行程'
   const day = itinerary?.days.find((d) => d.dayIndex === dayIndex)
   if (!day) return `第 ${dayIndex + 1} 天`
-  return `第 ${dayIndex + 1} 天・${day.city}（${day.date}）`
+  return `第 ${dayIndex + 1} 天・${deriveDayCity(day)}（${day.date}）`
 }
 
 /** 日期分組標頭：今天／昨天／M月D日（台北時區） */

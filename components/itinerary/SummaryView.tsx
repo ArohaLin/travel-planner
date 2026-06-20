@@ -1,5 +1,6 @@
 import type { ItineraryDay } from '@/lib/types/itinerary'
 import { buildDaySummary } from '@/lib/itinerary/summaryRows'
+import { deriveDayCity } from '@/lib/itinerary/deriveCity'
 
 interface SummaryViewProps {
   day: ItineraryDay
@@ -33,7 +34,7 @@ export function SummaryView({ day, dateLabel, departure, arrival }: SummaryViewP
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <div className="text-[19px] font-semibold leading-tight">
-                第 {day.dayIndex + 1} 天 · {day.city}
+                第 {day.dayIndex + 1} 天 · {deriveDayCity(day)}
               </div>
               <div className="mt-0.5 text-xs text-[#A38B6E]">
                 {dateLabel}

@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react'
 import { clsx } from 'clsx'
 import type { ItineraryDay } from '@/lib/types/itinerary'
 import { formatDateShort, formatWeekday } from '@/lib/utils/date'
+import { deriveDayCity } from '@/lib/itinerary/deriveCity'
 
 interface DayTabsProps {
   days: ItineraryDay[]
@@ -45,8 +46,8 @@ export function DayTabs({ days, activeDay, onDayChange }: DayTabsProps) {
             >
               <span className="text-xs font-medium">第 {day.dayIndex + 1} 天</span>
               <span className="text-[10px] opacity-75 mt-0.5">{formatDateShort(day.date)}（{formatWeekday(day.date)}）</span>
-              {day.city && (
-                <span className="text-[10px] opacity-75 truncate max-w-[64px]">{day.city}</span>
+              {deriveDayCity(day) && (
+                <span className="text-[10px] opacity-75 truncate max-w-[64px]">{deriveDayCity(day)}</span>
               )}
             </button>
           )

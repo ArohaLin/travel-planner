@@ -42,6 +42,9 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
   for (const day of itin.days) {
     for (const a of day.activities) {
       if (a.type === 'transport') continue
+      // rest 型活動（Check-in、盥洗、休息等）是動作描述而非地點；沒有具體 placeLabel 就不 geocode，
+      // 否則 Places 搜尋「民宿 Check-in 台東」會抓到整個台東縣（含綠島）的隨機民宿座標。
+      if (a.type === 'rest' && !a.placeLabel) continue
       const needPhoto = !a.photoRef
       const needCoords = !hasCoords(a.location)
       if (needPhoto || needCoords) {

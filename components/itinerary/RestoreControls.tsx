@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Itinerary } from '@/lib/types/itinerary'
 import { formatDateRange } from '@/lib/utils/date'
+import { deriveDayCity } from '@/lib/itinerary/deriveCity'
 
 /**
  * 歷程節點的「預覽 / 還原」控制（限有快照的節點）。
@@ -159,7 +160,7 @@ function SnapshotSummary({ itinerary }: { itinerary: Itinerary }) {
             <div key={day.dayIndex}>
               <p className="text-sm font-medium text-gray-900">
                 <span className="font-serif text-purple-400 mr-2">Day {day.dayIndex + 1}</span>
-                {day.city}
+                {deriveDayCity(day)}
                 {day.theme ? <span className="text-gray-400 font-normal"> · {day.theme}</span> : null}
               </p>
               <div className="mt-1 rounded-xl bg-gray-50 px-3 py-2">

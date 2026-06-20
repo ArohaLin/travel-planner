@@ -1,6 +1,7 @@
 import type { Itinerary, Activity, ItineraryDay } from '@/lib/types/itinerary'
 import type { BrochureCache } from '@/lib/types/brochure'
 import { formatDate } from '@/lib/utils/date'
+import { deriveDayCity } from '@/lib/itinerary/deriveCity'
 
 /**
  * 宣傳冊雜誌版面（純呈現、唯讀）。差異化設計：
@@ -134,7 +135,7 @@ export function BrochureView({ itinerary, cache, token }: BrochureViewProps) {
             <div key={day.dayIndex}>
               <p className="text-sm font-medium text-gray-900 mb-1.5">
                 <span className="font-serif text-purple-400 mr-2">Day {day.dayIndex + 1}</span>
-                {day.city}{day.theme ? <span className="text-gray-400 font-normal"> · {day.theme}</span> : null}
+                {deriveDayCity(day)}{day.theme ? <span className="text-gray-400 font-normal"> · {day.theme}</span> : null}
               </p>
               <ScheduleRows rows={scheduleRows(day)} />
             </div>
@@ -331,7 +332,7 @@ function DaySection({
               <p className="text-sm text-gray-500">{formatDate(day.date)}</p>
             </div>
           </div>
-          <h2 className="font-serif text-2xl text-gray-900">{day.city}</h2>
+          <h2 className="font-serif text-2xl text-gray-900">{deriveDayCity(day)}</h2>
           {day.theme && <p className="text-sm text-gray-500 mt-1 leading-relaxed">{day.theme}</p>}
         </div>
 
