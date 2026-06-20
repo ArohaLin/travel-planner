@@ -49,9 +49,14 @@ interface MapViewProps {
   onLegsSaved?: () => void
 }
 
-/** 判斷 location 是否已有可用座標（非空、lat/lng 為有效數字且非 0,0） */
+/** 判斷 location 是否已有可用座標（非空、lat/lng 為有效有限數字且非 0,0） */
 function usableCoords(loc?: GeoLocation | null): GeoLocation | undefined {
-  if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && (loc.lat !== 0 || loc.lng !== 0)) return loc
+  if (
+    loc &&
+    typeof loc.lat === 'number' && isFinite(loc.lat) &&
+    typeof loc.lng === 'number' && isFinite(loc.lng) &&
+    (loc.lat !== 0 || loc.lng !== 0)
+  ) return loc
   return undefined
 }
 
@@ -151,6 +156,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
 
       for (const a of day.activities) {
         if (a.type === 'transport') continue // 交通類不標在地圖上，免 geocode
+        if (a.type === 'rest' && !a.placeLabel) continue // 動作描述（Check-in/盥洗），非地點
         enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
       }
       if (day.accommodation) {

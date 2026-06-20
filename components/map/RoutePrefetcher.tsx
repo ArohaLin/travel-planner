@@ -22,7 +22,12 @@ import {
  */
 
 function usable(loc?: GeoLocation | null): GeoLocation | undefined {
-  if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && (loc.lat !== 0 || loc.lng !== 0)) return loc
+  if (
+    loc &&
+    typeof loc.lat === 'number' && isFinite(loc.lat) &&
+    typeof loc.lng === 'number' && isFinite(loc.lng) &&
+    (loc.lat !== 0 || loc.lng !== 0)
+  ) return loc
   return undefined
 }
 
@@ -89,6 +94,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         }
         for (const a of day.activities) {
           if (a.type === 'transport') continue
+          if (a.type === 'rest' && !a.placeLabel) continue // 動作描述，非地點，geocode 會拿到錯誤座標
           enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }
         if (day.accommodation) {

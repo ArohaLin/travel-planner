@@ -106,8 +106,10 @@ export function buildDayPoints(
     }
   }
 
-  // 實際地點（排除交通類），連續編號
-  const placeActivities = day.activities.filter((a) => a.type !== 'transport')
+  // 實際地點（排除交通類 + 無 placeLabel 的 rest 動作描述），連續編號
+  const placeActivities = day.activities.filter(
+    (a) => a.type !== 'transport' && !(a.type === 'rest' && !a.placeLabel)
+  )
   placeActivities.forEach((a, i) => {
     const geo = resolve(dayIndex, a.id, a.location)
     if (!geo) return
@@ -156,7 +158,7 @@ export function buildDayPoints(
  *  前綴 v2：路線格式改成「逐段折線」，遞增版本讓舊資料簽章不符而自動重算。 */
 export function signatureFor(points: { id: string; lat: number; lng: number }[]): string {
   return 'v2|' + points
-    .filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number')
+    .filter((p) => typeof p.lat === 'number' && isFinite(p.lat) && typeof p.lng === 'number' && isFinite(p.lng))
     .map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
     .join('|')
 }
