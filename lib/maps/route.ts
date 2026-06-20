@@ -155,7 +155,10 @@ export function buildDayPoints(
 /** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變。
  *  前綴 v2：路線格式改成「逐段折線」，遞增版本讓舊資料簽章不符而自動重算。 */
 export function signatureFor(points: { id: string; lat: number; lng: number }[]): string {
-  return 'v2|' + points.map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
+  return 'v2|' + points
+    .filter((p) => typeof p.lat === 'number' && typeof p.lng === 'number')
+    .map((p) => `${p.id}@${p.lat.toFixed(5)},${p.lng.toFixed(5)}`)
+    .join('|')
 }
 
 // 以 signature 為鍵的記憶體快取：地圖與 prefetch 共用，同 session 同一條路線只打一次 Directions

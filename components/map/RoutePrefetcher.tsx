@@ -22,7 +22,7 @@ import {
  */
 
 function usable(loc?: GeoLocation | null): GeoLocation | undefined {
-  if (loc && (loc.lat !== 0 || loc.lng !== 0)) return loc
+  if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && (loc.lat !== 0 || loc.lng !== 0)) return loc
   return undefined
 }
 

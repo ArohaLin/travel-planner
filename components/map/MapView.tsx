@@ -49,9 +49,9 @@ interface MapViewProps {
   onLegsSaved?: () => void
 }
 
-/** 判斷 location 是否已有可用座標（非空且非 0,0） */
+/** 判斷 location 是否已有可用座標（非空、lat/lng 為有效數字且非 0,0） */
 function usableCoords(loc?: GeoLocation | null): GeoLocation | undefined {
-  if (loc && (loc.lat !== 0 || loc.lng !== 0)) return loc
+  if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && (loc.lat !== 0 || loc.lng !== 0)) return loc
   return undefined
 }
 
