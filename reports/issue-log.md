@@ -16,40 +16,41 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ### 1-A 路線跑到綠島（台東縣離島）
 
-**發生時間**：2026-06-20 / 2026-06-21（第一次修後再犯）
+**發生時間**：2026-06-20 / 2026-06-21（修兩次才根治）
 
 **症狀**：Day 2 地圖顯示一段台東市區 → 綠島的異常路線。
 
-**根本原因（兩層）**：
+**根本原因（三層，逐次發現）**：
 
-1. **geocode 的活動類型過濾不一致**：
-   - 「民宿 Check-in 與盥洗休息」屬 `type=rest`、無 `placeLabel`，是動作描述而非地點。
-   - 以「民宿 Check-in 台東」送 Google geocode → Google 回傳台東縣某筆住宿，座標剛好在綠島。
-   - 此過濾規則**只加在 `activityPhotos.ts`**，其他兩條管線沒跟上：
-     - `MapView.tsx` 前端 geocode 迴圈（每次打開地圖都跑）
-     - `RoutePrefetcher.tsx` 背景 geocode 迴圈
-   - MapView geocode 完後呼叫 `/api/itinerary/[id]/geo` **寫回 DB**，讓錯誤座標持久化。
-
-2. **前次修復手法有副作用**：
+1. **前次修復手法有副作用（第一次問題）**：
    - 清除座標時將 `location` 設為 `{}` 空物件而非 `null`。
    - `usableCoords({})` 判斷 `{} && undefined !== 0 → true`，把空物件當有效座標回傳。
-   - `signatureFor` 呼叫 `undefined.toFixed(5)` → TypeError → 頁面崩潰。
+   - `signatureFor` 呼叫 `undefined.toFixed(5)` → TypeError → 頁面崩潰（見 2-A）。
+
+2. **geocode 過濾條件 `rest && !placeLabel` 不夠嚴格（第二次問題）**：
+   - 清掉 `{}` 後，`MapView.tsx` 仍嘗試 geocode 該活動（因為它有 `placeLabel="海明威民宿"`）。
+   - 過濾規則只加在 `activityPhotos.ts`，另外兩條管線（MapView、RoutePrefetcher）未同步。
+   - MapView geocode 完後寫回 DB，讓錯誤座標持久化，路線再度跑到綠島。
+
+3. **`rest` 活動有 `placeLabel` 時照樣 geocode 到錯誤地點（真正根本原因）**：
+   - 「海明威民宿 Check-in」有 `placeLabel="海明威民宿"`，搜尋後回傳台東縣綠島的同名民宿。
+   - `rest` 是動作（Check-in、盥洗），不是目的地，**即使有 placeLabel 也不應 geocode**。
 
 **修復方法**：
 
 | 動作 | 檔案 |
 |---|---|
-| 三條管線統一加 `rest && !placeLabel` 跳過 | `MapView.tsx`、`RoutePrefetcher.tsx`、`route.ts buildDayPoints` |
 | `usableCoords`/`usable` 加 `typeof lat === 'number' && isFinite(lat)` | `MapView.tsx`、`RoutePrefetcher.tsx` |
 | `signatureFor` 過濾非有限數字的點 | `route.ts` |
-| DB 修正：清 `location: {}` → `null`，刪 `travelLegs/travelSig` | `scripts/fix-day6-geo.mjs`（同類腳本） |
+| **四條管線統一改為 `rest` 全部跳過（不限 placeLabel）** | `MapView.tsx`、`RoutePrefetcher.tsx`、`route.ts`、`activityPhotos.ts` |
+| DB 修正：清 `location: 綠島座標` → `null`，刪 `travelLegs/travelSig` | Node.js 一次性腳本 |
 
 **預防原則**：
 
-- **「過濾某類活動」的規則必須三處同步**：`activityPhotos.ts`、`MapView.tsx` 的 enqueue、`RoutePrefetcher.tsx` 的 enqueue、`route.ts` 的 `buildDayPoints`。改其中一處必須 grep 其他三處。
-- 清除座標用 `null`，絕對不用 `{}`。
-- 提供統一的 `clearLocation(a)` / `setLocation(a, lat, lng)` helper，所有腳本強制透過它操作（避免手刻 raw JSON 出錯）。
-- API 邊界加 Zod `safeParse`：`/api/itinerary/[id]` GET 時 parse 行程 JSON，失敗就 `console.error`，讓壞資料在進前端之前就留下警告。
+- **`rest` 類型永遠跳過 geocode**，不看 `placeLabel`。`rest` 是動作（入住、盥洗、休息），destination 已由住宿或前後景點的座標代表。
+- **「過濾某類活動」的規則必須四處同步**（`activityPhotos.ts` / `MapView.tsx` enqueue / `RoutePrefetcher.tsx` enqueue / `route.ts buildDayPoints`）。修其中一處，一定 grep 其餘三處。
+- 清除座標永遠用 `null`，不用 `{}`（空物件通過 truthy 檢查）。
+- API 邊界考慮加 Zod `safeParse`：行程 JSON parse 失敗就 `console.error`，讓壞資料在進前端前留下警告。
 
 ---
 
