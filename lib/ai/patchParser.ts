@@ -112,9 +112,48 @@ function firstBalancedArray(text: string): string | null {
 }
 
 /**
+ * 逐字掃描找到所有「頂層方案物件」的閉合位置（depth=1 時的 }）。
+ * 比 lastIndexOf('}') + 計數更準確：字串內的括號不被計入。
+ * 從最後一個完整方案往前試，直到 JSON.parse 成功，回傳能救回的最多方案。
+ */
+function repairTruncatedPlansArray(partial: string): AIPlan[] | null {
+  const clean = partial.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  let depth = 0, inStr = false, esc = false, started = false
+  const planEnds: number[] = []
+
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') { inStr = true; continue }
+    if (ch === '[' || ch === '{') { if (!started && ch === '[') started = true; depth++ }
+    else if (ch === ']' || ch === '}') {
+      depth--
+      // depth===1 表示剛閉合一個「外層陣列裡的頂層方案物件」
+      if (started && ch === '}' && depth === 1) planEnds.push(i)
+    }
+  }
+
+  // 從最後一個完整方案往前試（每次去掉最後一個可能不完整的方案）
+  for (let i = planEnds.length - 1; i >= 0; i--) {
+    const candidate = clean.slice(0, planEnds[i] + 1) + ']'
+    const result = tryParsePlans(candidate)
+    if (result && result.length > 0) {
+      console.log(`[patchParser] Repaired truncated <plans>: salvaged ${result.length}/${planEnds.length} plans`)
+      return result
+    }
+  }
+  return null
+}
+
+/**
  * 解析方案，回傳 AIPlan 陣列。容錯順序：
  * 1) 完整 <plans>...</plans>
- * 2) <plans> 被截斷（缺 </plans>）→ 補齊 ] 後解析
+ * 2) <plans> 被截斷（缺 </plans>）→ 逐字追蹤括號深度找完整方案物件，救回最多方案
  * 3) 後備：Gemini 偶爾不照指示包 <plans>，改用 ```json 程式碼區塊或裸 JSON 陣列輸出方案
  *    → 從 code fence / 第一個平衡陣列救回（曾發生「C 一鍵排程」漏包標籤、方案無法套用、裸 JSON 外漏）
  */
@@ -123,19 +162,12 @@ export function extractPlans(text: string): AIPlan[] | null {
   const tagged = text.match(/<plans>([\s\S]*?)<\/plans>/)
   if (tagged) { const p = tryParsePlans(tagged[1]); if (p) return p }
 
-  // 2) 截斷修復
+  // 2) 截斷修復（逐字解析，不受字串內括號干擾）
   if (text.includes('<plans>')) {
     const start = text.indexOf('<plans>') + '<plans>'.length
-    const partial = text.slice(start).trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
-    const lastBrace = partial.lastIndexOf('}')
-    if (lastBrace !== -1) {
-      const candidate = partial.slice(0, lastBrace + 1)
-      const open = (candidate.match(/\[/g) || []).length
-      const close = (candidate.match(/\]/g) || []).length
-      const repaired = candidate + ']'.repeat(Math.max(0, open - close))
-      const p = tryParsePlans(repaired)
-      if (p) { console.log('[patchParser] Repaired truncated <plans>, plans:', p.length); return p }
-    }
+    const partial = text.slice(start)
+    const p = repairTruncatedPlansArray(partial)
+    if (p) return p
   }
 
   // 3) 後備：未包 <plans> 的方案（code fence 或裸陣列）

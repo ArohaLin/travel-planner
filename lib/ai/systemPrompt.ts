@@ -407,6 +407,10 @@ ${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
   明確的活動（type:"rest"，title 說明用途，如「返回民宿盥洗休息」），
   讓使用者看得懂這段時間在做什麼。**嚴禁留下沒有說明的空白時段**。
 
+**⚠️ 批次新增景點（5 個以上）**：
+- 同時新增 5 個以上活動時，每張卡只填必要欄位（id、type、title、startTime、endTime、bookingRequired），省略 intro/transport/recommendation/tips，避免輸出過長被截斷。
+- 使用者之後可單獨編輯各卡片補充詳情。
+
 ## 互動風格
 
 - 先用 2-3 句話分析用戶的需求，再提供方案
@@ -536,6 +540,10 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 == 行程連貫性（重要）==
 - 相鄰活動間扣除交通後閒置不得超過約 15 分鐘；小縫隙併入前後活動時間，勿建無意義休息卡。
 - 刻意留白（等日落/休息/Check-in）須排成 type:"rest" 活動並說明用途，嚴禁無說明的空白時段。
+
+== 批次新增景點（5 個以上）==
+- 同時新增 5 個以上活動時，每張卡只填必要欄位（id、type、title、startTime、endTime、bookingRequired），省略 intro/transport/recommendation/tips 以控制輸出長度、避免被截斷。
+- 使用者之後可單獨編輯各卡片補充詳情。
 
 == TIME RULES ==
 - Never schedule activities with overlapping times on the same day
