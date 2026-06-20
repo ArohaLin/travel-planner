@@ -94,7 +94,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         }
         for (const a of day.activities) {
           if (a.type === 'transport') continue
-          if (a.type === 'rest' && !a.placeLabel) continue // 動作描述，非地點，geocode 會拿到錯誤座標
+          if (a.type === 'rest') continue // rest 是動作，不是目的地，placeLabel 不代表需要獨立座標
           enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }
         if (day.accommodation) {

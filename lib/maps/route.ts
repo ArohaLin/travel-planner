@@ -106,9 +106,10 @@ export function buildDayPoints(
     }
   }
 
-  // 實際地點（排除交通類 + 無 placeLabel 的 rest 動作描述），連續編號
+  // 實際地點（排除交通類 + rest 動作類），連續編號
+  // rest 是動作（Check-in/盥洗/休息），不是目的地，即使有 placeLabel 也不需要獨立 marker
   const placeActivities = day.activities.filter(
-    (a) => a.type !== 'transport' && !(a.type === 'rest' && !a.placeLabel)
+    (a) => a.type !== 'transport' && a.type !== 'rest'
   )
   placeActivities.forEach((a, i) => {
     const geo = resolve(dayIndex, a.id, a.location)
