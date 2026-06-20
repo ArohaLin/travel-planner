@@ -73,7 +73,7 @@ export const ItineraryPatchSchema = z.object({
   patchId: z.string().min(1),
   description: z.string().min(1),
   ops: z.array(PatchOpSchema).min(1),
-  proposedBy: z.enum(['ai', 'user']),
+  proposedBy: z.enum(['ai', 'user']).default('ai'),
 })
 
 export type PatchOp = z.infer<typeof PatchOpSchema>

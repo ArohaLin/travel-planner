@@ -112,14 +112,22 @@ function firstBalancedArray(text: string): string | null {
 }
 
 /**
- * 逐字掃描找到所有「頂層方案物件」的閉合位置（depth=1 時的 }）。
- * 比 lastIndexOf('}') + 計數更準確：字串內的括號不被計入。
- * 從最後一個完整方案往前試，直到 JSON.parse 成功，回傳能救回的最多方案。
+ * 截斷修復（逐字解析，正確跳過字串內的括號）。
+ *
+ * 兩個修復層次：
+ * 1. planEnds（depth 2→1）：找到完整的頂層方案物件，在後面補 `]` 收尾。
+ *    適用：有多個方案、或方案剛好在截斷前完整閉合。
+ *
+ * 2. opEnds（depth 5→4）：在單一方案被截斷在 ops 陣列中途時使用。
+ *    典型結構：root[1] → plan{2} → patch{3} → ops[4] → op{5}
+ *    找到最後一個完整 op，補上 `],"proposedBy":"ai"}}]` 收尾。
+ *    （proposedBy 在 ops 之後才寫，截斷時常缺；schema 已設 default:'ai'）
  */
-function repairTruncatedPlansArray(partial: string): AIPlan[] | null {
+function repairTruncatedJson(partial: string): AIPlan[] | null {
   const clean = partial.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
   let depth = 0, inStr = false, esc = false, started = false
   const planEnds: number[] = []
+  const opEnds: number[] = []
 
   for (let i = 0; i < clean.length; i++) {
     const ch = clean[i]
@@ -133,20 +141,36 @@ function repairTruncatedPlansArray(partial: string): AIPlan[] | null {
     if (ch === '[' || ch === '{') { if (!started && ch === '[') started = true; depth++ }
     else if (ch === ']' || ch === '}') {
       depth--
-      // depth===1 表示剛閉合一個「外層陣列裡的頂層方案物件」
-      if (started && ch === '}' && depth === 1) planEnds.push(i)
+      if (started) {
+        if (ch === '}' && depth === 1) planEnds.push(i)  // 完整的頂層方案物件
+        if (ch === '}' && depth === 4) opEnds.push(i)    // patch.ops 裡完整的 op
+      }
     }
   }
 
-  // 從最後一個完整方案往前試（每次去掉最後一個可能不完整的方案）
+  // 層次 1：從最後一個完整方案往前試
   for (let i = planEnds.length - 1; i >= 0; i--) {
-    const candidate = clean.slice(0, planEnds[i] + 1) + ']'
-    const result = tryParsePlans(candidate)
-    if (result && result.length > 0) {
-      console.log(`[patchParser] Repaired truncated <plans>: salvaged ${result.length}/${planEnds.length} plans`)
+    const result = tryParsePlans(clean.slice(0, planEnds[i] + 1) + ']')
+    if (result?.length) {
+      console.log(`[patchParser] Repaired: salvaged ${result.length} complete plan(s)`)
       return result
     }
   }
+
+  // 層次 2：方案截斷在 ops 中途，從最後一個完整 op 往前試
+  // 補上 ]（關 ops）+ ,"proposedBy":"ai"（補遺漏欄位）+ }}]（關 patch/plan/root）
+  for (let i = opEnds.length - 1; i >= 0; i--) {
+    const base = clean.slice(0, opEnds[i] + 1)
+    for (const tail of [']}}]', '],"proposedBy":"ai"}}]']) {
+      const result = tryParsePlans(base + tail)
+      if (result?.length) {
+        const opCount = result[0].patch?.ops?.length ?? '?'
+        console.log(`[patchParser] Repaired truncated ops: salvaged ${opCount} ops`)
+        return result
+      }
+    }
+  }
+
   return null
 }
 
@@ -162,11 +186,11 @@ export function extractPlans(text: string): AIPlan[] | null {
   const tagged = text.match(/<plans>([\s\S]*?)<\/plans>/)
   if (tagged) { const p = tryParsePlans(tagged[1]); if (p) return p }
 
-  // 2) 截斷修復（逐字解析，不受字串內括號干擾）
+  // 2) 截斷修復（逐字解析：完整方案 → ops 層級兩層容錯）
   if (text.includes('<plans>')) {
     const start = text.indexOf('<plans>') + '<plans>'.length
     const partial = text.slice(start)
-    const p = repairTruncatedPlansArray(partial)
+    const p = repairTruncatedJson(partial)
     if (p) return p
   }
 
