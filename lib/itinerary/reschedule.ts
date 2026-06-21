@@ -235,6 +235,35 @@ export function moveBlockToDay(
   return { source: recomputedSource, target: recomputedTarget, movedTitle: moved.placeLabel?.trim() || moved.title }
 }
 
+/**
+ * 刪除一個活動並重排當天時間（同天）。
+ * - 刪「景點」：連同它的前置交通卡（block 的 leading）一起刪；剩餘 block 從異動點起重排，
+ *   後面活動時間自動往前接、剩餘交通卡標籤對齊正確的下一站。
+ * - 刪「交通卡」：只移除那一張，再從異動點起重排。
+ * 回傳新的 activities 陣列；找不到目標或沒變動則回原陣列（同參考）。
+ *
+ * 路線/移動資訊：景點被刪 → 路線指紋（travelSig）改變 → RoutePrefetcher 會自動重算 travelLegs，
+ * 故此函式只負責「活動陣列與時間」，不需處理 travelLegs。
+ */
+export function deletePlace(activities: Activity[], id: string): Activity[] {
+  const idx = activities.findIndex((a) => a.id === id)
+  if (idx < 0) return activities
+  const target = activities[idx]
+
+  let next: Activity[]
+  if (isTransport(target)) {
+    next = activities.filter((a) => a.id !== id) // 刪交通卡：只移除這一張
+  } else {
+    const { blocks, trailing } = buildBlocks(activities) // 刪景點：移除整個 block（景點＋前置交通卡）
+    next = flatten(blocks.filter((b) => b.place.id !== id), trailing)
+  }
+  if (next.length === activities.length) return activities // 沒刪到任何東西
+
+  const from = firstDivergence(activities, next)
+  if (from === -1) return next
+  return recomputeTimes(next, Math.max(0, from), buildGapHint(activities), toMin(activities[0]?.startTime))
+}
+
 /** 回傳 start/end 有變動的活動 id 集合（給預覽高亮與「已調整 N 項」文案）。 */
 export function changedTimeIds(before: Activity[], after: Activity[]): Set<string> {
   const prev = new Map(before.map((a) => [a.id, a]))

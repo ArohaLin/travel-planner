@@ -8,12 +8,12 @@ import { usePresence } from '@/lib/hooks/usePresence'
 import { useChat } from '@/lib/hooks/useChat'
 import { canChat, canEdit } from '@/lib/utils/permissions'
 import {
-  computeDeleteShiftOps,
   computeInsertShiftOps,
   computeEditShiftOps,
   detectOverlaps,
   type ShiftWarning,
 } from '@/lib/utils/activityTime'
+import { deletePlace, changedTimeIds } from '@/lib/itinerary/reschedule'
 import type { Itinerary, TripMetadata, Activity, Accommodation } from '@/lib/types/itinerary'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
@@ -523,52 +523,33 @@ export function ItineraryClient({
     if (!deleteConfirm || !currentDayData) return
     const dayIndex = activeDay
     const activities = currentDayData.activities
-    const deletedIdx = activities.findIndex((a) => a.id === deleteConfirm.id)
-    if (deletedIdx === -1) { setDeleteConfirm(null); return }
     const target = deleteConfirm
+    if (!activities.some((a) => a.id === target.id)) { setDeleteConfirm(null); return }
 
-    const mainOp: PatchOp = {
-      op: 'remove_activity', dayIndex, activityId: target.id, _before: target,
-    }
+    // 用 block 模型刪除：刪景點會連同其「前置交通卡」一起移除，並重排後面時間
+    // （後續活動往前接、剩餘交通卡標籤對齊正確下一站）。景點消失→路線指紋變→
+    // RoutePrefetcher 會自動重算 travelLegs，移動資訊隨之更新。
+    const newActivities = deletePlace(activities, target.id)
+    if (newActivities === activities) { setDeleteConfirm(null); return }
 
-    const plan = computeDeleteShiftOps(activities, deletedIdx, dayIndex)
-
-    if (plan.outOfRangeWarnings.length > 0) {
-      setConflictDialog({
-        actionLabel: `刪除：${target.title}`,
-        warnings: plan.outOfRangeWarnings,
-        onForce: async () => {
-          const forcePatch: ItineraryPatch = {
-            patchId: nanoid(8),
-            description: `手動刪除（強制）：${target.title}`,
-            proposedBy: 'user',
-            ops: [mainOp],
-          }
-          const ok = await submitPatch(forcePatch)
-          if (ok) {
-            setDeleteConfirm(null)
-            const simulated = activities.filter((a) => a.id !== target.id)
-            notifyForceSaveResult(simulated, `已刪除「${target.title}」`)
-          }
-        },
-      })
-      return
-    }
+    const removedExtra = activities.length - newActivities.length - 1 // 除目標外另刪的（前置交通卡）
+    const shiftedCount = changedTimeIds(activities, newActivities).size
 
     const patch: ItineraryPatch = {
       patchId: nanoid(8),
       description: `手動刪除：${target.title}`,
       proposedBy: 'user',
-      ops: [mainOp, ...plan.ops],
+      ops: [{ op: 'update_day', dayIndex, payload: { activities: newActivities } }],
     }
 
     const ok = await submitPatch(patch)
     if (ok) {
       setDeleteConfirm(null)
+      const extra = removedExtra > 0 ? '（含前置交通）' : ''
       showToast(
-        plan.ops.length > 0
-          ? `已刪除「${target.title}」，後方 ${plan.ops.length} 個活動時間已自動調整`
-          : `已刪除「${target.title}」`,
+        shiftedCount > 0
+          ? `已刪除「${target.title}」${extra}，後續時間已自動調整`
+          : `已刪除「${target.title}」${extra}`,
         'success',
       )
     }
