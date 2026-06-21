@@ -1,4 +1,4 @@
-import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
+import type { Itinerary, GeoLocation, Activity } from '@/lib/types/itinerary'
 
 /**
  * 路線共用邏輯：組裝每天的有序點位、計算輸入指紋（signature）、呼叫 Directions 算路線。
@@ -6,15 +6,45 @@ import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
  */
 
 export interface RoutePoint {
-  /** activity.id / 'accommodation' / 'origin' / 'return'（旅程終點） */
+  /** activity.id / 'accommodation' / 'origin' / 'return'（旅程終點）；港口用其交通卡 id */
   id: string
-  kind: 'origin' | 'activity' | 'accommodation' | 'return'
+  kind: 'origin' | 'activity' | 'accommodation' | 'return' | 'port'
   lat: number
   lng: number
-  /** marker 顯示文字（① 出 宿…）；不影響簽章 */
+  /** marker 顯示文字（① 出 宿 ⚓…）；不影響簽章 */
   label: string
   title: string
   time?: string
+}
+
+/**
+ * 台灣主要渡輪港口的固定座標表。
+ * 為何用固定座標而非 geocode：港名常有同名歧義（如「南寮漁港」綠島 vs 新竹），
+ * 用 day.city 當偏好可能誤抓到別縣市。渡輪港是少數已知地點 → 直接內建座標最穩、零歧義。
+ */
+// 比對用島名/港名即可（已先經過「船/港/候船」關鍵字閘門，一般陸路交通卡不會進來）。
+// 順序：先具體港名/離島，再一般。
+const KNOWN_PORTS: { match: RegExp; name: string; coord: GeoLocation }[] = [
+  { match: /富岡/, name: '富岡漁港', coord: { lat: 22.7964, lng: 121.1869 } },
+  { match: /南寮漁港|綠島/, name: '南寮漁港（綠島）', coord: { lat: 22.6589, lng: 121.4678 } },
+  { match: /蘭嶼|開元港/, name: '蘭嶼開元港', coord: { lat: 22.0571, lng: 121.5141 } },
+  { match: /小琉球|白沙尾/, name: '小琉球白沙尾觀光港', coord: { lat: 22.3527, lng: 120.3787 } },
+  { match: /東港/, name: '東港', coord: { lat: 22.4710, lng: 120.4470 } },
+  { match: /澎湖|馬公/, name: '馬公港（澎湖）', coord: { lat: 23.5550, lng: 119.5680 } },
+  { match: /龜山島|烏石/, name: '烏石港', coord: { lat: 24.8689, lng: 121.8306 } },
+]
+
+/**
+ * 從「船班 / 港口型交通卡」推導要在地圖標示的港口（名稱＋固定座標）。
+ * 先用渡輪/港口關鍵字過濾，再比對已知港口表；查無對應則回 null（不亂猜）。
+ * 例：「出發前往富岡漁港與候船」→富岡漁港；「搭船前往綠島」→南寮漁港（綠島）。
+ */
+export function portInfo(a: Activity): { name: string; coord: GeoLocation } | null {
+  if (a.type !== 'transport') return null
+  const text = `${a.title ?? ''} ${a.transportMode ?? ''}`
+  if (!/船|渡輪|ferry|漁港|港口|碼頭|候船/i.test(text)) return null
+  for (const p of KNOWN_PORTS) if (p.match.test(text)) return { name: p.name, coord: p.coord }
+  return null
 }
 
 /** 解析某點座標：優先用既有 location，否則由呼叫端的 cache 補上（回 undefined 表示尚無座標） */
@@ -106,17 +136,26 @@ export function buildDayPoints(
     }
   }
 
-  // 實際地點（排除交通類 + rest 動作類），連續編號
-  // rest 是動作（Check-in/盥洗/休息），不是目的地，即使有 placeLabel 也不需要獨立 marker
-  const placeActivities = day.activities.filter(
-    (a) => a.type !== 'transport' && a.type !== 'rest'
-  )
-  placeActivities.forEach((a, i) => {
+  // 依序走訪當天活動，保留先後順序：
+  // - 景點（非交通、非 rest）：連續編號 ①②③…
+  // - 港口型交通卡（有座標）：插入為 ⚓ 點，讓路線「景點→港口→(跨海)→港口→景點」正確
+  // - 其餘交通卡 / rest（動作描述）/ 無座標者：跳過
+  let placeNum = 0
+  for (const a of day.activities) {
+    if (a.type === 'transport') {
+      const port = portInfo(a)
+      if (!port) continue
+      // 港口用內建固定座標（零歧義、免 geocode）
+      points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
+      continue
+    }
+    if (a.type === 'rest') continue
     const geo = resolve(dayIndex, a.id, a.location)
-    if (!geo) return
+    if (!geo) continue
+    placeNum++
     const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
-    points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: String(i + 1), title: a.title, time })
-  })
+    points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: String(placeNum), title: a.title, time })
+  }
 
   // 當晚住宿
   if (day.accommodation) {

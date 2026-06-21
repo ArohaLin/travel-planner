@@ -93,7 +93,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
           enqueue(0, 'origin', undefined, originCity, originCity, undefined, true)
         }
         for (const a of day.activities) {
-          if (a.type === 'transport') continue
+          if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
           if (a.type === 'rest') continue // rest 是動作，不是目的地，placeLabel 不代表需要獨立座標
           enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }

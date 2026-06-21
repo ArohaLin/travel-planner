@@ -155,7 +155,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       }
 
       for (const a of day.activities) {
-        if (a.type === 'transport') continue // 交通類不標在地圖上，免 geocode
+        if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
         if (a.type === 'rest') continue // rest 是動作（Check-in/盥洗/休息），不是目的地，placeLabel 不代表需要獨立座標
         enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
       }

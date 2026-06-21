@@ -73,6 +73,31 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+### 1-C 跨海行程地圖省略港口，路線像直接飛過海
+
+**發生時間**：2026-06-22
+
+**症狀**：Day 3、Day 5（台東↔綠島搭船）地圖路線從本島景點直接連到離島景點，中間的港口（富岡漁港、南寮漁港）不見了，路線圖不正確。
+
+**根本原因**：
+- 港口/搭船步驟都是「交通卡」且 `location` 為 null。
+- `buildDayPoints` 為了避免亂飄座標（見 1-A）刻意排除所有交通卡 → 港口不會變成地圖點位。
+- 結果路線在「本島景點↔離島景點」之間直接連線（跨海段 Directions 回 ZERO_RESULTS → 畫成直線），看不到港口。
+
+**修復方法（完整版）**：
+- `route.ts` 新增 `portInfo(activity)` + `KNOWN_PORTS` 內建台灣主要渡輪港固定座標（富岡/南寮(綠島)/開元/白沙尾/東港/馬公/烏石）。**為何用固定座標不 geocode**：港名常同名歧義（南寮漁港：綠島 vs 新竹），用 day.city 當偏好會誤抓別縣市（同 1-A 類問題）→ 渡輪港是少數已知地點，直接內建最穩。
+- `buildDayPoints` 改為「依序走訪」：景點連續編號 ①②③、港口型交通卡插入為 `kind:'port'`（⚓、海藍色 marker、不佔編號）、其餘交通卡/rest 照舊跳過。
+- `ItineraryMap` 跨海段（無開車 leg 且端點有港口）改畫**虛線**（船程，與陸路實線區隔）。
+- 不需動 geocode 管線（港口用內建座標）；現有行程開地圖時 travelSig 因新增港口點而改變 → RoutePrefetcher 自動重算。
+
+**預防原則 / 與舊問題的關係**：
+- 沒有重蹈 1-A/4-A：港口**不走 geocode**（內建座標），無同名誤抓風險。
+- 沒有影響 3-A（刪除）：港口仍是 transport 型，block 模型不變。
+- 沒有產生 1-B 假警示：到港口的 leg allotted≈0 會跳過、到岸後的 leg 因前一張是「船」交通卡（isNonDriving）跳過。
+- 新增港口若不在 `KNOWN_PORTS`：`portInfo` 回 null（維持現狀，不亂猜），需要時補進表即可。
+
+---
+
 ## 2. 地圖頁面崩潰（Client-side Exception）
 
 ### 2-A `undefined.toFixed is not a function`

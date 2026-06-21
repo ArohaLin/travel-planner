@@ -18,9 +18,9 @@ export interface MapPoint {
   label: string
   title: string
   time?: string
-  /** activity=圓形景點；accommodation=當晚住宿方形；origin=當天路線起點（出發地/前晚住宿）菱形 */
-  kind: 'activity' | 'accommodation' | 'origin' | 'return'
-  /** 對應的識別碼：activity.id、'accommodation'、'origin' 或 'return'（旅程終點） */
+  /** activity=圓形景點；accommodation=當晚住宿方形；origin=路線起點菱形；port=港口（⚓，跨海轉乘點） */
+  kind: 'activity' | 'accommodation' | 'origin' | 'return' | 'port'
+  /** 對應的識別碼：activity.id、'accommodation'、'origin'、'return'（旅程終點）或港口交通卡 id */
   id: string
 }
 
@@ -282,7 +282,9 @@ function MapContent({ days: rawDays, distanceMode, onRoute }: ItineraryMapProps)
                     ? '路線起點'
                     : selected.point.kind === 'return'
                       ? '旅程終點'
-                      : selected.point.time}
+                      : selected.point.kind === 'port'
+                        ? '港口（搭船轉乘）'
+                        : selected.point.time}
               </div>
             )}
           </div>
@@ -301,9 +303,10 @@ interface RenderLeg {
   polyline: string
 }
 
-/** 逐段渲染資料：path=該段要畫的線（真實道路或直線兩點），label=距離標籤（含起訖編號） */
+/** 逐段渲染資料：path=該段要畫的線（真實道路或直線兩點），label=距離標籤，ferry=跨海段（畫虛線） */
 interface RenderSegment {
   path: { lat: number; lng: number }[]
+  ferry: boolean
   label: {
     from: string
     to: string
@@ -432,37 +435,54 @@ function DayRoute({
         meters = km * 1000
         pos = mid
       }
+      // 跨海段：無開車路線（leg 不存在）且兩端有港口 → 畫虛線（船程）
+      const ferry = !leg && (a.kind === 'port' || b.kind === 'port')
       // 標籤帶「起點編號 → 目的地編號」（與 marker 上的編號一致）+ 距離/時間
-      segs.push({ path, label: { from: a.label, to: b.label, dist: distText, meters, pos } })
+      segs.push({ path, ferry, label: { from: a.label, to: b.label, dist: distText, meters, pos } })
     }
     return segs
   }, [legs, geometryLib, rawDay])
 
-  // 折線：逐段畫（真實道路或直線，樣式一致 + 方向箭頭）
+  // 折線：逐段畫。開車段＝實線＋方向箭頭；跨海段（ferry）＝虛線（船程，與陸路區隔）
   useEffect(() => {
     if (!map || !segments) return
     const polylines = segments
       .filter((s) => s.path.length >= 2)
       .map((s) => {
-        const pl = new google.maps.Polyline({
-          path: s.path,
-          strokeColor: day.color,
-          strokeOpacity: 0.85,
-          strokeWeight: 3,
-          icons: [
-            {
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 2.4,
-                fillOpacity: 1,
-                strokeWeight: 0,
-                fillColor: day.color,
+        const pl = new google.maps.Polyline(
+          s.ferry
+            ? {
+                // 跨海虛線：透明主線 + 重複短劃，不畫前進箭頭（搭船非自駕）
+                path: s.path,
+                strokeOpacity: 0,
+                icons: [
+                  {
+                    icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.9, strokeColor: day.color, scale: 3 },
+                    offset: '0',
+                    repeat: '14px',
+                  },
+                ],
+              }
+            : {
+                path: s.path,
+                strokeColor: day.color,
+                strokeOpacity: 0.85,
+                strokeWeight: 3,
+                icons: [
+                  {
+                    icon: {
+                      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
+                      scale: 2.4,
+                      fillOpacity: 1,
+                      strokeWeight: 0,
+                      fillColor: day.color,
+                    },
+                    offset: '50%',
+                    repeat: '120px',
+                  },
+                ],
               },
-              offset: '50%',
-              repeat: '120px',
-            },
-          ],
-        })
+        )
         pl.setMap(map)
         return pl
       })
@@ -510,8 +530,9 @@ function DayRoute({
                 : point.kind === 'origin' || point.kind === 'return'
                   ? 'M 0 -13 L 13 0 L 0 13 L -13 0 Z'
                   : google.maps.SymbolPath.CIRCLE,
-            scale: point.kind === 'activity' ? 13 : 1,
-            fillColor: day.color,
+            // 港口用圓點但較小、固定海藍色（與當天景點色區隔，一眼看出是轉乘港）
+            scale: point.kind === 'activity' ? 13 : point.kind === 'port' ? 11 : 1,
+            fillColor: point.kind === 'port' ? '#0e7490' : day.color,
             fillOpacity: point.kind === 'origin' ? 0.9 : 1,
             strokeColor: '#ffffff',
             strokeWeight: 2.5,
