@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/Toast'
 import type { ItineraryDay } from '@/lib/types/itinerary'
 import type { Recommendation, RecommendationCategory, WishlistItem } from '@/lib/types/recommendation'
 import { suggestSlots, slotForTargetDay, type Slot } from '@/lib/explore/placement'
+import { LodgingTab } from '@/components/explore/LodgingTab'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
 
@@ -55,7 +56,7 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
 
 export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
-  const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
+  const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist' | 'lodging'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
   const [recs, setRecs] = useState<Recommendation[] | null>(null)
   const [wishlist, setWishlist] = useState<WishlistItem[]>([])
   const [cat, setCat] = useState<RecommendationCategory>('景點')
@@ -200,6 +201,7 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
               <button onClick={() => setTab('recommend')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'recommend' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>精選推薦</button>
               <button onClick={() => setTab('search')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'search' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>🔍 搜尋</button>
               <button onClick={() => setTab('wishlist')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'wishlist' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>願望清單{wishlist.length ? `（${wishlist.length}）` : ''}</button>
+              <button onClick={() => setTab('lodging')} className={clsx('px-3 py-1.5 rounded-lg text-sm font-medium', tab === 'lodging' ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500')}>🏨 住宿評價</button>
             </div>
           )}
           {/* 地區選擇器：精選/搜尋分頁、且有多個地區時才出現 */}
@@ -214,7 +216,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
         </div>
 
         <div className="flex-1 overflow-y-auto scroll-touch" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-          {loading ? (
+          {tab === 'lodging' ? (
+            <LodgingTab />
+          ) : loading ? (
             <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
           ) : tab === 'recommend' ? (
             (recs ?? []).length === 0 ? (

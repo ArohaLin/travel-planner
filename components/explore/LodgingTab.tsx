@@ -1,0 +1,313 @@
+'use client'
+
+import { useEffect, useMemo, useState } from 'react'
+import { clsx } from 'clsx'
+import type { LodgingResearch, ProCon } from '@/lib/types/lodging'
+
+const photoUrl = (ref: string | null) => (ref ? `/api/photo?ref=${encodeURIComponent(ref)}` : null)
+const rateColor = (r: number | null) =>
+  r == null ? 'text-gray-400' : r >= 4.7 ? 'text-emerald-600' : r >= 4.3 ? 'text-amber-500' : 'text-orange-500'
+// 去掉地址前段的郵遞區號＋縣市區里，只留街路門牌（避免與 city/district 重複）
+const shortAddr = (a: string | null) => {
+  const s = (a ?? '').replace(/^\d+/, '').replace(/^[一-龥]{2,3}縣/, '').replace(/^[一-龥]{2,3}市/, '').replace(/^[一-龥]{1,3}[區鄉鎮市]/, '').replace(/^[一-龥]{1,3}[里村]/, '')
+  return s || a || '—'
+}
+
+/** 住宿評價：列表（單選看詳情／多選比較）。資料來自離線研究 lodging_research。 */
+export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] } = {}) {
+  const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<{ kind: 'list' } | { kind: 'detail'; id: string } | { kind: 'compare' }>({ kind: 'list' })
+
+  useEffect(() => {
+    if (initialItems) return
+    fetch('/api/lodging')
+      .then((r) => r.json())
+      .then((d) => setItems(d.items ?? []))
+      .catch(() => setItems([]))
+  }, [initialItems])
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev)
+      n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+
+  if (items === null)
+    return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
+  if (items.length === 0)
+    return <p className="text-center text-gray-400 text-sm py-16 px-6">目前還沒有深入研究過的住宿。<br />（離線用 lodging-review 技能研究後會出現在這裡）</p>
+
+  if (view.kind === 'detail') {
+    const item = items.find((i) => i.id === view.id)
+    if (item) return <Detail item={item} onBack={() => setView({ kind: 'list' })} />
+  }
+  if (view.kind === 'compare') {
+    const list = items.filter((i) => selected.has(i.id))
+    return <Compare items={list} onBack={() => setView({ kind: 'list' })} />
+  }
+
+  const sel = items.filter((i) => selected.has(i.id))
+  return (
+    <div className="flex flex-col">
+      <p className="px-4 pt-3 pb-1 text-[13px] text-gray-400">點選住宿可加入比較・單選看詳情、多選互相比較</p>
+      <div className="px-4 py-2 space-y-2.5">
+        {items.map((it) => (
+          <LodgingCard key={it.id} item={it} checked={selected.has(it.id)} onToggle={() => toggle(it.id)} />
+        ))}
+      </div>
+
+      {/* 底部操作列 */}
+      <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-4 py-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+        {sel.length === 0 ? (
+          <p className="text-center text-[13px] text-gray-400">勾選 1 間看詳情，或 2 間以上做比較</p>
+        ) : sel.length === 1 ? (
+          <button onClick={() => setView({ kind: 'detail', id: sel[0].id })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
+            查看「{sel[0].name.length > 12 ? sel[0].name.slice(0, 12) + '…' : sel[0].name}」詳情
+          </button>
+        ) : (
+          <button onClick={() => setView({ kind: 'compare' })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
+            比較這 {sel.length} 間住宿
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── 列表卡 ───────────────────────────────────────────────────────────────────
+function LodgingCard({ item, checked, onToggle }: { item: LodgingResearch; checked: boolean; onToggle: () => void }) {
+  const photo = photoUrl(item.photoRef)
+  return (
+    <button
+      onClick={onToggle}
+      className={clsx('w-full flex items-center gap-3 rounded-2xl border p-2.5 text-left transition-colors active:bg-gray-50',
+        checked ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50/40' : 'border-gray-200 bg-white')}
+    >
+      {photo ? (
+        <img src={photo} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" loading="lazy" />
+      ) : (
+        <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">🏨</div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="text-[17px] font-semibold text-gray-900 truncate">{item.name}</div>
+        <div className="text-[13px] text-gray-500 truncate">
+          {[item.city, item.district].filter(Boolean).join('')}・{shortAddr(item.address)}
+        </div>
+        <div className="mt-1 flex items-center gap-2 flex-wrap">
+          <span className={clsx('text-[18px] font-bold leading-none', rateColor(item.rating))}>★ {item.rating ?? '—'}</span>
+          <span className="text-[12px] text-gray-400">{item.totalReviews != null ? `${item.totalReviews.toLocaleString()} 則` : ''}</span>
+          {item.starClass && <span className="text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{item.starClass}</span>}
+          {item.confidence === 'med' && <span className="text-[11px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">名稱相近</span>}
+        </div>
+      </div>
+      <div className={clsx('w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+        checked ? 'bg-purple-600 border-purple-600' : 'border-gray-300')}>
+        {checked && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+      </div>
+    </button>
+  )
+}
+
+// ── 共用小元件 ───────────────────────────────────────────────────────────────
+function BackBar({ onBack, title }: { onBack: () => void; title: string }) {
+  return (
+    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 flex items-center gap-1 px-2 py-2">
+      <button onClick={onBack} className="flex items-center gap-1 text-purple-600 text-[15px] font-medium px-2 py-1 active:opacity-60">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+        返回列表
+      </button>
+      <span className="text-[13px] text-gray-400 truncate">{title}</span>
+    </div>
+  )
+}
+
+function ProConRow({ pc, kind }: { pc: ProCon; kind: 'pro' | 'con' }) {
+  const sys = pc.systematic
+  return (
+    <div className={clsx('rounded-xl border p-3', kind === 'pro' ? 'border-emerald-100 bg-emerald-50/40' : 'border-rose-100 bg-rose-50/40')}>
+      <div className="flex items-start gap-2 flex-wrap">
+        <span className="text-[15px] font-semibold text-gray-800 leading-snug flex-1 min-w-0">
+          {kind === 'pro' ? (sys ? '🟢' : '🔵') : sys ? '🔴' : '🟡'} {pc.point}
+        </span>
+        <span className={clsx('text-[11px] rounded px-1.5 py-0.5 flex-shrink-0', sys ? (kind === 'pro' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700') : 'bg-gray-100 text-gray-500')}>
+          {sys ? '系統性' : '個案'}{pc.pct ? `・${pc.pct}%` : ''}
+        </span>
+      </div>
+      {pc.quote && <p className="mt-1.5 text-[13px] text-gray-500 leading-relaxed">「{pc.quote}」</p>}
+    </div>
+  )
+}
+
+// ── 詳情（單間）──────────────────────────────────────────────────────────────
+function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void }) {
+  const photo = photoUrl(item.photoRef)
+  const sysPros = item.pros.filter((p) => p.systematic)
+  const otherPros = item.pros.filter((p) => !p.systematic)
+  const sysCons = item.cons.filter((c) => c.systematic)
+  const otherCons = item.cons.filter((c) => !c.systematic)
+  return (
+    <div>
+      <BackBar onBack={onBack} title={item.name} />
+      <div className="px-4 py-3 space-y-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
+        {/* 頭部 */}
+        <div className="flex gap-3 items-center">
+          {photo ? <img src={photo} alt="" className="w-20 h-20 rounded-2xl object-cover bg-gray-100 flex-shrink-0" /> : <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">🏨</div>}
+          <div className="min-w-0">
+            <h3 className="text-[20px] font-bold text-gray-900 leading-tight">{item.name}</h3>
+            <div className="text-[13px] text-gray-500 mt-0.5">{[item.city, item.district].filter(Boolean).join('')}・{shortAddr(item.address)}</div>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className={clsx('text-[32px] font-extrabold leading-none', rateColor(item.rating))}>★{item.rating ?? '—'}</span>
+              <span className="text-[13px] text-gray-400">/ {item.totalReviews?.toLocaleString() ?? '—'} 則</span>
+            </div>
+          </div>
+        </div>
+
+        {item.confidence === 'med' && item.queryName && item.queryName !== item.resolvedName && (
+          <p className="text-[12px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">你查的是「{item.queryName}」，找到最接近的「{item.resolvedName}」，已以此分析。</p>
+        )}
+
+        {/* 一句總評 */}
+        {item.verdict && (
+          <div className="rounded-2xl bg-purple-50 border border-purple-100 px-4 py-3">
+            <p className="text-[16px] text-purple-900 font-medium leading-relaxed">{item.verdict}</p>
+          </div>
+        )}
+
+        {/* 近一年 */}
+        {item.lastYearDist && (
+          <section>
+            <h4 className="text-[15px] font-bold text-gray-800 mb-2">近一年評價（{item.lastYearCount} 則・平均 {item.lastYearAvg}）</h4>
+            <div className="space-y-1">
+              {item.lastYearDist.map((d) => (
+                <div key={d.star} className="flex items-center gap-2">
+                  <span className="text-[12px] text-gray-400 w-7 flex-shrink-0">{d.star}★</span>
+                  <div className="flex-1 h-2.5 rounded-full bg-gray-100 overflow-hidden">
+                    <div className="h-full rounded-full bg-amber-400" style={{ width: `${d.percent}%` }} />
+                  </div>
+                  <span className="text-[12px] text-gray-400 w-10 text-right flex-shrink-0">{d.percent}%</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* 優點 */}
+        {item.pros.length > 0 && (
+          <section>
+            <h4 className="text-[15px] font-bold text-gray-800 mb-2">主要優點</h4>
+            <div className="space-y-2">
+              {sysPros.map((p, i) => <ProConRow key={'sp' + i} pc={p} kind="pro" />)}
+              {otherPros.map((p, i) => <ProConRow key={'op' + i} pc={p} kind="pro" />)}
+            </div>
+          </section>
+        )}
+
+        {/* 缺點 */}
+        <section>
+          <h4 className="text-[15px] font-bold text-gray-800 mb-2">主要缺點</h4>
+          {item.cons.length === 0 ? (
+            <p className="text-[14px] text-gray-400 px-1">近一年幾乎無負評。</p>
+          ) : (
+            <div className="space-y-2">
+              {sysCons.map((c, i) => <ProConRow key={'sc' + i} pc={c} kind="con" />)}
+              {otherCons.map((c, i) => <ProConRow key={'oc' + i} pc={c} kind="con" />)}
+            </div>
+          )}
+        </section>
+
+        {/* 適合誰 */}
+        {(item.suitableFor || item.notFor) && (
+          <section className="grid grid-cols-1 gap-2">
+            {item.suitableFor && <div className="rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2.5"><span className="text-[13px] font-semibold text-emerald-700">✓ 適合</span><p className="text-[14px] text-gray-700 mt-0.5">{item.suitableFor}</p></div>}
+            {item.notFor && <div className="rounded-xl bg-rose-50 border border-rose-100 px-3 py-2.5"><span className="text-[13px] font-semibold text-rose-700">✕ 不適合</span><p className="text-[14px] text-gray-700 mt-0.5">{item.notFor}</p></div>}
+          </section>
+        )}
+
+        {item.coverage?.備註 && <p className="text-[11px] text-gray-300 leading-relaxed">資料涵蓋：{item.coverage.備註}</p>}
+      </div>
+    </div>
+  )
+}
+
+// ── 比較（多間）──────────────────────────────────────────────────────────────
+function topSys(arr: ProCon[], n = 3) {
+  return arr.filter((p) => p.systematic).slice(0, n)
+}
+function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => void }) {
+  const n = items.length
+  const ratings = items.map((i) => i.rating ?? -1)
+  const lastYears = items.map((i) => i.lastYearAvg ?? -1)
+  const best = (arr: number[]) => Math.max(...arr)
+  const worst = (arr: number[]) => Math.min(...arr.filter((x) => x >= 0))
+  const hi = (v: number | null, arr: number[]) => v != null && v === best(arr) && best(arr) !== worst(arr)
+  const lo = (v: number | null, arr: number[]) => v != null && v === worst(arr) && best(arr) !== worst(arr)
+  const colTmpl = useMemo(() => `84px repeat(${n}, 150px)`, [n])
+
+  const labelCell = (t: string) => (
+    <div className="sticky left-0 z-10 bg-gray-50 border-b border-r border-gray-100 px-2 py-3 text-[12px] font-semibold text-gray-500 flex items-center">{t}</div>
+  )
+
+  return (
+    <div>
+      <BackBar onBack={onBack} title={`比較 ${n} 間`} />
+      {n > 2 && <p className="text-center text-[12px] text-gray-400 py-1.5">← 左右滑動比較更多 →</p>}
+      <div className="overflow-x-auto scroll-touch" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
+        <div className="grid text-left" style={{ gridTemplateColumns: colTmpl, width: 'max-content' }}>
+          {/* 表頭：計分卡 */}
+          <div className="sticky left-0 z-10 bg-white border-b border-r border-gray-100" />
+          {items.map((it) => (
+            <div key={it.id} className="border-b border-gray-100 p-2 text-center">
+              {photoUrl(it.photoRef) ? <img src={photoUrl(it.photoRef)!} alt="" className="w-14 h-14 rounded-xl object-cover mx-auto bg-gray-100" /> : <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto flex items-center justify-center text-xl">🏨</div>}
+              <div className="text-[13px] font-semibold text-gray-800 leading-tight mt-1 line-clamp-2">{it.name}</div>
+              <div className={clsx('text-[22px] font-extrabold leading-none mt-1', rateColor(it.rating))}>★{it.rating ?? '—'}</div>
+            </div>
+          ))}
+
+          {/* 官方評分 */}
+          {labelCell('官方評分')}
+          {items.map((it) => (
+            <div key={it.id} className={clsx('border-b border-gray-100 px-2 py-3 text-center', hi(it.rating, ratings) && 'bg-emerald-50', lo(it.rating, ratings) && 'bg-rose-50')}>
+              <span className={clsx('text-[17px] font-bold', rateColor(it.rating))}>★{it.rating ?? '—'}</span>
+              <div className="text-[11px] text-gray-400">{it.totalReviews?.toLocaleString() ?? '—'} 則</div>
+            </div>
+          ))}
+
+          {/* 近一年 */}
+          {labelCell('近一年')}
+          {items.map((it) => (
+            <div key={it.id} className={clsx('border-b border-gray-100 px-2 py-3 text-center', hi(it.lastYearAvg, lastYears) && 'bg-emerald-50', lo(it.lastYearAvg, lastYears) && 'bg-rose-50')}>
+              <span className="text-[16px] font-semibold text-gray-700">{it.lastYearAvg ?? '—'}</span>
+              <div className="text-[11px] text-gray-400">{it.lastYearCount ?? '—'} 則</div>
+            </div>
+          ))}
+
+          {/* 系統性優點 */}
+          {labelCell('系統性優點')}
+          {items.map((it) => (
+            <div key={it.id} className="border-b border-gray-100 px-2 py-2.5 space-y-1">
+              {topSys(it.pros).map((p, i) => <div key={i} className="text-[12px] text-emerald-700 bg-emerald-50 rounded px-1.5 py-1 leading-snug">🟢 {p.point}</div>)}
+              {topSys(it.pros).length === 0 && <span className="text-[12px] text-gray-300">—</span>}
+            </div>
+          ))}
+
+          {/* 系統性缺點 */}
+          {labelCell('系統性缺點')}
+          {items.map((it) => (
+            <div key={it.id} className="border-b border-gray-100 px-2 py-2.5 space-y-1">
+              {topSys(it.cons).map((c, i) => <div key={i} className="text-[12px] text-rose-700 bg-rose-50 rounded px-1.5 py-1 leading-snug">🔴 {c.point}</div>)}
+              {topSys(it.cons).length === 0 && <span className="text-[12px] text-emerald-600">幾乎無</span>}
+            </div>
+          ))}
+
+          {/* 適合誰 */}
+          {labelCell('適合誰')}
+          {items.map((it) => (
+            <div key={it.id} className="border-b border-gray-100 px-2 py-2.5 text-[12px] text-gray-600 leading-snug">{it.suitableFor ?? '—'}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
