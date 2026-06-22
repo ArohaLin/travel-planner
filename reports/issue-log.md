@@ -177,6 +177,72 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+## 5. 住宿評價技能（Google Travel 爬取／Places 解析）
+
+> 離線技能 `.claude/skills/lodging-review`＋`lodging-research`（研究住宿評論→判讀→寫進 `lodging_research` 表，App「探索→🏨住宿評價」讀）。技能核心：`lib/resolve.mjs`（解析/信心/設施）、`scripts/query.mjs`（爬取）、`scripts/research.mjs`（入庫）、`lib/parse.mjs`。
+> 改技能或遇怪症狀（評論/設施抓 0、解析配錯、入庫報錯）先讀本類：5-A~C 是最關鍵的，其餘已修雷點見 **5-D 速查表**。
+
+### 5-A 評論面板／設施面板偶發抓到 0
+
+**發生時間**：2026-06-22
+
+**症狀**：某些住宿（如尚佐安森）整間抓不好——評論 0 則、設施 0 項、直方圖缺、信心只到 med。
+
+**根本原因**：
+- **真根因（連鎖）**：`normalizeName` 把「民宿編號291號」拿掉後**殘留孤立的「合法」**，導致拿「尚佐安森民宿**合法**」這種壞字串去查 Google Travel → 落到沒有評論鈕的頁面 → 評論抓 0、直方圖缺、設施面板也撈不到。
+- 次因：設施抓取沒主動展開「設施」區就抓，且小民宿 Google 結構化資料本來稀疏。
+
+**修復方法**：
+- `resolve.mjs` `normalizeName`：清掉「合法民宿編號N號」整段與孤立「合法」。修完尚佐安森**同時**復原：評論 0→58、信心 med→high、直方圖 缺→OK、設施 0→6。
+- `query.mjs` `openReviews`：多策略開啟＋捲動觸發＋失敗重新導航重試，**以「網路真的攔到評論(seen>0)」當成功判準**（非點擊成功）。
+- 設施兩層保底：(B) `scrapeAmenities` 展開＋抓 0 自動重試；(A) `amenitiesFromDetails` 用 Places 設施布林＋**官方簡介挖設施名詞**（電視/冰箱/停車…）。
+
+**預防原則**：
+- **遇「整間抓不好」先看 log 的 `Travel查詢:` 那行查詢字乾不乾淨**——壞字串是最常見元凶。
+- 失敗（評論/設施/直方圖抓 0）要重試或保底，並在 log 誠實標示，不要靜默回空。
+
+### 5-B 解析配到完全不同的住宿（通用詞綁架）
+
+**發生時間**：2026-06-22
+
+**症狀**：查「貓追雨」配到「密斯朵」、查名稱錯字配到別間。
+
+**根本原因**：Google Travel 店名比對器弱，被「親子民宿/包棟」等通用詞綁架。
+
+**修復方法**：改用 **Google Places 文字搜尋**解析（錯字校正、不被通用詞綁架）＋**信心度**（特殊核心相似度＋城市一致）：`low` 停下列候選請確認、`med` 自動改用最接近名但告知使用者、`high` 靜默續跑。評分/總數一律以 Places 官方為準（直方圖會選到鄰家）。
+
+**預防原則**：解析先行、信心把關；`low` 一定停，別分析錯的那間。
+
+### 5-C 入庫報 PostgREST「Empty or invalid json」
+
+**發生時間**：2026-06-22
+
+**症狀**：含 emoji 的評論引文寫入 `lodging_research` 時被 PostgREST 拒收。
+
+**根本原因**：emoji 被 `.slice()` 從中間切斷 → 孤立代理字元 → UTF-8 編碼壞掉。
+
+**修復方法**：`research.mjs` 用 **code-point 切**（`[...str].slice()`）＋入庫前 regex **清掉孤立代理字元**。
+
+**預防原則**：所有「截斷使用者文字」的地方都要 code-point 安全；入庫前統一淨化。
+
+**殘留已清（2026-06-22）**：密斯朵曾有一筆雜訊設施「秘食-私廚4.7 (314)餐廳」（餐廳名+評分被 `KNOWN` 命中、長度漏網）。修法：`amenityExtractor` 加 `RATINGY` 過濾——含**評分小數**（`4.7`）或**括號數量**（`(314)`）的字串視為店名/評分雜訊、剔除（真實設施不含此型數字，如「24小時」不受影響），並清掉該筆 DB 資料。目前第 5 類無已知殘留。
+
+### 5-D 其他已修雷點（速查）
+
+| 症狀 | 根因 → 解法 | 程式位置 |
+|---|---|---|
+| 直方圖數字錯（顯示鄰家 4.1/2497） | parse 選到鄰家飯店區塊 → 用 Places 官方 total 當 `totalHint` 鎖定，選不到回 null 不採信 | `query.mjs`(2)、`parse.mjs` |
+| Places New API 回 INVALID_ARGUMENT | FieldMask 用了非法欄位 `amenities` → 只用合法欄位（`editorialSummary`/`types`/各 boolean/`parkingOptions`/`accessibilityOptions`） | `resolve.mjs` `placeDetails` |
+| 設施重複（Wi-Fi×3、「停車場」與「停車」並列） | 多來源變體 → 面板內正規化去重；跨來源 `mergeAmenities` 用**包含關係**去重＋API 標籤對齊面板用詞（親子友善/寵物友善） | `query.mjs` `amenityExtractor`、`resolve.mjs` `mergeAmenities` |
+| 小民宿落「搜尋清單頁」、開不了詳情 | Google 查不到精確名 → 讀清單第一筆全名重查（`effectiveQuery`）直達詳情 | `query.mjs` 落清單備援 |
+| `claude -p` 判讀 401 | 沙箱訂閱認證無法傳子程序、且多餘 → 判讀由 Claude 本人做、`--judged` 傳入 | `research.mjs` |
+| 批次中文路徑參數失效 | shell 變數未加引號被截斷 → 指令一律用引號包路徑 | 操作習慣 |
+| 重爬覆寫好檔→壞跑(0評論)可能被誤入庫 | 檔名相同會覆寫 → 壞跑**不入庫**；只補設施用 PATCH 只改 `features` 欄、不動評論；清掉 0 評論快取 | 操作習慣 |
+
+**通用守則**：①解析先行、信心把關（low 一定停）；②官方數據（評分/總數/簡介）優先用 Places，爬取只補 Places 沒有的；③抓 0 要重試或保底並在 log 誠實標示，不靜默回空；④入庫前 code-point 切字＋清孤立代理字元；⑤判讀是 Claude 本人做，不開 `claude -p`。
+
+---
+
 ## 附錄：四條 geocode 管線一覽
 
 每次改過濾規則，以下四處要同步：
