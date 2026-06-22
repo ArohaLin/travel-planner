@@ -202,7 +202,12 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
                 ))}
               </ul>
             ) : null}
-            {item.features.facts.some((f) => f.sources?.length) ? <p className="text-[10px] text-gray-300 mt-1.5">特色取自部落客遊記之客觀事實（已濾除主觀評論與一次性活動）</p> : null}
+            {item.features.facts.some((f) => f.sources?.length) ? (
+              <p className="text-[10px] text-gray-400 mt-1.5">
+                特色取自部落客遊記之客觀事實（已濾除主觀評論與一次性活動）
+                {item.features.sourceYears ? <span className="text-gray-500">；資料來源年分 {item.features.sourceYears}</span> : null}
+              </p>
+            ) : null}
           </section>
         ) : null}
 

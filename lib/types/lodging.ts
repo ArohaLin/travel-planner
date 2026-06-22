@@ -28,6 +28,7 @@ export interface LodgingFeatures {
   amenities: { has: string[]; lacks: string[] } | null  // Google 設施面板
   facts: LodgingFact[]              // 部落客遊記抽的客觀事實
   roomTypes: string[]               // 房型
+  sourceYears?: string | null       // 文章特色的資料來源年分區間（如 "2016–2020"）
 }
 
 export interface LodgingCoverage {
@@ -97,6 +98,7 @@ export function mapLodging(r: any): LodgingResearch {
           amenities: r.features.amenities ?? null,
           facts: Array.isArray(r.features.facts) ? r.features.facts : [],
           roomTypes: Array.isArray(r.features.roomTypes) ? r.features.roomTypes : [],
+          sourceYears: r.features.sourceYears ?? null,
         }
       : null,
     model: r.model ?? null,
