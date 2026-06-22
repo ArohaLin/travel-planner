@@ -171,7 +171,7 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
               <a href={item.features.official} target="_blank" rel="noreferrer" className="text-[13px] text-purple-700 bg-purple-50 active:bg-purple-100 rounded-full px-3.5 py-2 inline-flex items-center gap-1">🏠 官網</a>
             )}
             {item.googlePlaceId && (
-              <a href={`https://www.google.com/maps/place/?q=place_id:${item.googlePlaceId}`} target="_blank" rel="noreferrer" className="text-[13px] text-blue-700 bg-blue-50 active:bg-blue-100 rounded-full px-3.5 py-2 inline-flex items-center gap-1">📍 Google 介紹</a>
+              <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.name)}&query_place_id=${item.googlePlaceId}`} target="_blank" rel="noreferrer" className="text-[13px] text-blue-700 bg-blue-50 active:bg-blue-100 rounded-full px-3.5 py-2 inline-flex items-center gap-1">📍 Google 介紹</a>
             )}
           </div>
         )}
