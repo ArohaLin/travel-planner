@@ -14,6 +14,22 @@ export interface StarDist {
   percent: number
 }
 
+export interface LodgingFact {
+  text: string
+  paid?: boolean
+  paidNote?: string
+  seasonal?: string
+  sources?: string[]
+}
+
+export interface LodgingFeatures {
+  summary: string | null            // 官方一句簡介（Places editorialSummary）
+  category: string | null           // 類型（民宿/飯店…）
+  amenities: { has: string[]; lacks: string[] } | null  // Google 設施面板
+  facts: LodgingFact[]              // 部落客遊記抽的客觀事實
+  roomTypes: string[]               // 房型
+}
+
 export interface LodgingCoverage {
   是否完整涵蓋近一年?: boolean
   最舊評論_約月前?: number
@@ -44,6 +60,7 @@ export interface LodgingResearch {
   resolvedName: string | null
   photoRef: string | null
   coverage: LodgingCoverage | null
+  features: LodgingFeatures | null
   model: string | null
   researchedAt: string
 }
@@ -73,6 +90,15 @@ export function mapLodging(r: any): LodgingResearch {
     resolvedName: r.resolved_name ?? null,
     photoRef: r.photo_ref ?? null,
     coverage: r.coverage ?? null,
+    features: r.features && (r.features.summary || r.features.category || r.features.amenities || r.features.facts?.length || r.features.roomTypes?.length)
+      ? {
+          summary: r.features.summary ?? null,
+          category: r.features.category ?? null,
+          amenities: r.features.amenities ?? null,
+          facts: Array.isArray(r.features.facts) ? r.features.facts : [],
+          roomTypes: Array.isArray(r.features.roomTypes) ? r.features.roomTypes : [],
+        }
+      : null,
     model: r.model ?? null,
     researchedAt: r.researched_at,
   }

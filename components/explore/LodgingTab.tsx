@@ -175,6 +175,37 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
           </div>
         )}
 
+        {/* 特色 / 設施 */}
+        {item.features && (item.features.summary || item.features.category || item.features.amenities?.has?.length || item.features.facts.length || item.features.roomTypes.length) ? (
+          <section>
+            <h4 className="text-[15px] font-bold text-gray-800 mb-2 flex items-center gap-2">
+              特色 / 設施
+              {item.features.category && <span className="text-[12px] font-normal text-purple-600 bg-purple-50 rounded px-1.5 py-0.5">{item.features.category}</span>}
+            </h4>
+            {item.features.summary && <p className="text-[14px] text-gray-600 mb-2 leading-relaxed">{item.features.summary}</p>}
+            {item.features.amenities?.has?.length ? (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {item.features.amenities.has.map((a, i) => <span key={i} className="text-[12px] text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-full px-2 py-0.5">{a}</span>)}
+              </div>
+            ) : null}
+            {item.features.amenities?.lacks?.length ? <p className="text-[12px] text-gray-400 mb-2">沒有：{item.features.amenities.lacks.join('、')}</p> : null}
+            {item.features.roomTypes.length ? <p className="text-[13px] text-gray-600 mb-2"><span className="text-gray-400">房型：</span>{item.features.roomTypes.join('、')}</p> : null}
+            {item.features.facts.length ? (
+              <ul className="space-y-1.5">
+                {item.features.facts.map((f, i) => (
+                  <li key={i} className="text-[14px] text-gray-700 leading-snug flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    <span>・{f.text}</span>
+                    {f.paid && <span className="text-[11px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5">需自費{f.paidNote ? `（${f.paidNote}）` : ''}</span>}
+                    {f.seasonal && <span className="text-[11px] text-sky-700 bg-sky-50 rounded px-1.5 py-0.5">{f.seasonal}</span>}
+                    {f.sources?.length ? <a href={f.sources[0]} target="_blank" rel="noreferrer" className="text-[11px] text-purple-400 underline">來源</a> : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {item.features.facts.some((f) => f.sources?.length) ? <p className="text-[10px] text-gray-300 mt-1.5">特色取自部落客遊記之客觀事實（已濾除主觀評論與一次性活動）</p> : null}
+          </section>
+        ) : null}
+
         {/* 近一年 */}
         {item.lastYearDist && (
           <section>
@@ -298,6 +329,17 @@ function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => vo
             <div key={it.id} className="border-b border-gray-100 px-2 py-2.5 space-y-1">
               {topSys(it.cons).map((c, i) => <div key={i} className="text-[12px] text-rose-700 bg-rose-50 rounded px-1.5 py-1 leading-snug">🔴 {c.point}</div>)}
               {topSys(it.cons).length === 0 && <span className="text-[12px] text-emerald-600">幾乎無</span>}
+            </div>
+          ))}
+
+          {/* 特色 / 設施 */}
+          {labelCell('特色/設施')}
+          {items.map((it) => (
+            <div key={it.id} className="border-b border-gray-100 px-2 py-2.5 space-y-0.5">
+              {it.features?.category && <div className="text-[11px] text-purple-600 mb-0.5">{it.features.category}</div>}
+              {(it.features?.amenities?.has ?? []).slice(0, 5).map((a, i) => <div key={i} className="text-[12px] text-gray-600 leading-snug">・{a}</div>)}
+              {it.features?.roomTypes?.length ? <div className="text-[11px] text-gray-400 mt-1">房型 {it.features.roomTypes.length} 種</div> : null}
+              {!it.features?.category && !(it.features?.amenities?.has?.length) ? <span className="text-[12px] text-gray-300">—</span> : null}
             </div>
           ))}
 
