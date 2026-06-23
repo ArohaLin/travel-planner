@@ -139,7 +139,8 @@ export function buildDayPoints(
   // 依序走訪當天活動，保留先後順序：
   // - 景點（非交通、非 rest）：連續編號 ①②③…
   // - 港口型交通卡（有座標）：插入為 ⚓ 點，讓路線「景點→港口→(跨海)→港口→景點」正確
-  // - 其餘交通卡 / rest（動作描述）/ 無座標者：跳過
+  // - rest（動作描述）：預設跳過；但若「已有明確真實座標」則納入（見下方說明）
+  // - 其餘交通卡 / 無座標者：跳過
   let placeNum = 0
   for (const a of day.activities) {
     if (a.type === 'transport') {
@@ -149,7 +150,18 @@ export function buildDayPoints(
       points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
       continue
     }
-    if (a.type === 'rest') continue
+    if (a.type === 'rest') {
+      // rest 多為動作描述（盥洗/休息/Check-in），預設不進路線、也不 geocode（同名易誤抓，如
+      // 「X民宿 Check-in」抓到綠島同名）。但若它「已帶明確真實座標」（AI/手動給的真實地點，
+      // 如「拿伴手禮給娘家」在花蓮娘家），它就是真實停留點 → 必須納入路線，否則前後移動段會
+      // 跳過它、把距離算成「直接跨過該點」的錯誤值（曾發生宜蘭→台東直線取代宜蘭→花蓮→台東）。
+      const loc = a.location
+      if (!loc || (loc.lat === 0 && loc.lng === 0) || !isFinite(loc.lat) || !isFinite(loc.lng)) continue
+      placeNum++
+      const restTime = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
+      points.push({ id: a.id, kind: 'activity', lat: loc.lat, lng: loc.lng, label: String(placeNum), title: a.title, time: restTime })
+      continue
+    }
     const geo = resolve(dayIndex, a.id, a.location)
     if (!geo) continue
     placeNum++

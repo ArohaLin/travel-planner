@@ -166,9 +166,32 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 **症狀**：① 出發地卡片的「早餐・整理行李」時間是唯讀、改不了。② 使用者改第 1 天第一張卡（如花蓮午餐）的時間，出發地時間沒連動（因為出發地綁的是「第一個活動＝前面那台出發的車」，不是午餐；且活動編輯只往後順移、不會往前改到出發）。
 
 **修復方法**：
-- 出發地卡片改成「**起始 — 結束** 早餐・整理行李」**區間、起訖皆可編輯**（與其他卡片一致）。**結束＝今天第一個出發時間**：改它走 `setDepartureTime`（設第一活動開始＝出發、保留各段空檔從頭 `recomputeTimes`、整天順移）。**起始＝整理行李開始**：存當天新欄位 `ItineraryDay.prepStartTime`（純記錄、不動其它活動；未設時預設出發前 90 分）。
-- 串接：`DayView.DepartureCard` 兩個 `type=time` input；`ItineraryClient` 加 `handleSetDepartureTime`（update_day 帶 activities）與 `handleSetPrepStart`（update_day 帶 `prepStartTime`），皆走 `submitPatch`（歷程快照/版本鎖/多人同步）。
-- ⚠️ 中間曾把結束做成單一時間選擇器，使用者不喜歡 → 回到「區間＋起訖可編輯」。
+- 出發地卡片顯示「**起始 — 結束** 早餐・整理行李」區間。**結束＝今天第一個出發時間**＝第一活動起始 → `setDepartureTime`（保留各段空檔從頭 `recomputeTimes`、整天順移）。**起始＝整理行李開始**：存當天新欄位 `ItineraryDay.prepStartTime`（純記錄、不動其它活動；未設時預設出發前 90 分）。
+- ⚠️ **互動演進（重要）**：① 先做單一出發時間選擇器 → 使用者嫌只能改出發；② 改成卡片上「起訖兩個 inline `type=time`」→ 使用者嫌**易誤觸**；③ **最終版**：卡片時間唯讀，右上「✏️ 編輯鈕」→ 開 `DepartureEditModal`（整理開始＋出發時間兩欄＋取消/確認）→ **按確認才生效**。一次套用兩值於同一筆 `update_day` patch（`handleSaveDeparture`）。
+- 視窗防呆：改出發時間時，整理開始若晚於它 → 自動往前到出發前 90 分（區間不顛倒）；改整理開始若晚於出發 → 夾回出發時間。
+- 元件：`components/itinerary/DepartureEditModal.tsx`；`DepartureCard` 改唯讀＋`onEdit`；`ItineraryClient` 用 `departureEditOpen` 狀態。
+
+### 3-D 刪掉景點後，相鄰交通卡 title 殘留已刪除的地名
+
+**發生時間**：2026-06-24
+
+**症狀**：第 1 天的「六十石山」景點早已刪除，但行程資料裡仍有交通卡 title 寫著「出發：**六十石山**至台東市區」（時間軸顯示用 toLabel 沒問題，但點進交通卡詳情/編輯就看到舊地名）。
+
+**根本原因**：`deletePlace` 刪景點＝刪它的「前置交通卡」（block 的 leading），但它**後面**那張交通卡（＝下一站的前置）會存活；`recomputeTimes` 只更新存活交通卡的 `toLabel`／清 `fromLabel`，**沒動 `title`** → title 的「起點」殘留已刪除地名。
+
+**修復方法**：
+- `recomputeTimes` 校正交通卡時，**非複合用途**（非還車/候船/報到…）的 title 一併正規化成「前往 {toLabel}」（起點＝時間軸上一張卡，不再寫死於 title）→ 任何刪除/重排後永不殘留舊地名。`isCompositeTransportTitle` 與 DayView 的 `isCompositeTransport` 關鍵字一致。
+- 一次性清理現有資料：腳本依相鄰關係重寫所有移動列 title／toLabel（複合用途不動）；本次修了 30 張（含「六十石山」那張 →「前往自由風民宿」）。
+
+### 1-D 真實地點被當「rest 動作」排除在路線外 → 移動段距離大錯（見第 1 節主題，列此因同屬編輯後遺症）
+
+**發生時間**：2026-06-24
+
+**症狀**：新增「飯店 check in」卡片後，它前面那條移動列（六十石山→台東市區）顯示 273km／約 5 小時，明顯錯誤。
+
+**根本原因**：`buildDayPoints`／`activityPhotos` 一律跳過 `type='rest'`（理由：rest 多為「盥洗/休息/Check-in」動作描述，geocode 同名易誤抓，如「X民宿 Check-in」抓到綠島同名）。但當天「拿伴手禮給娘家」是 `rest` 且**已帶真實座標（花蓮娘家）**，被排除後路線變成「宜蘭 origin → 台東 check-in」**直線**（273km，跳過花蓮）→ 移動段距離全錯。
+
+**修復方法**：`buildDayPoints` 對 rest 改為「**若已有明確真實座標就納入路線**」（用既有 `location`、**不另 geocode**，維持避免同名誤抓的初衷）；無座標的 rest 仍跳過。納入後路線 `travelSig` 改變 → RoutePrefetcher 自動重算正確分段。`activityPhotos` 仍不主動 geocode rest（座標靠 AI/手動或既有）。
 
 ---
 

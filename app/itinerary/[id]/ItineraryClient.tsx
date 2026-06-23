@@ -13,7 +13,7 @@ import {
   detectOverlaps,
   type ShiftWarning,
 } from '@/lib/utils/activityTime'
-import { deletePlace, changedTimeIds, setDepartureTime, toMin } from '@/lib/itinerary/reschedule'
+import { deletePlace, changedTimeIds, setDepartureTime, toMin, fromMin } from '@/lib/itinerary/reschedule'
 import type { Itinerary, TripMetadata, Activity, Accommodation } from '@/lib/types/itinerary'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
@@ -32,6 +32,7 @@ import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
 import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
+import { DepartureEditModal } from '@/components/itinerary/DepartureEditModal'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
 import { scanBufferWarnings } from '@/lib/maps/bufferScan'
@@ -85,6 +86,7 @@ export function ItineraryClient({
   const [exploreTargetDay, setExploreTargetDay] = useState<number | null>(null)
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
+  const [departureEditOpen, setDepartureEditOpen] = useState(false)
   const [dragHasChanges, setDragHasChanges] = useState(false)
   // 拖拉未套用時、切到哪個檢視的待確認目標（map / summary）
   const [dragSwitchConfirm, setDragSwitchConfirm] = useState<'map' | 'summary' | null>(null)
@@ -514,36 +516,31 @@ export function ItineraryClient({
     }
   }
 
-  // ── 調整出發時間（出發地卡片）：設第一活動開始時間＝出發時間，整天順移重算 ──
-  async function handleSetDepartureTime(hhmm: string) {
-    if (!currentDayData) return
+  // ── 出發地時間編輯視窗（按編輯鈕開啟，確認才生效）：一次套用「整理行李開始」＋「出發時間」 ──
+  //    出發時間＝第一活動開始 → setDepartureTime 整天順移；整理行李開始＝prepStartTime（純記錄）。
+  //    兩者合成同一筆 update_day patch（一次歷程、一次確認）。
+  async function handleSaveDeparture(prepStart: string, departure: string) {
+    if (!currentDayData) { setDepartureEditOpen(false); return }
     const activities = currentDayData.activities
-    if (!activities.length) return
-    const m = toMin(hhmm)
-    if (m == null) return
-    const next = setDepartureTime(activities, m)
-    if (next === activities || changedTimeIds(activities, next).size === 0) return
+    const payload: { prepStartTime?: string; activities?: Activity[] } = {}
+    if (prepStart && prepStart !== currentDayData.prepStartTime) payload.prepStartTime = prepStart
+    const m = toMin(departure)
+    if (m != null && activities.length) {
+      const next = setDepartureTime(activities, m)
+      if (next !== activities && changedTimeIds(activities, next).size > 0) payload.activities = next
+    }
+    if (payload.prepStartTime === undefined && payload.activities === undefined) {
+      setDepartureEditOpen(false)
+      return
+    }
     const patch: ItineraryPatch = {
       patchId: nanoid(8),
-      description: `調整出發時間：${hhmm}`,
+      description: '調整出發地時間',
       proposedBy: 'user',
-      ops: [{ op: 'update_day', dayIndex: activeDay, payload: { activities: next } }],
+      ops: [{ op: 'update_day', dayIndex: activeDay, payload }],
     }
     const ok = await submitPatch(patch)
-    if (ok) showToast(`出發時間已改為 ${hhmm}，當天時間已順移`, 'success')
-  }
-
-  // ── 設定整理行李開始時間（出發地卡片「起始」，純記錄、不動其它活動）──────────
-  async function handleSetPrepStart(hhmm: string) {
-    if (!currentDayData) return
-    if (currentDayData.prepStartTime === hhmm) return
-    const patch: ItineraryPatch = {
-      patchId: nanoid(8),
-      description: `整理行李開始時間：${hhmm}`,
-      proposedBy: 'user',
-      ops: [{ op: 'update_day', dayIndex: activeDay, payload: { prepStartTime: hhmm } }],
-    }
-    await submitPatch(patch)
+    if (ok) { setDepartureEditOpen(false); showToast('已更新出發地時間', 'success') }
   }
 
   // ── Delete activity ───────────────────────────────────────────────────────
@@ -866,8 +863,7 @@ export function ItineraryClient({
               onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
-              onEditDeparture={userCanEdit ? handleSetDepartureTime : undefined}
-              onSetPrepStart={userCanEdit ? handleSetPrepStart : undefined}
+              onEditDeparture={userCanEdit ? () => setDepartureEditOpen(true) : undefined}
               onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
           )}
@@ -1042,6 +1038,22 @@ export function ItineraryClient({
           initialTheme={currentDayData.theme ?? ''}
           onSave={handleSaveTheme}
           onClose={() => setEditThemeOpen(false)}
+        />
+      )}
+
+      {currentDayData && (
+        <DepartureEditModal
+          open={departureEditOpen}
+          prepStart={
+            currentDayData.prepStartTime ??
+            (() => {
+              const m = toMin(currentDayData.activities[0]?.startTime)
+              return m != null ? fromMin(Math.max(0, m - 90)) : ''
+            })()
+          }
+          departTime={currentDayData.activities[0]?.startTime ?? ''}
+          onClose={() => setDepartureEditOpen(false)}
+          onSave={handleSaveDeparture}
         />
       )}
 
