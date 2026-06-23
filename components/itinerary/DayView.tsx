@@ -273,22 +273,27 @@ interface DepartureCardProps {
   location?: GeoLocation | null
   /** 第 1 天從家裡/出發城市出發（圖示用 🏠） */
   isHome?: boolean
-  /** 當天第一個活動的開始時間（出發時間）；往前抓 1.5 小時當早餐+整理行李 */
+  /** 當天第一個活動的開始時間＝出發時間（時間區間的「結束」）*/
   departTime?: string | null
-  /** 提供時：出發時間可編輯（改了當天時間順移重算）*/
+  /** 「早餐・整理行李」開始時間（區間「起始」）；未設時預設出發前 90 分 */
+  prepStartTime?: string | null
+  /** 提供時：起始時間可編輯（純記錄整理行李起點，不影響其它活動）*/
+  onSetPrepStart?: (hhmm: string) => void
+  /** 提供時：出發時間（結束）可編輯（＝第一個活動起始，改了當天時間順移重算）*/
   onEditDeparture?: (hhmm: string) => void
 }
 
-/** 每天開頭的「出發地」卡片：前一晚住宿（或第 1 天的出發城市），合成顯示、不可編輯 */
-function DepartureCard({ name, location, isHome, departTime, onEditDeparture }: DepartureCardProps) {
+/** 每天開頭的「出發地」卡片：前一晚住宿（或第 1 天的出發城市）。
+ *  顯示「早餐・整理行李」時間區間：起始可編輯（純記錄），結束＝今天第一個出發時間（改了整天順移）。*/
+function DepartureCard({ name, location, isHome, departTime, prepStartTime, onSetPrepStart, onEditDeparture }: DepartureCardProps) {
   const PREP_MIN = 90
-  let timeRange: string | null = null
-  const dep = toMin(departTime ?? undefined)
-  if (dep != null) {
-    const start = Math.max(0, dep - PREP_MIN)
-    const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`
-    timeRange = `${hh(start)} — ${hh(dep)}`
-  }
+  const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`
+  const depMin = toMin(departTime ?? undefined)
+  const endStr = departTime ?? ''
+  // 起始：優先用已存的整理行李開始時間，否則預設出發前 90 分
+  const startStr = prepStartTime ?? (depMin != null ? hh(Math.max(0, depMin - PREP_MIN)) : '')
+  const editable = !!onEditDeparture
+  const inputCls = 'border border-gray-300 rounded-lg px-1.5 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400'
 
   return (
     <div className="flex gap-3">
@@ -300,19 +305,28 @@ function DepartureCard({ name, location, isHome, departTime, onEditDeparture }: 
 
       <div className="flex-1 rounded-2xl border border-dashed border-gray-300 bg-gray-50/70 p-3 mb-3">
         <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-          {onEditDeparture ? (
-            <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
-              <span>🕘 出發</span>
+          {editable ? (
+            <div className="flex items-center gap-1.5 text-sm font-semibold text-gray-700">
               <input
                 type="time"
-                value={departTime ?? ''}
+                value={startStr}
+                onChange={(e) => e.target.value && onSetPrepStart?.(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                className={inputCls}
+                aria-label="整理行李開始時間"
+              />
+              <span className="text-gray-400">—</span>
+              <input
+                type="time"
+                value={endStr}
                 onChange={(e) => e.target.value && onEditDeparture(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
-                className="border border-gray-300 rounded-lg px-2 py-1 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-400"
+                className={inputCls}
+                aria-label="出發時間"
               />
-            </label>
+            </div>
           ) : (
-            timeRange && <span className="text-sm font-semibold text-gray-700">{timeRange}</span>
+            startStr && endStr && <span className="text-sm font-semibold text-gray-700">{startStr} — {endStr}</span>
           )}
           <span className="text-xs text-gray-400">早餐・整理行李</span>
         </div>
@@ -382,8 +396,10 @@ interface DayViewProps {
   hasNoteForAccommodation?: boolean
   /** 編輯每日簡介（theme）*/
   onEditTheme?: () => void
-  /** 調整出發時間（出發地卡片可編輯）*/
+  /** 調整出發時間（出發地卡片「結束」＝第一個活動起始，整天順移）*/
   onEditDeparture?: (hhmm: string) => void
+  /** 設定整理行李開始時間（出發地卡片「起始」，純記錄）*/
+  onSetPrepStart?: (hhmm: string) => void
   /** 長按景點卡 → 進入拖拉排序模式（只景點卡可觸發）*/
   onLongPressActivity?: (activity: Activity) => void
 }
@@ -405,7 +421,7 @@ function AddButton({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onLongPressActivity }: DayViewProps) {
+export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onSetPrepStart, onLongPressActivity }: DayViewProps) {
   // 開車路段距離/時間（地圖開啟後算好寫回 DB）：以目的地識別碼查找
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
   const acts = day.activities
@@ -472,6 +488,8 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               location={departure.location}
               isHome={departure.isHome}
               departTime={acts[0]?.startTime}
+              prepStartTime={day.prepStartTime}
+              onSetPrepStart={canEdit ? onSetPrepStart : undefined}
               onEditDeparture={canEdit ? onEditDeparture : undefined}
             />
           )}

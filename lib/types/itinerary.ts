@@ -147,6 +147,8 @@ export const ItineraryDaySchema = z.object({
   activities: z.array(ActivitySchema),
   accommodation: LenientAccommodationSchema,
   notes: z.string().optional(),
+  /** 出發地卡片「早餐・整理行李」的開始時間（結束＝第一個活動出發時間）；未設時預設出發前 90 分 */
+  prepStartTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   /** 開車路段距離/時間（地圖計算後寫回，供行程卡顯示；可選） */
   travelLegs: z.array(TravelLegSchema).optional(),
   /** 當天整條開車路線的編碼折線（Directions overview_polyline），地圖解碼後直接畫線，免重打 API */

@@ -149,6 +149,27 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 - 刪景點＝刪整個 block（景點＋前置交通卡），不要只刪單一活動。block 模型（`buildBlocks` 的 leading）是唯一真相。
 - 同理跨天移動/拖拉已用 `moveBlockToDay`（也走 block）。未來任何「移除/搬移景點」的新流程都應走 block，不要手刻單點刪除。
 
+### 3-B 拖拉排序：移動列黏死後面景點，卡片插不進「景點↔移動列」之間
+
+**發生時間**：2026-06-20
+
+**症狀**：拖拉模式想把「飯店 check in」放到「出發至台東市區（移動列）」與「夜市晚餐」之間，但拖不進去。
+
+**根本原因**：`DragSortView` 用 block 模型，把移動列當成「後面景點的前置」綁成不可分割的整塊 → 沒有「景點與其移動列之間」這個落點。
+
+**修復方法**（2026-06-20）：`DragSortView` 改為**攤平 sortable**——每個活動（含移動列）都可獨立拖；引擎加 `applyReorderFlat(original, orderedIds)`，依新順序重組後 `recomputeTimes`（會自動校正交通卡 `toLabel` 與時間）。
+
+### 3-C 出發地卡片時間無法調整、且不跟隨第一個活動
+
+**發生時間**：2026-06-20 ~ 06-24
+
+**症狀**：① 出發地卡片的「早餐・整理行李」時間是唯讀、改不了。② 使用者改第 1 天第一張卡（如花蓮午餐）的時間，出發地時間沒連動（因為出發地綁的是「第一個活動＝前面那台出發的車」，不是午餐；且活動編輯只往後順移、不會往前改到出發）。
+
+**修復方法**：
+- 出發地卡片改成「**起始 — 結束** 早餐・整理行李」**區間、起訖皆可編輯**（與其他卡片一致）。**結束＝今天第一個出發時間**：改它走 `setDepartureTime`（設第一活動開始＝出發、保留各段空檔從頭 `recomputeTimes`、整天順移）。**起始＝整理行李開始**：存當天新欄位 `ItineraryDay.prepStartTime`（純記錄、不動其它活動；未設時預設出發前 90 分）。
+- 串接：`DayView.DepartureCard` 兩個 `type=time` input；`ItineraryClient` 加 `handleSetDepartureTime`（update_day 帶 activities）與 `handleSetPrepStart`（update_day 帶 `prepStartTime`），皆走 `submitPatch`（歷程快照/版本鎖/多人同步）。
+- ⚠️ 中間曾把結束做成單一時間選擇器，使用者不喜歡 → 回到「區間＋起訖可編輯」。
+
 ---
 
 ## (預留) AI 調整後行程資料異常

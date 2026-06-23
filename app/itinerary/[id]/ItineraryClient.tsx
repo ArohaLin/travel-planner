@@ -533,6 +533,19 @@ export function ItineraryClient({
     if (ok) showToast(`出發時間已改為 ${hhmm}，當天時間已順移`, 'success')
   }
 
+  // ── 設定整理行李開始時間（出發地卡片「起始」，純記錄、不動其它活動）──────────
+  async function handleSetPrepStart(hhmm: string) {
+    if (!currentDayData) return
+    if (currentDayData.prepStartTime === hhmm) return
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `整理行李開始時間：${hhmm}`,
+      proposedBy: 'user',
+      ops: [{ op: 'update_day', dayIndex: activeDay, payload: { prepStartTime: hhmm } }],
+    }
+    await submitPatch(patch)
+  }
+
   // ── Delete activity ───────────────────────────────────────────────────────
   function handleDeleteActivity(activity: Activity) {
     setDeleteConfirm(activity)
@@ -854,6 +867,7 @@ export function ItineraryClient({
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
               onEditDeparture={userCanEdit ? handleSetDepartureTime : undefined}
+              onSetPrepStart={userCanEdit ? handleSetPrepStart : undefined}
               onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
           )}
