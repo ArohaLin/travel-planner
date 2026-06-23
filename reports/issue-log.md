@@ -246,6 +246,11 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **通用守則**：①解析先行、信心把關（low 一定停）；②官方數據（評分/總數/簡介）優先用 Places，爬取只補 Places 沒有的；③抓 0 要重試或保底並在 log 誠實標示，不靜默回空；④入庫前 code-point 切字＋清孤立代理字元；⑤判讀是 Claude 本人做，不開 `claude -p`。
 
+**App 顯示側雷點（2026-06-23）**：
+- **特色來源只顯示一個**：`LodgingTab` 原本寫死 `f.sources[0]`，多來源事實只出一個連結 → 改 `f.sources.map(...)` 全部渲染（來源1/來源2…）。住宿/店家評價共用此元件，一起修好。
+- **DB 更新了但瀏覽端看到舊資料**：Next.js 會快取 Server Component / Route Handler 內的 supabase fetch（含 dev 的 `.next/cache` 跨重啟仍在）→ 離線改 DB 後不反映。修法：讀 `lodging_research` 的 `app/api/lodging/route.ts` 加 `export const dynamic='force-dynamic'`＋`revalidate=0`；本機驗證若卡舊資料，`rm -rf .next/cache` 再重啟。
+- **多來源佐證補件**：每條事實的 `sources` 應列「全部」佐證連結（不只一個）。住宿先前入庫多被精簡成 1 個；補件靠子代理逐間重研究文章（多關鍵字→逐篇 WebFetch 確認本店→列出支持該條的所有 URL，寧缺勿濫、防張冠李戴），結果合併進 `features.facts[i].sources`（`scripts/update-lodging-sources.mjs` / `update-surf-sources.mjs`）。住宿多來源比例 50%→78%。
+
 ---
 
 ## 附錄：四條 geocode 管線一覽
