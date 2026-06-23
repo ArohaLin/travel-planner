@@ -54,7 +54,7 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
   const regionOf = (it: LodgingResearch) => (it.district || '其他').replace('臺', '台')
   const regionCounts = new Map<string, number>()
   for (const it of items) regionCounts.set(regionOf(it), (regionCounts.get(regionOf(it)) || 0) + 1)
-  const regions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1])
+  const regions = Array.from(regionCounts.entries()).sort((a, b) => b[1] - a[1])
   const visible = region === '全部' ? items : items.filter((it) => regionOf(it) === region)
   return (
     <div className="flex flex-col">
