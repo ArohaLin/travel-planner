@@ -17,8 +17,8 @@ const shortAddr = (a: string | null) => {
  *  kind='lodging'（住宿評價）或 'shop'（店家評價，如台東衝浪）；category 指定要讀的類別。 */
 export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initialItems?: LodgingResearch[]; category?: string; kind?: 'lodging' | 'shop' } = {}) {
   const L = kind === 'shop'
-    ? { noun: '店家', icon: '🏄', emptyHint: '深入研究店家後會出現在這裡', tapHint: '點店家看完整介紹', regionEmpty: '此地區目前沒有店家資料。', noCon: '評論與文章中未見明顯負評。' }
-    : { noun: '住宿', icon: '🏨', emptyHint: '離線用 lodging-review 技能研究後會出現在這裡', tapHint: '點住宿看完整介紹', regionEmpty: '此地區目前沒有住宿資料。', noCon: '近一年幾乎無負評。' }
+    ? { noun: '店家', icon: '🏄', emptyHint: '深入研究店家後會出現在這裡', tapHint: '點店家看完整介紹', regionEmpty: '此地區目前沒有店家資料。', noCon: '評論與文章中未見明顯負評。', reviewTitle: '真實評論分析' }
+    : { noun: '住宿', icon: '🏨', emptyHint: '離線用 lodging-review 技能研究後會出現在這裡', tapHint: '點住宿看完整介紹', regionEmpty: '此地區目前沒有住宿資料。', noCon: '近一年幾乎無負評。', reviewTitle: '近一年評價' }
   const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compareMode, setCompareMode] = useState(false)
@@ -180,7 +180,7 @@ function BottomBack({ onBack, noun }: { onBack: () => void; noun: string }) {
   )
 }
 
-type TabLabels = { noun: string; icon: string; emptyHint: string; tapHint: string; regionEmpty: string; noCon: string }
+type TabLabels = { noun: string; icon: string; emptyHint: string; tapHint: string; regionEmpty: string; noCon: string; reviewTitle: string }
 
 function ProConRow({ pc, kind }: { pc: ProCon; kind: 'pro' | 'con' }) {
   const sys = pc.systematic
@@ -285,7 +285,7 @@ function Detail({ item, onBack, L }: { item: LodgingResearch; onBack: () => void
         {/* 近一年 */}
         {item.lastYearDist && (
           <section>
-            <h4 className="text-[15px] font-bold text-gray-800 mb-2">近一年評價（{item.lastYearCount} 則・平均 {item.lastYearAvg}）</h4>
+            <h4 className="text-[15px] font-bold text-gray-800 mb-2">{L.reviewTitle}（{item.lastYearCount} 則・平均 {item.lastYearAvg}）</h4>
             <div className="space-y-1">
               {item.lastYearDist.map((d) => (
                 <div key={d.star} className="flex items-center gap-2">
