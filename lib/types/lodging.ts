@@ -42,6 +42,7 @@ export interface LodgingCoverage {
 export interface LodgingResearch {
   id: string
   googlePlaceId: string
+  category: string                  // 商家類別（住宿 / 台東衝浪 …）
   name: string
   city: string | null
   district: string | null
@@ -72,6 +73,7 @@ export function mapLodging(r: any): LodgingResearch {
   return {
     id: r.id,
     googlePlaceId: r.google_place_id,
+    category: r.category ?? '住宿',
     name: r.name,
     city: r.city ?? null,
     district: r.district ?? null,

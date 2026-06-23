@@ -13,8 +13,12 @@ const shortAddr = (a: string | null) => {
   return s || a || '—'
 }
 
-/** 住宿評價：列表（單選看詳情／多選比較）。資料來自離線研究 lodging_research。 */
-export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] } = {}) {
+/** 商家評價：列表（單選看詳情／多選比較）。資料來自離線研究 lodging_research。
+ *  kind='lodging'（住宿評價）或 'shop'（店家評價，如台東衝浪）；category 指定要讀的類別。 */
+export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initialItems?: LodgingResearch[]; category?: string; kind?: 'lodging' | 'shop' } = {}) {
+  const L = kind === 'shop'
+    ? { noun: '店家', icon: '🏄', emptyHint: '深入研究店家後會出現在這裡', tapHint: '點店家看完整介紹', regionEmpty: '此地區目前沒有店家資料。', noCon: '評論與文章中未見明顯負評。' }
+    : { noun: '住宿', icon: '🏨', emptyHint: '離線用 lodging-review 技能研究後會出現在這裡', tapHint: '點住宿看完整介紹', regionEmpty: '此地區目前沒有住宿資料。', noCon: '近一年幾乎無負評。' }
   const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compareMode, setCompareMode] = useState(false)
@@ -23,11 +27,11 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
 
   useEffect(() => {
     if (initialItems) return
-    fetch('/api/lodging')
+    fetch(`/api/lodging${category ? `?category=${encodeURIComponent(category)}` : ''}`)
       .then((r) => r.json())
       .then((d) => setItems(d.items ?? []))
       .catch(() => setItems([]))
-  }, [initialItems])
+  }, [initialItems, category])
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -39,15 +43,15 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
   if (items === null)
     return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
   if (items.length === 0)
-    return <p className="text-center text-gray-400 text-sm py-16 px-6">目前還沒有深入研究過的住宿。<br />（離線用 lodging-review 技能研究後會出現在這裡）</p>
+    return <p className="text-center text-gray-400 text-sm py-16 px-6">目前還沒有深入研究過的{L.noun}。<br />（{L.emptyHint}）</p>
 
   if (view.kind === 'detail') {
     const item = items.find((i) => i.id === view.id)
-    if (item) return <Detail item={item} onBack={() => setView({ kind: 'list' })} />
+    if (item) return <Detail item={item} onBack={() => setView({ kind: 'list' })} L={L} />
   }
   if (view.kind === 'compare') {
     const list = items.filter((i) => selected.has(i.id))
-    return <Compare items={list} onBack={() => setView({ kind: 'list' })} />
+    return <Compare items={list} onBack={() => setView({ kind: 'list' })} L={L} />
   }
 
   const sel = items.filter((i) => selected.has(i.id))
@@ -67,9 +71,9 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
           ))}
         </div>
       )}
-      {/* 模式列：預設點住宿看介紹；開「比較」才啟用勾選 */}
+      {/* 模式列：預設點卡片看介紹；開「比較」才啟用勾選 */}
       <div className="px-4 pt-1 pb-2 flex items-center justify-between gap-2">
-        <p className="text-[13px] text-gray-400 min-w-0">{compareMode ? '勾選 2 間以上互相比較' : '點住宿看完整介紹'}</p>
+        <p className="text-[13px] text-gray-400 min-w-0">{compareMode ? '勾選 2 間以上互相比較' : L.tapHint}</p>
         <button
           onClick={() => { setCompareMode((m) => !m); setSelected(new Set()) }}
           className={clsx('text-[14px] font-semibold rounded-full px-3.5 py-2 flex items-center gap-1 flex-shrink-0 active:scale-95 transition',
@@ -80,10 +84,10 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
       </div>
       <div className="px-4 pb-2 space-y-2.5">
         {visible.map((it) => (
-          <LodgingCard key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)}
+          <LodgingCard key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)} icon={L.icon}
             onTap={() => (compareMode ? toggle(it.id) : setView({ kind: 'detail', id: it.id }))} />
         ))}
-        {visible.length === 0 && <p className="text-center text-[13px] text-gray-400 py-10">此地區目前沒有住宿資料。</p>}
+        {visible.length === 0 && <p className="text-center text-[13px] text-gray-400 py-10">{L.regionEmpty}</p>}
       </div>
 
       {/* 底部操作列：只有比較模式才出現 */}
@@ -93,7 +97,7 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
             <p className="text-center text-[13px] text-gray-400">再勾選 {Math.max(0, 2 - sel.length)} 間即可比較（已選 {sel.length} 間）</p>
           ) : (
             <button onClick={() => setView({ kind: 'compare' })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
-              比較這 {sel.length} 間住宿
+              比較這 {sel.length} 間{L.noun}
             </button>
           )}
         </div>
@@ -115,7 +119,7 @@ function RegionPill({ label, count, active, onClick }: { label: string; count: n
 }
 
 // ── 列表卡 ───────────────────────────────────────────────────────────────────
-function LodgingCard({ item, compareMode, checked, onTap }: { item: LodgingResearch; compareMode: boolean; checked: boolean; onTap: () => void }) {
+function LodgingCard({ item, compareMode, checked, onTap, icon }: { item: LodgingResearch; compareMode: boolean; checked: boolean; onTap: () => void; icon: string }) {
   const photo = photoUrl(item.photoRef)
   return (
     <button
@@ -126,7 +130,7 @@ function LodgingCard({ item, compareMode, checked, onTap }: { item: LodgingResea
       {photo ? (
         <img src={photo} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" loading="lazy" />
       ) : (
-        <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">🏨</div>
+        <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">{icon}</div>
       )}
       <div className="flex-1 min-w-0">
         <div className="text-[17px] font-semibold text-gray-900 truncate">{item.name}</div>
@@ -167,14 +171,16 @@ function BackBar({ onBack, title }: { onBack: () => void; title: string }) {
 }
 
 // 內容底部的大返回鈕（拇指好按，免去碰右上角 X）
-function BottomBack({ onBack }: { onBack: () => void }) {
+function BottomBack({ onBack, noun }: { onBack: () => void; noun: string }) {
   return (
     <button onClick={onBack} className="w-full mt-3 py-3.5 rounded-2xl border-2 border-purple-200 text-purple-700 text-[16px] font-bold active:bg-purple-50 flex items-center justify-center gap-1.5">
       <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-      返回住宿列表
+      返回{noun}列表
     </button>
   )
 }
+
+type TabLabels = { noun: string; icon: string; emptyHint: string; tapHint: string; regionEmpty: string; noCon: string }
 
 function ProConRow({ pc, kind }: { pc: ProCon; kind: 'pro' | 'con' }) {
   const sys = pc.systematic
@@ -194,7 +200,7 @@ function ProConRow({ pc, kind }: { pc: ProCon; kind: 'pro' | 'con' }) {
 }
 
 // ── 詳情（單間）──────────────────────────────────────────────────────────────
-function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void }) {
+function Detail({ item, onBack, L }: { item: LodgingResearch; onBack: () => void; L: TabLabels }) {
   const photo = photoUrl(item.photoRef)
   const sysPros = item.pros.filter((p) => p.systematic)
   const otherPros = item.pros.filter((p) => !p.systematic)
@@ -206,7 +212,7 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
       <div className="px-4 py-3 space-y-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 24px)' }}>
         {/* 頭部 */}
         <div className="flex gap-3 items-center">
-          {photo ? <img src={photo} alt="" className="w-20 h-20 rounded-2xl object-cover bg-gray-100 flex-shrink-0" /> : <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">🏨</div>}
+          {photo ? <img src={photo} alt="" className="w-20 h-20 rounded-2xl object-cover bg-gray-100 flex-shrink-0" /> : <div className="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center text-3xl">{L.icon}</div>}
           <div className="min-w-0">
             <h3 className="text-[20px] font-bold text-gray-900 leading-tight">{item.name}</h3>
             <div className="text-[13px] text-gray-500 mt-0.5">{[item.city, item.district].filter(Boolean).join('')}・{shortAddr(item.address)}</div>
@@ -309,7 +315,7 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
         <section>
           <h4 className="text-[15px] font-bold text-gray-800 mb-2">主要缺點</h4>
           {item.cons.length === 0 ? (
-            <p className="text-[14px] text-gray-400 px-1">近一年幾乎無負評。</p>
+            <p className="text-[14px] text-gray-400 px-1">{L.noCon}</p>
           ) : (
             <div className="space-y-2">
               {sysCons.map((c, i) => <ProConRow key={'sc' + i} pc={c} kind="con" />)}
@@ -328,7 +334,7 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
 
         {item.coverage?.備註 && <p className="text-[11px] text-gray-300 leading-relaxed">資料涵蓋：{item.coverage.備註}</p>}
 
-        <BottomBack onBack={onBack} />
+        <BottomBack onBack={onBack} noun={L.noun} />
       </div>
     </div>
   )
@@ -338,7 +344,7 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
 function topSys(arr: ProCon[], n = 3) {
   return arr.filter((p) => p.systematic).slice(0, n)
 }
-function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => void }) {
+function Compare({ items, onBack, L }: { items: LodgingResearch[]; onBack: () => void; L: TabLabels }) {
   const n = items.length
   const ratings = items.map((i) => i.rating ?? -1)
   const lastYears = items.map((i) => i.lastYearAvg ?? -1)
@@ -362,7 +368,7 @@ function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => vo
           <div className="sticky left-0 z-10 bg-white border-b border-r border-gray-100" />
           {items.map((it) => (
             <div key={it.id} className="border-b border-gray-100 p-2 text-center">
-              {photoUrl(it.photoRef) ? <img src={photoUrl(it.photoRef)!} alt="" className="w-14 h-14 rounded-xl object-cover mx-auto bg-gray-100" /> : <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto flex items-center justify-center text-xl">🏨</div>}
+              {photoUrl(it.photoRef) ? <img src={photoUrl(it.photoRef)!} alt="" className="w-14 h-14 rounded-xl object-cover mx-auto bg-gray-100" /> : <div className="w-14 h-14 rounded-xl bg-gray-100 mx-auto flex items-center justify-center text-xl">{L.icon}</div>}
               <div className="text-[13px] font-semibold text-gray-800 leading-tight mt-1 line-clamp-2">{it.name}</div>
               <div className={clsx('text-[22px] font-extrabold leading-none mt-1', rateColor(it.rating))}>★{it.rating ?? '—'}</div>
             </div>
@@ -422,7 +428,7 @@ function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => vo
           ))}
         </div>
       </div>
-      <div className="px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]"><BottomBack onBack={onBack} /></div>
+      <div className="px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]"><BottomBack onBack={onBack} noun={L.noun} /></div>
     </div>
   )
 }
