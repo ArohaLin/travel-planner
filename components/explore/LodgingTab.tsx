@@ -17,6 +17,7 @@ const shortAddr = (a: string | null) => {
 export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] } = {}) {
   const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [compareMode, setCompareMode] = useState(false)
   const [view, setView] = useState<{ kind: 'list' } | { kind: 'detail'; id: string } | { kind: 'compare' }>({ kind: 'list' })
 
   useEffect(() => {
@@ -51,39 +52,48 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
   const sel = items.filter((i) => selected.has(i.id))
   return (
     <div className="flex flex-col">
-      <p className="px-4 pt-3 pb-1 text-[13px] text-gray-400">點選住宿可加入比較・單選看詳情、多選互相比較</p>
-      <div className="px-4 py-2 space-y-2.5">
+      {/* 模式列：預設點住宿看介紹；開「比較」才啟用勾選 */}
+      <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+        <p className="text-[13px] text-gray-400 min-w-0">{compareMode ? '勾選 2 間以上互相比較' : '點住宿看完整介紹'}</p>
+        <button
+          onClick={() => { setCompareMode((m) => !m); setSelected(new Set()) }}
+          className={clsx('text-[14px] font-semibold rounded-full px-3.5 py-2 flex items-center gap-1 flex-shrink-0 active:scale-95 transition',
+            compareMode ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-600')}
+        >
+          {compareMode ? '✓ 比較模式' : '⇄ 比較'}
+        </button>
+      </div>
+      <div className="px-4 pb-2 space-y-2.5">
         {items.map((it) => (
-          <LodgingCard key={it.id} item={it} checked={selected.has(it.id)} onToggle={() => toggle(it.id)} />
+          <LodgingCard key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)}
+            onTap={() => (compareMode ? toggle(it.id) : setView({ kind: 'detail', id: it.id }))} />
         ))}
       </div>
 
-      {/* 底部操作列 */}
-      <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-4 py-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
-        {sel.length === 0 ? (
-          <p className="text-center text-[13px] text-gray-400">勾選 1 間看詳情，或 2 間以上做比較</p>
-        ) : sel.length === 1 ? (
-          <button onClick={() => setView({ kind: 'detail', id: sel[0].id })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
-            查看「{sel[0].name.length > 12 ? sel[0].name.slice(0, 12) + '…' : sel[0].name}」詳情
-          </button>
-        ) : (
-          <button onClick={() => setView({ kind: 'compare' })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
-            比較這 {sel.length} 間住宿
-          </button>
-        )}
-      </div>
+      {/* 底部操作列：只有比較模式才出現 */}
+      {compareMode && (
+        <div className="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-4 py-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
+          {sel.length < 2 ? (
+            <p className="text-center text-[13px] text-gray-400">再勾選 {Math.max(0, 2 - sel.length)} 間即可比較（已選 {sel.length} 間）</p>
+          ) : (
+            <button onClick={() => setView({ kind: 'compare' })} className="w-full py-3 rounded-2xl bg-purple-600 text-white text-[16px] font-semibold active:bg-purple-700">
+              比較這 {sel.length} 間住宿
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 // ── 列表卡 ───────────────────────────────────────────────────────────────────
-function LodgingCard({ item, checked, onToggle }: { item: LodgingResearch; checked: boolean; onToggle: () => void }) {
+function LodgingCard({ item, compareMode, checked, onTap }: { item: LodgingResearch; compareMode: boolean; checked: boolean; onTap: () => void }) {
   const photo = photoUrl(item.photoRef)
   return (
     <button
-      onClick={onToggle}
+      onClick={onTap}
       className={clsx('w-full flex items-center gap-3 rounded-2xl border p-2.5 text-left transition-colors active:bg-gray-50',
-        checked ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50/40' : 'border-gray-200 bg-white')}
+        compareMode && checked ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50/40' : 'border-gray-200 bg-white')}
     >
       {photo ? (
         <img src={photo} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" loading="lazy" />
@@ -102,10 +112,15 @@ function LodgingCard({ item, checked, onToggle }: { item: LodgingResearch; check
           {item.confidence === 'med' && <span className="text-[11px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">名稱相近</span>}
         </div>
       </div>
-      <div className={clsx('w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0',
-        checked ? 'bg-purple-600 border-purple-600' : 'border-gray-300')}>
-        {checked && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-      </div>
+      {/* 比較模式：勾選框；一般模式：箭頭（暗示點進去看介紹） */}
+      {compareMode ? (
+        <div className={clsx('w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+          checked ? 'bg-purple-600 border-purple-600' : 'border-gray-300')}>
+          {checked && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+        </div>
+      ) : (
+        <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+      )}
     </button>
   )
 }
@@ -113,13 +128,23 @@ function LodgingCard({ item, checked, onToggle }: { item: LodgingResearch; check
 // ── 共用小元件 ───────────────────────────────────────────────────────────────
 function BackBar({ onBack, title }: { onBack: () => void; title: string }) {
   return (
-    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 flex items-center gap-1 px-2 py-2">
-      <button onClick={onBack} className="flex items-center gap-1 text-purple-600 text-[15px] font-medium px-2 py-1 active:opacity-60">
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+    <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 flex items-center gap-2 px-3 py-2.5">
+      <button onClick={onBack} className="flex items-center gap-1 text-[15px] font-bold text-purple-700 bg-purple-100 active:bg-purple-200 rounded-full pl-2.5 pr-4 py-2 flex-shrink-0">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
         返回列表
       </button>
-      <span className="text-[13px] text-gray-400 truncate">{title}</span>
+      <span className="text-[13px] text-gray-400 truncate min-w-0">{title}</span>
     </div>
+  )
+}
+
+// 內容底部的大返回鈕（拇指好按，免去碰右上角 X）
+function BottomBack({ onBack }: { onBack: () => void }) {
+  return (
+    <button onClick={onBack} className="w-full mt-3 py-3.5 rounded-2xl border-2 border-purple-200 text-purple-700 text-[16px] font-bold active:bg-purple-50 flex items-center justify-center gap-1.5">
+      <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+      返回住宿列表
+    </button>
   )
 }
 
@@ -274,6 +299,8 @@ function Detail({ item, onBack }: { item: LodgingResearch; onBack: () => void })
         )}
 
         {item.coverage?.備註 && <p className="text-[11px] text-gray-300 leading-relaxed">資料涵蓋：{item.coverage.備註}</p>}
+
+        <BottomBack onBack={onBack} />
       </div>
     </div>
   )
@@ -367,6 +394,7 @@ function Compare({ items, onBack }: { items: LodgingResearch[]; onBack: () => vo
           ))}
         </div>
       </div>
+      <div className="px-4 pb-[calc(env(safe-area-inset-bottom)+16px)]"><BottomBack onBack={onBack} /></div>
     </div>
   )
 }
