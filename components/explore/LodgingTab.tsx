@@ -18,6 +18,7 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
   const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compareMode, setCompareMode] = useState(false)
+  const [region, setRegion] = useState('全部')
   const [view, setView] = useState<{ kind: 'list' } | { kind: 'detail'; id: string } | { kind: 'compare' }>({ kind: 'list' })
 
   useEffect(() => {
@@ -50,10 +51,24 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
   }
 
   const sel = items.filter((i) => selected.has(i.id))
+  const regionOf = (it: LodgingResearch) => (it.district || '其他').replace('臺', '台')
+  const regionCounts = new Map<string, number>()
+  for (const it of items) regionCounts.set(regionOf(it), (regionCounts.get(regionOf(it)) || 0) + 1)
+  const regions = [...regionCounts.entries()].sort((a, b) => b[1] - a[1])
+  const visible = region === '全部' ? items : items.filter((it) => regionOf(it) === region)
   return (
     <div className="flex flex-col">
+      {/* 鄉鎮市區篩選 */}
+      {regions.length > 1 && (
+        <div className="flex gap-1.5 px-4 pt-3 pb-1 overflow-x-auto no-scrollbar">
+          <RegionPill label="全部" count={items.length} active={region === '全部'} onClick={() => setRegion('全部')} />
+          {regions.map(([rg, c]) => (
+            <RegionPill key={rg} label={rg} count={c} active={region === rg} onClick={() => setRegion(rg)} />
+          ))}
+        </div>
+      )}
       {/* 模式列：預設點住宿看介紹；開「比較」才啟用勾選 */}
-      <div className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+      <div className="px-4 pt-1 pb-2 flex items-center justify-between gap-2">
         <p className="text-[13px] text-gray-400 min-w-0">{compareMode ? '勾選 2 間以上互相比較' : '點住宿看完整介紹'}</p>
         <button
           onClick={() => { setCompareMode((m) => !m); setSelected(new Set()) }}
@@ -64,10 +79,11 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
         </button>
       </div>
       <div className="px-4 pb-2 space-y-2.5">
-        {items.map((it) => (
+        {visible.map((it) => (
           <LodgingCard key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)}
             onTap={() => (compareMode ? toggle(it.id) : setView({ kind: 'detail', id: it.id }))} />
         ))}
+        {visible.length === 0 && <p className="text-center text-[13px] text-gray-400 py-10">此地區目前沒有住宿資料。</p>}
       </div>
 
       {/* 底部操作列：只有比較模式才出現 */}
@@ -83,6 +99,18 @@ export function LodgingTab({ initialItems }: { initialItems?: LodgingResearch[] 
         </div>
       )}
     </div>
+  )
+}
+
+// ── 鄉鎮市區篩選 chip ────────────────────────────────────────────────────────
+function RegionPill({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium border', active ? 'bg-purple-600 text-white border-purple-600' : 'bg-white text-gray-500 border-gray-200')}
+    >
+      {label}<span className={clsx('ml-1', active ? 'text-purple-200' : 'text-gray-400')}>{count}</span>
+    </button>
   )
 }
 
