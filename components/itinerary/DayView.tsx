@@ -1,6 +1,7 @@
 import type { ItineraryDay, Activity, Accommodation, TravelLeg, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { ActivityCard, mapsNavUrl } from './ActivityCard'
+import { RESERVATION } from '@/lib/itinerary/reservation'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
 
@@ -399,6 +400,17 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
 
   return (
     <div className="px-4 pt-4">
+      {/* 預約狀態圖例 */}
+      <div className="mb-3 flex items-center gap-3 px-3 py-1.5 bg-gray-50 rounded-xl text-[12px] text-gray-500 flex-wrap">
+        <span className="text-gray-400">預約狀態</span>
+        {(['needed', 'reserved'] as const).map((k) => (
+          <span key={k} className="flex items-center gap-1">
+            <span className={clsx('w-5 h-5 rounded-full flex items-center justify-center text-sm', RESERVATION[k].badge)}>{RESERVATION[k].icon}</span>
+            {RESERVATION[k].label}
+          </span>
+        ))}
+      </div>
+
       {/* Day header（每日簡介，可編輯）*/}
       {day.theme ? (
         <div className="mb-4 px-4 py-3 bg-purple-50 rounded-2xl border border-purple-100 flex items-start gap-2">

@@ -142,17 +142,22 @@ export function ActivityDetailModal({ activity, dayNumber, onClose }: ActivityDe
                   <span className="text-gray-800 font-medium">{formatMoney(activity.cost)}</span>
                 </div>
               )}
-              {activity.bookingRequired && (
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">預訂</span>
-                  <span className="text-amber-600 text-sm">
-                    ⚠️ 需要預訂
-                    {activity.bookingUrl && (
-                      <a href={activity.bookingUrl} target="_blank" rel="noopener noreferrer" className="underline ml-1">連結</a>
-                    )}
-                  </span>
-                </div>
-              )}
+              {(() => {
+                const resv = activity.reservationStatus ?? (activity.bookingRequired ? 'needed' : 'none')
+                if (resv === 'none') return null
+                const reserved = resv === 'reserved'
+                return (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400">預約</span>
+                    <span className={`text-sm ${reserved ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {reserved ? '✅ 已預訂' : '📅 需預訂'}
+                      {activity.bookingUrl && (
+                        <a href={activity.bookingUrl} target="_blank" rel="noopener noreferrer" className="underline ml-1">連結</a>
+                      )}
+                    </span>
+                  </div>
+                )
+              })()}
               {activity.tags && activity.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
                   {activity.tags.map((t) => (

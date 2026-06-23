@@ -191,7 +191,7 @@ const PATCH_SCHEMA_DOCS = `
 ## Activity 精簡格式（patch 中只填必要欄位，減少 token 用量）
 
 **必填**：id（8字元英數字）、type、title、startTime、bookingRequired
-**選填**（只在有意義時才加）：endTime、cost（有具體費用）、bookingUrl
+**選填**（只在有意義時才加）：endTime、cost（有具體費用）、bookingUrl、reservationStatus（"none"無需預訂／"needed"需要預訂／"reserved"已經預訂；省略＝依 bookingRequired，需預訂的請填 "needed"）
 
 **省略以下欄位**（除非使用者明確要求）：description、location、duration、tags、notes
 

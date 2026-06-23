@@ -4,6 +4,7 @@ import type { Activity, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { formatDuration } from './ActivityDetailModal'
 import { useLongPress } from '@/lib/hooks/useLongPress'
+import { RESERVATION, effectiveReservation } from '@/lib/itinerary/reservation'
 
 /** Google Maps 導航連結：有座標用座標（較精準），否則用地址文字 */
 export function mapsNavUrl(loc: GeoLocation): string {
@@ -86,6 +87,7 @@ const TYPE_COLORS: Record<string, string> = {
   other: 'bg-gray-50 border-gray-100',
 }
 
+
 interface ActivityCardProps {
   activity: Activity
   isLast?: boolean
@@ -104,14 +106,21 @@ interface ActivityCardProps {
 
 export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onClick, onAddNote, hasNote, onLongPress }: ActivityCardProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
+  const resv = effectiveReservation(activity)
   const longPress = useLongPress(() => onLongPress?.(activity))
   const lpHandlers = onLongPress ? longPress : undefined
 
   return (
     <div className="flex gap-3">
-      {/* Timeline line */}
+      {/* Timeline line（預約狀態符號取代圓點：需預訂📅／已預訂✅）*/}
       <div className="flex flex-col items-center flex-shrink-0 w-8">
-        <div className="w-2 h-2 rounded-full bg-purple-400 mt-3 flex-shrink-0" />
+        {resv === 'none' ? (
+          <div className="w-2 h-2 rounded-full bg-purple-400 mt-3 flex-shrink-0" />
+        ) : (
+          <div title={RESERVATION[resv].label} className={clsx('mt-2 w-7 h-7 rounded-full flex items-center justify-center text-base flex-shrink-0', RESERVATION[resv].badge)}>
+            {RESERVATION[resv].icon}
+          </div>
+        )}
         {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1" />}
       </div>
 

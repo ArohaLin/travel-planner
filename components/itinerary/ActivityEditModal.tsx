@@ -370,27 +370,30 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
             />
           </div>
 
-          {/* Booking required */}
-          <label className="flex items-center gap-3 cursor-pointer">
-            <div
-              onClick={() => set('bookingRequired', !form.bookingRequired)}
-              className={clsx(
-                'w-10 h-6 rounded-full relative transition-colors flex-shrink-0',
-                form.bookingRequired ? 'bg-purple-600' : 'bg-gray-200',
-              )}
-            >
-              <span
-                className={clsx(
-                  'absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform',
-                  form.bookingRequired ? 'translate-x-5' : 'translate-x-1',
-                )}
-              />
+          {/* 預約狀態（3 態，同步 bookingRequired）*/}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1.5 block">預約狀態</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([['none', '無需預訂'], ['needed', '📅 需要預訂'], ['reserved', '✅ 已經預訂']] as const).map(([v, lbl]) => {
+                const cur = form.reservationStatus ?? (form.bookingRequired ? 'needed' : 'none')
+                return (
+                  <button
+                    key={v}
+                    onClick={() => setForm((prev) => ({ ...prev, reservationStatus: v, bookingRequired: v !== 'none' }))}
+                    className={clsx(
+                      'text-sm py-2 px-1 rounded-xl border text-center transition-all leading-snug',
+                      cur === v ? 'bg-purple-600 text-white border-purple-600 font-medium' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-purple-300',
+                    )}
+                  >
+                    {lbl}
+                  </button>
+                )
+              })}
             </div>
-            <span className="text-sm text-gray-700">需要預訂</span>
-          </label>
+          </div>
 
-          {/* Booking URL (only when bookingRequired) */}
-          {form.bookingRequired && (
+          {/* Booking URL (only when 需要/已預訂) */}
+          {(form.reservationStatus ?? (form.bookingRequired ? 'needed' : 'none')) !== 'none' && (
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1 block">預訂連結</label>
               <input
