@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import type { Activity, ItineraryDay } from '@/lib/types/itinerary'
 import type { PatchOp } from '@/lib/types/patch'
-import { buildBlocks, applyReorder, moveBlockToDay, changedTimeIds, type Block } from '@/lib/itinerary/reschedule'
+import { applyReorderFlat, moveBlockToDay, changedTimeIds } from '@/lib/itinerary/reschedule'
 
 // PointerSensor 只接受滑鼠事件，避免在觸控裝置上與 TouchSensor 衝突（distance:6 太靈敏）
 class MouseOnlySensor extends PointerSensor {
@@ -67,10 +67,10 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
   )
 
   const activeActs = actsOf(active)
-  const { blocks, trailing } = useMemo(() => buildBlocks(activeActs), [activeActs])
   const changed = useMemo(() => changedTimeIds(origOf(active), activeActs), [active, activeActs]) // eslint-disable-line react-hooks/exhaustive-deps
-  const blockIds = blocks.map((b) => b.place.id)
-  const dragBlock = blocks.find((b) => b.place.id === dragId)
+  const allIds = activeActs.map((a) => a.id)               // 攤平：每個活動（含移動列）都可獨立拖
+  const dragAct = activeActs.find((a) => a.id === dragId)
+  const isTransport = (a?: Activity) => a?.type === 'transport'
 
   // 變動統計（給套用按鈕）
   const dirtyDays = Object.keys(working).map(Number)
@@ -107,13 +107,13 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
       return
     }
 
-    // 同天重排
+    // 同天重排（攤平：任一活動可拖到任一位置）
     if (overId === placeId) return
-    const oldIndex = blockIds.indexOf(placeId)
-    const newIndex = blockIds.indexOf(overId)
+    const oldIndex = allIds.indexOf(placeId)
+    const newIndex = allIds.indexOf(overId)
     if (oldIndex < 0 || newIndex < 0) return
-    const order = arrayMove(blockIds, oldIndex, newIndex)
-    const next = applyReorder(activeActs, order)
+    const order = arrayMove(allIds, oldIndex, newIndex)
+    const next = applyReorderFlat(activeActs, order)
     if (next !== activeActs) setDay(active, next)
   }
 
@@ -141,20 +141,13 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
           ))}
         </div>
 
-        {/* 可拖列表 */}
+        {/* 可拖列表（攤平：每個活動含移動列皆可獨立拖到任一位置）*/}
         <div className="px-4">
-          <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
-            {blocks.map((b) => (
-              <SortableBlock key={b.place.id} block={b} changed={changed} />
+          <SortableContext items={allIds} strategy={verticalListSortingStrategy}>
+            {activeActs.map((a) => (
+              <SortableRow key={a.id} activity={a} changed={changed.has(a.id)} />
             ))}
           </SortableContext>
-
-          {/* 釘底交通卡（不參與排序）*/}
-          {trailing.map((t) => (
-            <div key={t.id} className="ml-9 mb-2 text-xs text-gray-400 flex items-center gap-1.5">
-              <span className="tabular-nums">{t.startTime}</span><span>🚗 {t.toLabel || t.title}</span>
-            </div>
-          ))}
 
           {/* 住宿（不參與排序，僅顯示脈絡）*/}
           {days.find((d) => d.dayIndex === active)?.accommodation && (
@@ -165,10 +158,10 @@ export function DragSortView({ days, initialDayIndex, onApply, onCancel, onDirty
         </div>
 
         <DragOverlay>
-          {dragBlock ? (
+          {dragAct ? (
             <div className="rounded-xl border border-purple-300 bg-white shadow-lg px-3 py-2 flex items-center gap-2 opacity-95">
-              <span>{TYPE_ICONS[dragBlock.place.type] ?? '📌'}</span>
-              <span className="font-medium text-sm text-gray-900 truncate">{dragBlock.place.placeLabel || dragBlock.place.title}</span>
+              <span>{isTransport(dragAct) ? '🚗' : (TYPE_ICONS[dragAct.type] ?? '📌')}</span>
+              <span className="font-medium text-sm text-gray-900 truncate">{isTransport(dragAct) ? (dragAct.toLabel ? `前往 ${dragAct.toLabel}` : dragAct.title) : (dragAct.placeLabel || dragAct.title)}</span>
             </div>
           ) : null}
         </DragOverlay>
@@ -215,44 +208,47 @@ function DayDrop({ dayIndex, active, dragging, onSelect }: { dayIndex: number; a
   )
 }
 
-/* ── 可拖的 block（前置交通卡小列 + 景點卡）───────────────────────────── */
-function SortableBlock({ block, changed }: { block: Block; changed: Set<string> }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: block.place.id })
+/* ── 可拖的活動列（景點卡／移動列皆可獨立拖到任一位置）──────────────────── */
+const DragHandle = (
+  <span className="text-gray-300 flex-shrink-0">
+    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+  </span>
+)
+
+function SortableRow({ activity: a, changed }: { activity: Activity; changed: boolean }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: a.id })
   const style = { transform: CSS.Transform.toString(transform), transition }
-  const p = block.place
-  const isChanged = changed.has(p.id)
+  const transport = a.type === 'transport'
 
-  return (
-    <div ref={setNodeRef} style={style} className={clsx('mb-2', isDragging && 'opacity-40')}>
-      {/* 前置交通卡（小列，跟著一起搬）*/}
-      {block.leading.map((t) => (
-        <div key={t.id} className="ml-9 mb-1 text-xs text-gray-400 flex items-center gap-1.5">
-          <span className="tabular-nums">{t.startTime}</span>
-          <span>🚗 {t.toLabel ? `前往 ${t.toLabel}` : t.title}</span>
-        </div>
-      ))}
-
-      {/* 景點卡（整列為拖曳把手）*/}
+  if (transport) {
+    // 移動列：細灰小列，但同樣可拖
+    return (
       <div
-        {...attributes}
-        {...listeners}
-        style={{ touchAction: 'none' }}
-        className={clsx(
-          'flex items-center gap-3 rounded-xl border px-3 py-2.5 bg-white select-none cursor-grab active:cursor-grabbing',
-          isChanged ? 'border-purple-300 ring-1 ring-purple-100' : 'border-gray-200',
-        )}
+        ref={setNodeRef} style={style} {...attributes} {...listeners}
+        className={clsx('flex items-center gap-2 ml-9 mb-1.5 px-2 py-1.5 rounded-lg select-none cursor-grab active:cursor-grabbing',
+          changed ? 'bg-purple-50' : 'bg-gray-50', isDragging && 'opacity-40')}
       >
-        {/* 拖拉把手圖示 */}
-        <span className="text-gray-300 flex-shrink-0">
-          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-        </span>
-        <span className="text-lg flex-shrink-0">{TYPE_ICONS[p.type] ?? '📌'}</span>
-        <div className="flex-1 min-w-0">
-          <div className={clsx('text-xs tabular-nums', isChanged ? 'text-purple-600 font-semibold' : 'text-gray-500')}>
-            {p.startTime}{p.endTime ? `–${p.endTime}` : ''}{isChanged && ' ·已調整'}
-          </div>
-          <div className="font-medium text-sm text-gray-900 truncate">{p.placeLabel || p.title}</div>
+        {DragHandle}
+        <span className="text-xs tabular-nums text-gray-400">{a.startTime}</span>
+        <span className="text-xs text-gray-500 truncate">🚗 {a.toLabel ? `前往 ${a.toLabel}` : a.title}{changed && ' ·已調整'}</span>
+      </div>
+    )
+  }
+
+  // 景點卡（整列為拖曳把手）
+  return (
+    <div
+      ref={setNodeRef} style={{ ...style, touchAction: 'none' }} {...attributes} {...listeners}
+      className={clsx('flex items-center gap-3 rounded-xl border px-3 py-2.5 mb-2 bg-white select-none cursor-grab active:cursor-grabbing',
+        changed ? 'border-purple-300 ring-1 ring-purple-100' : 'border-gray-200', isDragging && 'opacity-40')}
+    >
+      {DragHandle}
+      <span className="text-lg flex-shrink-0">{TYPE_ICONS[a.type] ?? '📌'}</span>
+      <div className="flex-1 min-w-0">
+        <div className={clsx('text-xs tabular-nums', changed ? 'text-purple-600 font-semibold' : 'text-gray-500')}>
+          {a.startTime}{a.endTime ? `–${a.endTime}` : ''}{changed && ' ·已調整'}
         </div>
+        <div className="font-medium text-sm text-gray-900 truncate">{a.placeLabel || a.title}</div>
       </div>
     </div>
   )

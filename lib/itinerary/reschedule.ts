@@ -190,6 +190,21 @@ export function applyReorder(original: Activity[], orderedPlaceIds: string[]): A
 }
 
 /**
+ * 攤平重排：直接依新的「全部活動順序」（含交通卡，可獨立拖）重組並只順移後面。
+ * recomputeTimes 會自動校正交通卡 toLabel（對齊新順序的下一站）。順序沒變回原陣列（同參考）。
+ */
+export function applyReorderFlat(original: Activity[], orderedIds: string[]): Activity[] {
+  const byId = new Map(original.map((a) => [a.id, a]))
+  const next: Activity[] = []
+  for (const id of orderedIds) { const a = byId.get(id); if (a) next.push(a) }
+  for (const a of original) if (!orderedIds.includes(a.id)) next.push(a) // 保險：補漏
+  if (next.length !== original.length) return original
+  const from = firstDivergence(original, next)
+  if (from === -1) return original
+  return recomputeTimes(next, from, buildGapHint(original), toMin(original[0]?.startTime))
+}
+
+/**
  * 跨天移動：把 placeId 的景點從 source 移到 target。
  * - source：移除該 block（含其前置交通卡），從移除點起重算。
  * - target：把「景點本身」插在「離它最近的現有景點之後」（無座標則插最後），從插入點起重算。
