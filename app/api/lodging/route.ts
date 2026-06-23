@@ -17,12 +17,16 @@ export async function GET(req: Request) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
-  const category = new URL(req.url).searchParams.get('category') || '住宿'
+  // category=指定類別；kind=shop→所有非住宿類別（店家評價分頁，可含多類別）；預設住宿
+  const sp = new URL(req.url).searchParams
+  const category = sp.get('category')
+  const kind = sp.get('kind')
   const db = createServiceRoleClient()
-  const { data, error } = await db
-    .from('lodging_research')
-    .select('*')
-    .eq('category', category)
+  let q = db.from('lodging_research').select('*')
+  if (category) q = q.eq('category', category)
+  else if (kind === 'shop') q = q.neq('category', '住宿')
+  else q = q.eq('category', '住宿')
+  const { data, error } = await q
     .order('rating', { ascending: false, nullsFirst: false })
     .order('total_reviews', { ascending: false, nullsFirst: false })
   if (error) return NextResponse.json({ error: '讀取失敗' }, { status: 500 })

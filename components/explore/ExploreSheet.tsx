@@ -220,7 +220,7 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
           {tab === 'lodging' ? (
             <LodgingTab />
           ) : tab === 'shop' ? (
-            <LodgingTab category="台東衝浪" kind="shop" />
+            <LodgingTab kind="shop" />
           ) : loading ? (
             <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
           ) : tab === 'recommend' ? (

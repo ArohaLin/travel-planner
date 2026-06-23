@@ -22,16 +22,18 @@ export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initi
   const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compareMode, setCompareMode] = useState(false)
+  const [cat, setCat] = useState<string | null>(null)   // 店家模式：選中的類別（台東衝浪…）
   const [region, setRegion] = useState('全部')
   const [view, setView] = useState<{ kind: 'list' } | { kind: 'detail'; id: string } | { kind: 'compare' }>({ kind: 'list' })
 
   useEffect(() => {
     if (initialItems) return
-    fetch(`/api/lodging${category ? `?category=${encodeURIComponent(category)}` : ''}`)
+    const url = category ? `?category=${encodeURIComponent(category)}` : kind === 'shop' ? '?kind=shop' : ''
+    fetch(`/api/lodging${url}`)
       .then((r) => r.json())
       .then((d) => setItems(d.items ?? []))
       .catch(() => setItems([]))
-  }, [initialItems, category])
+  }, [initialItems, category, kind])
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -55,17 +57,31 @@ export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initi
   }
 
   const sel = items.filter((i) => selected.has(i.id))
+  // 店家模式：類別（台東衝浪…）為主篩選；先依類別過濾，再算地區
+  const categories = kind === 'shop' ? Array.from(new Set(items.map((i) => i.category))).sort() : []
+  const activeCat = categories.length ? (cat && categories.includes(cat) ? cat : categories[0]) : null
+  const catItems = activeCat ? items.filter((i) => i.category === activeCat) : items
   const regionOf = (it: LodgingResearch) => (it.district || '其他').replace('臺', '台')
   const regionCounts = new Map<string, number>()
-  for (const it of items) regionCounts.set(regionOf(it), (regionCounts.get(regionOf(it)) || 0) + 1)
+  for (const it of catItems) regionCounts.set(regionOf(it), (regionCounts.get(regionOf(it)) || 0) + 1)
   const regions = Array.from(regionCounts.entries()).sort((a, b) => b[1] - a[1])
-  const visible = region === '全部' ? items : items.filter((it) => regionOf(it) === region)
+  const visible = region === '全部' ? catItems : catItems.filter((it) => regionOf(it) === region)
   return (
     <div className="flex flex-col">
-      {/* 鄉鎮市區篩選 */}
+      {/* 類別篩選（店家模式主篩選：台東衝浪…） */}
+      {kind === 'shop' && categories.length >= 1 && (
+        <div className="flex gap-1.5 px-4 pt-3 pb-0.5 overflow-x-auto no-scrollbar">
+          {categories.map((c) => (
+            <button key={c} onClick={() => { setCat(c); setRegion('全部') }}
+              className={clsx('flex-shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-semibold border transition active:scale-95',
+                c === activeCat ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-700 border-purple-100')}>{c}</button>
+          ))}
+        </div>
+      )}
+      {/* 鄉鎮市區篩選（次篩選） */}
       {regions.length > 1 && (
-        <div className="flex gap-1.5 px-4 pt-3 pb-1 overflow-x-auto no-scrollbar">
-          <RegionPill label="全部" count={items.length} active={region === '全部'} onClick={() => setRegion('全部')} />
+        <div className="flex gap-1.5 px-4 pt-2 pb-1 overflow-x-auto no-scrollbar">
+          <RegionPill label="全部" count={catItems.length} active={region === '全部'} onClick={() => setRegion('全部')} />
           {regions.map(([rg, c]) => (
             <RegionPill key={rg} label={rg} count={c} active={region === rg} onClick={() => setRegion(rg)} />
           ))}
