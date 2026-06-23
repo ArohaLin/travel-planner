@@ -239,6 +239,7 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 | 批次中文路徑參數失效 | shell 變數未加引號被截斷 → 指令一律用引號包路徑 | 操作習慣 |
 | 重爬覆寫好檔→壞跑(0評論)可能被誤入庫 | 檔名相同會覆寫 → 壞跑**不入庫**；只補設施用 PATCH 只改 `features` 欄、不動評論；清掉 0 評論快取 | 操作習慣 |
 | 信心度把「中文正名＋英文行銷字」誤判 low 而停止（如「馬可樓民宿 Cenacle B&B」sim 0.23、「…奧麗雅安莊園…Taitung Seaview B&B Chateau D'Olea」sim 0.18） | 整串 Levenshtein 被英文/行銷字拉低，但查詢核心其實是官方名的子字串 → `confidence` 加**包含關係**：qCore 是 rCore 子字串（或反之，≥2字）即視為 high | `resolve.mjs` `confidence` |
+| 國際連鎖飯店誤判 low 而停止（查「台東桂田喜來登酒店」→ Places 回英文名「Sheraton Taitung Hotel」，中英 sim=0） | 中英跨語系無法逐字比名 → `confidence` 加 `scriptMismatch`（一邊含 CJK、一邊全英數）：城市不衝突就給 **med**（自動改用解析名＋告知），不誤判 low | `resolve.mjs` `confidence` |
 | 解析名是行銷字堆疊超長名時，拿它當 Travel 查詢字→評論面板開不了 | travelQuery 用了超長解析名 → 落到開不了評論的頁面 → 改用使用者原查詢；解析名 normalize 後 >14 字且原查詢較短時改用原查詢。仍偶發時用更短核心名（如「奧麗雅安莊園 台東」）重試即可開 | `query.mjs` travelQuery |
 | 批次orchestrator 解析 query.mjs 輸出全 STOPPED（誤判） | query.mjs 精簡輸出是**多行 pretty-print JSON**，不能用「挑單行 `{` 開頭」parser → 直接 `JSON.parse(out.trim())`（stdout 只有那一個物件） | 批次腳本 |
 
