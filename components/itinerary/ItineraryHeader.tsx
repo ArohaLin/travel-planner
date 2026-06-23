@@ -16,10 +16,14 @@ interface ItineraryHeaderProps {
   role: MemberRole
   onlineUsers: PresenceUser[]
   currentUser?: { displayName: string; avatarUrl: string | null; globalRole: GlobalRole } | null
+  /** 待辦未完成數（顯示在待辦鈕徽章）*/
+  todoCount?: number
+  /** 開啟待辦抽屜 */
+  onOpenTodos?: () => void
 }
 
 export function ItineraryHeader({
-  itinerary, itineraryId, role, onlineUsers, currentUser,
+  itinerary, itineraryId, role, onlineUsers, currentUser, todoCount = 0, onOpenTodos,
 }: ItineraryHeaderProps) {
   const router = useRouter()
   const { metadata } = itinerary
@@ -100,6 +104,24 @@ export function ItineraryHeader({
               className="ring-2 ring-purple-200"
             />
           </Link>
+        )}
+
+        {/* 待辦事項 */}
+        {onOpenTodos && (
+          <button
+            onClick={onOpenTodos}
+            className="tap-target text-gray-500 p-1 relative flex-shrink-0"
+            aria-label={`待辦事項${todoCount > 0 ? `，${todoCount} 件未完成` : ''}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+            </svg>
+            {todoCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
+                {todoCount > 99 ? '99+' : todoCount}
+              </span>
+            )}
+          </button>
         )}
 
         {/* ⋯ 更多選單 */}

@@ -33,6 +33,9 @@ import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { DepartureEditModal } from '@/components/itinerary/DepartureEditModal'
+import { TodoSheet } from '@/components/itinerary/TodoSheet'
+import { useTodos } from '@/lib/hooks/useTodos'
+import { deriveAutoTodos } from '@/lib/todo/deriveTodos'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
 import { scanBufferWarnings } from '@/lib/maps/bufferScan'
@@ -87,6 +90,7 @@ export function ItineraryClient({
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
   const [departureEditOpen, setDepartureEditOpen] = useState(false)
+  const [todoOpen, setTodoOpen] = useState(false)
   const [dragHasChanges, setDragHasChanges] = useState(false)
   // 拖拉未套用時、切到哪個檢視的待確認目標（map / summary）
   const [dragSwitchConfirm, setDragSwitchConfirm] = useState<'map' | 'summary' | null>(null)
@@ -125,6 +129,19 @@ export function ItineraryClient({
   const aiNotes = useAINotes(itineraryId)
   const { modelProvider } = useModelPreference()
   const { showToast } = useToast()
+
+  // ── 待辦事項：手動待辦（DB）＋ 自動提醒（即時從行程算）────────────────────────
+  const todoState = useTodos(itineraryId)
+  const todayISO = useMemo(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  }, [])
+  const autoTodosActive = useMemo(() => {
+    const doneKeys = new Set(todoState.todos.filter((t) => t.kind === 'auto' && t.isDone).map((t) => t.autoKey))
+    return deriveAutoTodos(displayItinerary, todayISO).filter((t) => !doneKeys.has(t.key))
+  }, [displayItinerary, todayISO, todoState.todos])
+  const manualTodos = useMemo(() => todoState.todos.filter((t) => t.kind === 'manual'), [todoState.todos])
+  const todoBadge = autoTodosActive.length + manualTodos.filter((t) => !t.isDone).length
 
   const currentDayData = displayItinerary.days[activeDay]
   const userCanEdit = canEdit(role)
@@ -543,6 +560,36 @@ export function ItineraryClient({
     if (ok) { setDepartureEditOpen(false); showToast('已更新出發地時間', 'success') }
   }
 
+  // ── 待辦動作：前往那天 / 一鍵標已預訂（活動、住宿）──────────────────────────
+  function handleTodoGoDay(dayIndex: number) {
+    setViewMode('list')
+    setActiveDay(dayIndex)
+  }
+  async function handleTodoReserveActivity(dayIndex: number, activityId: string) {
+    const day = displayItinerary.days.find((d) => d.dayIndex === dayIndex)
+    const act = day?.activities.find((a) => a.id === activityId)
+    if (!act) return
+    const updated: Activity = { ...act, reservationStatus: 'reserved', bookingRequired: true }
+    await submitPatch({
+      patchId: nanoid(8),
+      description: `標記已預訂：${act.title}`,
+      proposedBy: 'user',
+      ops: [{ op: 'update_activity', dayIndex, activityId, payload: updated, _before: act }],
+    })
+  }
+  async function handleTodoReserveLodging(dayIndex: number) {
+    const day = displayItinerary.days.find((d) => d.dayIndex === dayIndex)
+    const acc = day?.accommodation
+    if (!acc) return
+    const updated: Accommodation = { ...acc, reservationStatus: 'reserved' }
+    await submitPatch({
+      patchId: nanoid(8),
+      description: `標記住宿已預訂：${acc.name}`,
+      proposedBy: 'user',
+      ops: [{ op: 'set_day_accommodation', dayIndex, payload: updated }],
+    })
+  }
+
   // ── Delete activity ───────────────────────────────────────────────────────
   function handleDeleteActivity(activity: Activity) {
     setDeleteConfirm(activity)
@@ -689,6 +736,8 @@ export function ItineraryClient({
         role={role}
         onlineUsers={onlineUsers}
         currentUser={{ displayName: currentUser.displayName, avatarUrl: currentUser.avatarUrl, globalRole: currentUser.globalRole }}
+        todoCount={todoBadge}
+        onOpenTodos={() => setTodoOpen(true)}
       />
 
       <TripInfoCard
@@ -1040,6 +1089,22 @@ export function ItineraryClient({
           onClose={() => setEditThemeOpen(false)}
         />
       )}
+
+      <TodoSheet
+        open={todoOpen}
+        onClose={() => setTodoOpen(false)}
+        autoTodos={autoTodosActive}
+        manualTodos={manualTodos}
+        canEdit={userCanEdit}
+        onAddTodo={todoState.addTodo}
+        onToggleTodo={todoState.toggleTodo}
+        onEditTodo={todoState.editTodo}
+        onDeleteTodo={todoState.deleteTodo}
+        onResolveAuto={todoState.resolveAuto}
+        onGoDay={handleTodoGoDay}
+        onReserveActivity={handleTodoReserveActivity}
+        onReserveLodging={handleTodoReserveLodging}
+      />
 
       {currentDayData && (
         <DepartureEditModal

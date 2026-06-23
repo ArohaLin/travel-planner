@@ -135,6 +135,13 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **報告來源**：`reports/*.md`（含 frontmatter title/date/category/summary）→ 執行 **`npm run build:reports`** 打包成 `lib/reports/index.ts`（TS 模組，避免 Vercel fs tracing 不確定性）。新增/改報告後務必重跑此指令。
 - **渲染**：`components/admin/ReportReader.tsx` 用 react-markdown + remark-gfm，iPhone 16 Pro 優化（表格可橫向捲動、程式區塊深色框）。報告內容以**表格**為主、利於比較。
 
+### ✅ 待辦事項（2026-06-24）
+行程專屬待辦清單，入口在行程頁 header 的待辦鈕（含**紅色未完成數字徽章**）→ 開全高抽屜 `TodoSheet`。兩區：
+- **自動提醒**（即時從行程算、不存內容）：`lib/todo/deriveTodos.ts` 的 `deriveAutoTodos(itin, todayISO)` 算出 5 類——① 活動「需要預訂」未預訂（`effectiveReservation==='needed'`）② 住宿「需要預訂」未預訂（住宿預設視為需要預訂，見 `effectiveLodgingReservation`）③ 有夜晚沒安排住宿（最後一天除外）④ 某天路程偏緊恐遲到（重用 `scanBufferWarnings` 新增的 `redDays`）⑤ 出發前倒數提醒（前 7 天查天氣、前 1 天確認預訂＋打包）。每件可「標已預訂（走 patch 改 reservationStatus）／前往那天／略過」；純提醒（倒數）按「完成」。
+- **我的待辦**（手動）：`todo_items` 表（每行程一份，Realtime 同步協作者）。新增/勾選/編輯/刪除走 `app/api/itinerary/[id]/todos`（service role + `getItineraryAccess`）。`useTodos` hook 抓取 + 訂閱 Realtime。
+- **資料**：migration `supabase/migration_todos.sql`（已執行，含 RLS 與加入 `supabase_realtime` publication）。住宿加 `reservationStatus` 欄位（schema + 住宿卡顯示徽章 + 住宿編輯三態，沿用活動的 `RESERVATION`）。
+- **徽章數** = 未略過的自動提醒 ＋ 未勾的手動待辦（`ItineraryClient` 的 `todoBadge`）。自動提醒「略過/完成」存一筆 `kind='auto'` 的覆蓋記號（`auto_key`），不再計入。
+
 ---
 
 ## 專案結構（重點檔案）

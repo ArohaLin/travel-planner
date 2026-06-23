@@ -1,6 +1,8 @@
 import type { Accommodation } from '@/lib/types/itinerary'
 import { formatMoney } from '@/lib/utils/currency'
 import { mapsNavUrl } from './ActivityCard'
+import { RESERVATION } from '@/lib/itinerary/reservation'
+import { effectiveLodgingReservation } from '@/lib/todo/deriveTodos'
 
 interface AccommodationCardProps {
   accommodation: Accommodation
@@ -16,6 +18,16 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
       <div className="flex items-center gap-2 mb-2">
         <span className="text-lg">🏨</span>
         <span className="text-sm font-medium text-indigo-700">住宿</span>
+        {(() => {
+          const resv = effectiveLodgingReservation(accommodation.reservationStatus)
+          if (resv === 'none') return null
+          const r = RESERVATION[resv]
+          return (
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${r.badge}`}>
+              {r.icon} {r.label}
+            </span>
+          )
+        })()}
 
         {/* 編輯 + AI 備註鈕 */}
         {canEdit && (

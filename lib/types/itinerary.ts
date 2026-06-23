@@ -80,6 +80,8 @@ export const AccommodationSchema = z.object({
   location: GeoLocationSchema,
   checkInTime: z.string().regex(/^\d{2}:\d{2}$/),
   checkOutTime: z.string().regex(/^\d{2}:\d{2}$/),
+  /** 預約狀態：無需預訂 / 需要預訂 / 已經預訂（缺省＝none；住宿通常需要預訂，由使用者設定）*/
+  reservationStatus: z.enum(['none', 'needed', 'reserved']).optional(),
   cost: MoneySchema.optional(),
   bookingUrl: z.string().optional().transform(v => {
     if (!v) return undefined

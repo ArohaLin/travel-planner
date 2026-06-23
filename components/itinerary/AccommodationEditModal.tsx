@@ -17,6 +17,7 @@ export function AccommodationEditModal({ accommodation, onSave, onClose }: Accom
   const [checkIn, setCheckIn] = useState(accommodation.checkInTime)
   const [checkOut, setCheckOut] = useState(accommodation.checkOutTime)
   const [bookingUrl, setBookingUrl] = useState(accommodation.bookingUrl ?? '')
+  const [reservation, setReservation] = useState<'none' | 'needed' | 'reserved'>(accommodation.reservationStatus ?? 'needed')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const initialAddress = accommodation.location?.address ?? ''
@@ -45,6 +46,7 @@ export function AccommodationEditModal({ accommodation, onSave, onClose }: Accom
       checkInTime: checkIn,
       checkOutTime: checkOut,
       bookingUrl: bookingUrl.trim() || undefined,
+      reservationStatus: reservation,
     }
     onSave(updated)
   }
@@ -123,6 +125,23 @@ export function AccommodationEditModal({ accommodation, onSave, onClose }: Accom
                 )}
               />
               {errors.checkOut && <p className="text-xs text-red-500 mt-1">{errors.checkOut}</p>}
+            </div>
+          </div>
+
+          {/* 預約狀態 */}
+          <div>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">預約狀態</label>
+            <div className="grid grid-cols-3 gap-2">
+              {([['none', '無需預訂'], ['needed', '📅 需要預訂'], ['reserved', '✅ 已經預訂']] as const).map(([v, label]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setReservation(v)}
+                  className={`py-2.5 rounded-xl text-sm font-medium border transition-colors ${reservation === v ? 'bg-purple-50 border-purple-400 text-purple-700' : 'bg-white border-gray-200 text-gray-500'}`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 

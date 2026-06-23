@@ -11,6 +11,8 @@ export interface BufferScanResult {
   amber: number
   /** red + amber */
   total: number
+  /** 有至少一段「紅色（路程 > 預留，恐遲到）」的天的 dayIndex（供待辦連結）*/
+  redDays: number[]
 }
 
 const toMinutes = (t?: string): number | null => {
@@ -35,6 +37,7 @@ function isNonDriving(a?: Activity): boolean {
 export function scanBufferWarnings(itinerary: Itinerary): BufferScanResult {
   let red = 0
   let amber = 0
+  const redDaySet = new Set<number>()
 
   for (const day of itinerary.days) {
     const legs = day.travelLegs ?? []
@@ -70,10 +73,10 @@ export function scanBufferWarnings(itinerary: Itinerary): BufferScanResult {
 
       if (allottedMin == null || allottedMin <= 0) continue
       const comfortable = googleMin + Math.min(Math.max(googleMin * 0.5, 5), 15)
-      if (allottedMin < googleMin) red++
+      if (allottedMin < googleMin) { red++; redDaySet.add(day.dayIndex) }
       else if (allottedMin < comfortable) amber++
     }
   }
 
-  return { red, amber, total: red + amber }
+  return { red, amber, total: red + amber, redDays: Array.from(redDaySet).sort((a, b) => a - b) }
 }
