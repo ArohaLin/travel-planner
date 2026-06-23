@@ -242,6 +242,7 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 | 國際連鎖飯店誤判 low 而停止（查「台東桂田喜來登酒店」→ Places 回英文名「Sheraton Taitung Hotel」，中英 sim=0） | 中英跨語系無法逐字比名 → `confidence` 加 `scriptMismatch`（一邊含 CJK、一邊全英數）：城市不衝突就給 **med**（自動改用解析名＋告知），不誤判 low | `resolve.mjs` `confidence` |
 | 解析名是行銷字堆疊超長名時，拿它當 Travel 查詢字→評論面板開不了 | travelQuery 用了超長解析名 → 落到開不了評論的頁面 → 改用使用者原查詢；解析名 normalize 後 >14 字且原查詢較短時改用原查詢。仍偶發時用更短核心名（如「奧麗雅安莊園 台東」）重試即可開 | `query.mjs` travelQuery |
 | 批次orchestrator 解析 query.mjs 輸出全 STOPPED（誤判） | query.mjs 精簡輸出是**多行 pretty-print JSON**，不能用「挑單行 `{` 開頭」parser → 直接 `JSON.parse(out.trim())`（stdout 只有那一個物件） | 批次腳本 |
+| **店家評論（非住宿）抓 0**：衝浪店等地圖商家不在 Google Travel，改爬 Google 搜尋知識面板（含手機版 UA 模擬）一律失敗 | Google 對 headless 自動化回「異常流量」CAPTCHA 頁（body 僅約 270 字「系統偵測到您的電腦網路…不是由自動程式發出」）→ **不可破解 CAPTCHA、且違反 ToS**。**結論：地圖商家評論無法以爬蟲取得全量** → 改用 **Google Places API**（官方、合規）：每店最多 5 則代表評論＋官方評分/總數/官網/地址，誠實標示「非近一年全量」。住宿能抓上百則是因走 Google Travel 飯店專用 RPC，商家無此通道 | `shop-reviews.mjs`（Places 版）；App 用 `category` 區分住宿/台東衝浪 |
 
 **通用守則**：①解析先行、信心把關（low 一定停）；②官方數據（評分/總數/簡介）優先用 Places，爬取只補 Places 沒有的；③抓 0 要重試或保底並在 log 誠實標示，不靜默回空；④入庫前 code-point 切字＋清孤立代理字元；⑤判讀是 Claude 本人做，不開 `claude -p`。
 
