@@ -268,7 +268,9 @@ function Detail({ item, onBack, L }: { item: LodgingResearch; onBack: () => void
                     <span>・{f.text}</span>
                     {f.paid && <span className="text-[11px] text-amber-700 bg-amber-50 rounded px-1.5 py-0.5">需自費{f.paidNote ? `（${f.paidNote}）` : ''}</span>}
                     {f.seasonal && <span className="text-[11px] text-sky-700 bg-sky-50 rounded px-1.5 py-0.5">{f.seasonal}</span>}
-                    {f.sources?.length ? <a href={f.sources[0]} target="_blank" rel="noreferrer" className="text-[11px] text-purple-400 underline">來源</a> : null}
+                    {f.sources?.length ? f.sources.map((s, si) => (
+                      <a key={si} href={s} target="_blank" rel="noreferrer" className="text-[11px] text-purple-400 underline">來源{f.sources!.length > 1 ? si + 1 : ''}</a>
+                    )) : null}
                   </li>
                 ))}
               </ul>

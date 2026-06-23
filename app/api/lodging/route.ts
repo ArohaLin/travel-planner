@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { mapLodging } from '@/lib/types/lodging'
 
+// 永遠回最新（離線研究更新 DB 後，瀏覽端立即反映，不被 fetch 快取卡住）
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * 商家深入研究列表（探索→住宿評價／店家評價）。
  * 任何登入者可讀；資料為離線研究產出（lodging_research），瀏覽不耗 AI。
