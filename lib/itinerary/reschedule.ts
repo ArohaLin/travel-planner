@@ -190,6 +190,16 @@ export function applyReorder(original: Activity[], orderedPlaceIds: string[]): A
 }
 
 /**
+ * 設定當天「出發時間」＝第一個活動的開始時間，並從頭順移重算（保留各段原本空檔）。
+ * 回新陣列；沒變動回原陣列（同參考）。
+ */
+export function setDepartureTime(activities: Activity[], departMin: number): Activity[] {
+  if (!activities.length) return activities
+  if (toMin(activities[0].startTime) === departMin) return activities
+  return recomputeTimes(activities, 0, buildGapHint(activities), departMin)
+}
+
+/**
  * 攤平重排：直接依新的「全部活動順序」（含交通卡，可獨立拖）重組並只順移後面。
  * recomputeTimes 會自動校正交通卡 toLabel（對齊新順序的下一站）。順序沒變回原陣列（同參考）。
  */

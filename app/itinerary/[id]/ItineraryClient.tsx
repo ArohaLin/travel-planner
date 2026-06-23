@@ -13,7 +13,7 @@ import {
   detectOverlaps,
   type ShiftWarning,
 } from '@/lib/utils/activityTime'
-import { deletePlace, changedTimeIds } from '@/lib/itinerary/reschedule'
+import { deletePlace, changedTimeIds, setDepartureTime, toMin } from '@/lib/itinerary/reschedule'
 import type { Itinerary, TripMetadata, Activity, Accommodation } from '@/lib/types/itinerary'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
@@ -514,6 +514,25 @@ export function ItineraryClient({
     }
   }
 
+  // ── 調整出發時間（出發地卡片）：設第一活動開始時間＝出發時間，整天順移重算 ──
+  async function handleSetDepartureTime(hhmm: string) {
+    if (!currentDayData) return
+    const activities = currentDayData.activities
+    if (!activities.length) return
+    const m = toMin(hhmm)
+    if (m == null) return
+    const next = setDepartureTime(activities, m)
+    if (next === activities || changedTimeIds(activities, next).size === 0) return
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `調整出發時間：${hhmm}`,
+      proposedBy: 'user',
+      ops: [{ op: 'update_day', dayIndex: activeDay, payload: { activities: next } }],
+    }
+    const ok = await submitPatch(patch)
+    if (ok) showToast(`出發時間已改為 ${hhmm}，當天時間已順移`, 'success')
+  }
+
   // ── Delete activity ───────────────────────────────────────────────────────
   function handleDeleteActivity(activity: Activity) {
     setDeleteConfirm(activity)
@@ -834,6 +853,7 @@ export function ItineraryClient({
               onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
+              onEditDeparture={userCanEdit ? handleSetDepartureTime : undefined}
               onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
           )}
