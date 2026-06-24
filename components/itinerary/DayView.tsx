@@ -75,8 +75,8 @@ function RowFrame({ timeTop, timeBottom, timeStay, dotClass, icon, hollow, hideT
     <div className="flex gap-2">
       <div className="w-[46px] flex-shrink-0 pt-2 text-right leading-tight">
         {timeTop && <div className="text-[13px] font-semibold text-gray-800 tabular-nums">{timeTop}</div>}
-        {timeBottom && <div className="text-[11px] text-gray-400 tabular-nums mt-0.5">{timeBottom}</div>}
-        {timeStay && <div className="text-[11px] text-gray-300 tabular-nums mt-0.5">{timeStay}</div>}
+        {timeBottom && <div className="text-[11px] text-gray-600 tabular-nums mt-0.5">{timeBottom}</div>}
+        {timeStay && <div className="text-[11px] text-gray-800 tabular-nums mt-0.5">{timeStay}</div>}
       </div>
       <div className="w-4 flex-shrink-0 flex flex-col items-center">
         <div className={clsx('w-0.5 h-2.5', hideTopLine ? 'bg-transparent' : 'bg-gray-200')} />
