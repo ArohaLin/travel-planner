@@ -189,6 +189,9 @@ export function ItineraryClient({
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, []) // 只裝一次，透過 ref 取最新 refresh / dragMode
 
+  // 切換檢視（行程/地圖/簡表）時捲回頂端：避免行程捲到下面後切地圖，地圖頂端被擋住看不到
+  useEffect(() => { window.scrollTo({ top: 0 }) }, [viewMode])
+
   // 一鍵「自動修正路程時間」：伺服器端跑 AI 並直接套用（背景切走也會完成、完成會推播）。
   // 仍是快照式可還原；套用後靠 Realtime 自動更新畫面。
   async function handleFixTravelTimes() {
