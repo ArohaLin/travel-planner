@@ -822,6 +822,25 @@ export function ItineraryClient({
           />
         ) : (
         <>
+          <DayTabs
+            days={displayItinerary.days}
+            activeDay={activeDay}
+            onDayChange={setActiveDay}
+          />
+
+          {userCanEdit && (currentDayData?.activities.some((a) => a.type !== 'transport')) && (
+            <div className="px-4 pt-2 flex items-center justify-end">
+              <button
+                onClick={() => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) }}
+                className="text-xs text-gray-500 active:text-gray-800 flex items-center gap-1 flex-shrink-0"
+                title="長按卡片也可進入"
+              >
+                ⇅ 拖拉排序
+              </button>
+            </div>
+          )}
+
+          {/* 一鍵自動修正路程時間（有偏緊/超時路段才出現）：放天數列下方、行程內容最上方，明顯可見 */}
           {bufferWarnings.total > 0 && userCanEdit && canChat(role) && (
             <div className="px-4 pt-3">
               <button
@@ -846,23 +865,6 @@ export function ItineraryClient({
                 <span className="flex-shrink-0 font-semibold">
                   {fixingTravel ? 'AI 自動修正中…' : '一鍵自動修正 →'}
                 </span>
-              </button>
-            </div>
-          )}
-          <DayTabs
-            days={displayItinerary.days}
-            activeDay={activeDay}
-            onDayChange={setActiveDay}
-          />
-
-          {userCanEdit && (currentDayData?.activities.some((a) => a.type !== 'transport')) && (
-            <div className="px-4 pt-2 flex items-center justify-end">
-              <button
-                onClick={() => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) }}
-                className="text-xs text-gray-500 active:text-gray-800 flex items-center gap-1 flex-shrink-0"
-                title="長按卡片也可進入"
-              >
-                ⇅ 拖拉排序
               </button>
             </div>
           )}
