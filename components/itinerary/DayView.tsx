@@ -1,7 +1,6 @@
 import type { ItineraryDay, Activity, Accommodation, TravelLeg, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { ActivityCard, mapsNavUrl } from './ActivityCard'
-import { RESERVATION } from '@/lib/itinerary/reservation'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
 
@@ -90,8 +89,18 @@ interface TravelRowProps {
  * 非開車段（船/火車…）顯示 AI 交通資訊與其時長，不做開車緩衝比對。
  */
 function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, onEdit, onDelete, onClick }: TravelRowProps) {
-  const { icon, label, driving } = modeInfo(transport)
-  const hasDriveLeg = !!leg && leg.meters >= 50 && driving
+  const base = modeInfo(transport)
+  const hasDriveLeg = !!leg && leg.meters >= 50 && base.driving
+
+  // #42：開車段車程 < 5 分鐘 且 距離 ≤ 1 公里 → 改以「步行」呈現並用步行時間（距離估，步行約 80 m/分；最少 1 分）。
+  // 短程開車多為「明明走路就到、卻停車找位很麻煩」的情況，改顯示步行更實用。
+  // 加距離上限：避免快速道路「4 分鐘車程卻 3.7 公里」被誤判成走路 47 分。
+  const treatAsWalk = hasDriveLeg && !!leg && leg.seconds < 300 && leg.meters <= 1000
+  const walkSec = leg ? Math.max(60, Math.round(leg.meters / 80) * 60) : 0
+  const icon = treatAsWalk ? '🚶' : base.icon
+  const label = treatAsWalk ? '步行' : base.label
+  // 有效路程時間：步行段用步行估時，其餘用 Google 開車時間（警示與顯示一致）
+  const effLegSec = treatAsWalk ? walkSec : (leg?.seconds ?? 0)
 
   // 統一模板（交通卡列與合成列相同）：「HH:MM 動詞前往 目的地・約 時長」。
   // 一律不顯示 fromLabel：時間軸上一張卡就是出發點，且 fromLabel 是 AI 最常寫得不一致的欄位。
@@ -107,7 +116,7 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, o
       const e = toMin(transport.endTime)
       return s != null && e != null && e > s ? (e - s) * 60 : null
     })()
-    const durSec = hasDriveLeg && leg ? leg.seconds : cardSec
+    const durSec = hasDriveLeg && leg ? effLegSec : cardSec
     const to = transport.toLabel?.trim()
     // 複合用途的交通卡（還車/候船/轉乘…）：時段不只是移動，用原標題才不會讓人誤會
     // 「騎車要 1 小時」（實際是騎車幾分鐘 + 還車 + 候船的整段時間）。
@@ -116,13 +125,13 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, canEdit, o
     main = `${!composite && to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}`
     const budget = allottedSec ?? cardSec
     if (hasDriveLeg && leg && budget != null && budget > 0) {
-      status = bufferStatus(budget, leg.seconds)
+      status = bufferStatus(budget, effLegSec)
     }
   } else if (hasDriveLeg && leg) {
     // 合成列：兩景點之間的 Google 開車段（無交通卡）→ 補上推定出發時間與目的地，格式與交通卡列一致
     timeText = departTime ?? null
-    main = `${toName ? `${label}前往 ${toName}` : `${label}`}・約 ${fmtDur(leg.seconds)}`
-    if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, leg.seconds)
+    main = `${toName ? `${label}前往 ${toName}` : `${label}`}・約 ${fmtDur(effLegSec)}`
+    if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, effLegSec)
   } else {
     // 合成列但無可用開車路段 → 不顯示
     return null
@@ -417,17 +426,6 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
 
   return (
     <div className="px-4 pt-4">
-      {/* 預約狀態圖例 */}
-      <div className="mb-3 flex items-center gap-3 px-3 py-1.5 bg-gray-50 rounded-xl text-[12px] text-gray-500 flex-wrap">
-        <span className="text-gray-400">預約狀態</span>
-        {(['needed', 'reserved'] as const).map((k) => (
-          <span key={k} className="flex items-center gap-1">
-            <span className={clsx('w-5 h-5 rounded-full flex items-center justify-center text-sm', RESERVATION[k].badge)}>{RESERVATION[k].icon}</span>
-            {RESERVATION[k].label}
-          </span>
-        ))}
-      </div>
-
       {/* Day header（每日簡介，可編輯）*/}
       {day.theme ? (
         <div className="mb-4 px-4 py-3 bg-purple-50 rounded-2xl border border-purple-100 flex items-start gap-2">

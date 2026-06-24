@@ -112,15 +112,9 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
 
   return (
     <div className="flex gap-3">
-      {/* Timeline line（預約狀態符號取代圓點：需預訂📅／已預訂✅）*/}
+      {/* Timeline line（圓點；預約狀態改用卡片內明顯徽章顯示）*/}
       <div className="flex flex-col items-center flex-shrink-0 w-8">
-        {resv === 'none' ? (
-          <div className="w-2 h-2 rounded-full bg-purple-400 mt-3 flex-shrink-0" />
-        ) : (
-          <div title={RESERVATION[resv].label} className={clsx('mt-2 w-7 h-7 rounded-full flex items-center justify-center text-base flex-shrink-0', RESERVATION[resv].badge)}>
-            {RESERVATION[resv].icon}
-          </div>
-        )}
+        <div className="w-2 h-2 rounded-full bg-purple-400 mt-3 flex-shrink-0" />
         {!isLast && <div className="w-0.5 flex-1 bg-gray-200 mt-1" />}
       </div>
 
@@ -186,6 +180,11 @@ export function ActivityCard({ activity, isLast, canEdit, onEdit, onDelete, onCl
             </span>
           )}
           <span className="text-xs text-gray-400">{TYPE_LABELS[activity.type]}</span>
+          {resv !== 'none' && (
+            <span className={clsx('text-xs font-semibold px-2 py-0.5 rounded-full', RESERVATION[resv].badge)}>
+              {RESERVATION[resv].icon} {RESERVATION[resv].label}
+            </span>
+          )}
         </div>
 
         {/* 精簡主標題（依類型組裝）+ 特別註解 */}
