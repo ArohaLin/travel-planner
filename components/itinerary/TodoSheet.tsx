@@ -16,10 +16,10 @@ interface TodoSheetProps {
   onToggleTodo: (id: string, isDone: boolean) => void
   onEditTodo: (id: string, title: string) => void
   onDeleteTodo: (id: string) => void
-  onResolveAuto: (key: string, isDone: boolean) => void
+  onResolveAuto: (key: string, isDone: boolean) => void | Promise<unknown>
   onGoDay: (dayIndex: number) => void
-  onReserveActivity: (dayIndex: number, activityId: string) => void
-  onReserveLodging: (dayIndex: number) => void
+  onReserveActivity: (dayIndex: number, activityId: string) => void | Promise<unknown>
+  onReserveLodging: (dayIndex: number) => void | Promise<unknown>
 }
 
 const CHIP: Record<AutoTodoCategory, string> = {
@@ -39,6 +39,7 @@ export function TodoSheet({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editText, setEditText] = useState('')
   const [showDone, setShowDone] = useState(false)
+  const [busyKey, setBusyKey] = useState<string | null>(null)
 
   if (!open) return null
 
@@ -53,13 +54,23 @@ export function TodoSheet({
     setNewTitle('')
   }
 
-  function runPrimary(t: AutoTodo) {
+  async function runPrimary(t: AutoTodo) {
     const p = t.primary
     if (!p) return
-    if (p.kind === 'reserveActivity') onReserveActivity(p.dayIndex, p.activityId)
-    else if (p.kind === 'reserveLodging') onReserveLodging(p.dayIndex)
-    else if (p.kind === 'openUrl') window.open(p.url, '_blank', 'noopener')
-    else if (p.kind === 'done') onResolveAuto(t.key, true)
+    if (p.kind === 'openUrl') { window.open(p.url, '_blank', 'noopener'); return }
+    setBusyKey(t.key)
+    try {
+      if (p.kind === 'reserveActivity') await onReserveActivity(p.dayIndex, p.activityId)
+      else if (p.kind === 'reserveLodging') await onReserveLodging(p.dayIndex)
+      else if (p.kind === 'done') await onResolveAuto(t.key, true)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  async function skip(t: AutoTodo) {
+    setBusyKey(t.key)
+    try { await onResolveAuto(t.key, true) } finally { setBusyKey(null) }
   }
 
   return (
@@ -102,35 +113,45 @@ export function TodoSheet({
                       <p className="text-sm text-gray-800 leading-snug">{t.title}</p>
                       {t.subtitle && <p className="text-xs text-gray-500 mt-0.5">{t.subtitle}</p>}
                       {canEdit && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {t.primary && (
-                            <button
-                              onClick={() => runPrimary(t)}
-                              className={clsx(
-                                'text-xs font-semibold px-2.5 py-1 rounded-lg',
-                                t.primary.kind === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700',
-                              )}
-                            >
-                              {t.primary.label}
-                            </button>
-                          )}
-                          {t.dayIndex != null && (
-                            <button
-                              onClick={() => { onGoDay(t.dayIndex!); onClose() }}
-                              className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600"
-                            >
-                              前往第 {t.dayIndex + 1} 天 ›
-                            </button>
-                          )}
-                          {t.primary?.kind !== 'done' && (
-                            <button
-                              onClick={() => onResolveAuto(t.key, true)}
-                              className="text-xs font-medium px-2.5 py-1 rounded-lg text-gray-400"
-                            >
-                              略過
-                            </button>
-                          )}
-                        </div>
+                        busyKey === t.key ? (
+                          <div className="flex items-center gap-1.5 mt-2 text-xs text-purple-600">
+                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                            處理中…
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {t.primary && (
+                              <button
+                                onClick={() => runPrimary(t)}
+                                className={clsx(
+                                  'text-xs font-semibold px-2.5 py-1 rounded-lg',
+                                  t.primary.kind === 'done' ? 'bg-emerald-100 text-emerald-700' : 'bg-purple-100 text-purple-700',
+                                )}
+                              >
+                                {t.primary.label}
+                              </button>
+                            )}
+                            {t.dayIndex != null && (
+                              <button
+                                onClick={() => { onGoDay(t.dayIndex!); onClose() }}
+                                className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600"
+                              >
+                                前往第 {t.dayIndex + 1} 天 ›
+                              </button>
+                            )}
+                            {t.primary?.kind !== 'done' && (
+                              <button
+                                onClick={() => skip(t)}
+                                className="text-xs font-medium px-2.5 py-1 rounded-lg text-gray-400"
+                              >
+                                略過
+                              </button>
+                            )}
+                          </div>
+                        )
                       )}
                     </div>
                   </div>
