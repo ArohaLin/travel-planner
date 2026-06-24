@@ -715,7 +715,7 @@ export function ItineraryClient({
   }
 
   const inner = (
-    <div className="min-h-screen bg-gray-50 pb-6">
+    <div className="min-h-screen bg-[#FBFAF7]" style={{ paddingBottom: 'calc(64px + env(safe-area-inset-bottom))' }}>
       {/* 儲存中提示（#30）：所有儲存/刪除操作進行時顯示，避免使用者以為沒反應 */}
       {saving && (
         <div
@@ -754,10 +754,10 @@ export function ItineraryClient({
 
       {/* 行程 / 地圖 切換（sticky 黏在 ItineraryHeader 下方，z-20 低於 header z-50 不影響 BugReportSheet） */}
       <div
-        className="sticky z-20 bg-gray-50 px-4 pt-3 pb-2"
+        className="sticky z-20 bg-[#FBFAF7] px-4 pt-3 pb-2"
         style={{ top: 'calc(69px + env(safe-area-inset-top))' }}
       >
-        <div className="flex gap-1 bg-gray-100 rounded-full p-1 w-max">
+        <div className="flex gap-1 bg-stone-200/70 rounded-xl p-1">
           <button
             onClick={() => {
               // 地圖 → 行程：聚焦到地圖目前選取的最早一天
@@ -766,7 +766,7 @@ export function ItineraryClient({
               }
               setViewMode('list')
             }}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${
               viewMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
           >
@@ -784,7 +784,7 @@ export function ItineraryClient({
               setDragHasChanges(false)
               setViewMode('map')
             }}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${
               viewMode === 'map' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
           >
@@ -801,7 +801,7 @@ export function ItineraryClient({
               setDragHasChanges(false)
               setViewMode('summary')
             }}
-            className={`px-5 py-1.5 rounded-full text-sm font-medium transition-colors min-h-[40px] ${
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors min-h-[40px] ${
               viewMode === 'summary' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
             }`}
           >
@@ -822,18 +822,6 @@ export function ItineraryClient({
           />
         ) : (
         <>
-          {userCanEdit && (
-            <div className="px-4 pt-3">
-              <button
-                onClick={() => { setExploreTargetDay(null); setExploreOpen(true) }}
-                className="w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-purple-100 bg-purple-50 text-purple-700 text-sm text-left active:bg-purple-100 transition-colors min-h-[44px]"
-              >
-                <span className="flex-shrink-0">✨</span>
-                <span className="flex-1 font-medium">探索精選推薦・加入願望清單</span>
-                <span className="flex-shrink-0 text-purple-400">→</span>
-              </button>
-            </div>
-          )}
           {bufferWarnings.total > 0 && userCanEdit && canChat(role) && (
             <div className="px-4 pt-3">
               <button
@@ -867,23 +855,15 @@ export function ItineraryClient({
             onDayChange={setActiveDay}
           />
 
-          {userCanEdit && (
-            <div className="px-4 pt-2 flex items-center justify-between gap-3">
+          {userCanEdit && (currentDayData?.activities.some((a) => a.type !== 'transport')) && (
+            <div className="px-4 pt-2 flex items-center justify-end">
               <button
-                onClick={() => { setExploreTargetDay(activeDay); setExploreOpen(true) }}
-                className="text-xs text-purple-600 active:text-purple-800"
+                onClick={() => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) }}
+                className="text-xs text-gray-500 active:text-gray-800 flex items-center gap-1 flex-shrink-0"
+                title="長按卡片也可進入"
               >
-                ＋ 從願望清單加入第 {activeDay + 1} 天
+                ⇅ 拖拉排序
               </button>
-              {(currentDayData?.activities.some((a) => a.type !== 'transport')) && (
-                <button
-                  onClick={() => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) }}
-                  className="text-xs text-gray-500 active:text-gray-800 flex items-center gap-1 flex-shrink-0"
-                  title="長按卡片也可進入"
-                >
-                  ⇅ 拖拉排序
-                </button>
-              )}
             </div>
           )}
 
@@ -979,7 +959,7 @@ export function ItineraryClient({
           onClick={() => setNotesSheetOpen(true)}
           className="fixed z-30 bg-amber-500 text-white rounded-full shadow-lg flex items-center gap-2 px-5 py-3 font-medium text-sm active:scale-95 transition-transform"
           style={{
-            bottom: 'calc(76px + env(safe-area-inset-bottom))',
+            bottom: 'calc(128px + env(safe-area-inset-bottom))',
             right: '16px',
           }}
         >
@@ -997,7 +977,7 @@ export function ItineraryClient({
           onClick={() => setChatOpen(true)}
           className="fixed z-30 bg-purple-600 text-white rounded-full shadow-lg flex items-center gap-2 px-5 py-3 font-medium text-sm active:scale-95 transition-transform"
           style={{
-            bottom: 'calc(16px + env(safe-area-inset-bottom))',
+            bottom: 'calc(68px + env(safe-area-inset-bottom))',
             right: '16px',
           }}
         >
@@ -1341,6 +1321,43 @@ export function ItineraryClient({
             </div>
           </div>
         </>
+      )}
+
+      {/* 底部操作列：探索 / 願望清單 / 新增（行程檢視，可編輯者）*/}
+      {viewMode === 'list' && !dragMode && userCanEdit && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-black/5 flex items-stretch"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <button
+            onClick={() => { setExploreTargetDay(null); setExploreOpen(true) }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
+              <circle cx="12" cy="12" r="9" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.8 9.2 11 11 9.2 14.8 13 13Z" />
+            </svg>
+            <span className="text-[11px]">探索</span>
+          </button>
+          <button
+            onClick={() => { setExploreTargetDay(activeDay); setExploreOpen(true) }}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.5C6 16.5 3.5 13 3.5 9.5 3.5 7 5.5 5.2 7.8 5.2c1.6 0 3 .9 4.2 2.6 1.2-1.7 2.6-2.6 4.2-2.6 2.3 0 4.3 1.8 4.3 4.3 0 3.5-2.5 7-8.5 11Z" />
+            </svg>
+            <span className="text-[11px]">願望清單</span>
+          </button>
+          <button
+            onClick={() => handleAddActivity((currentDayData?.activities.length ?? 0) - 1)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-purple-600 active:bg-purple-50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+            </svg>
+            <span className="text-[11px] font-medium">新增</span>
+          </button>
+        </div>
       )}
     </div>
   )

@@ -23,12 +23,12 @@ export function DayTabs({ days, activeDay, onDayChange }: DayTabsProps) {
 
   return (
     <div
-      className="bg-white border-b border-gray-100 sticky z-10"
+      className="bg-[#FBFAF7] border-b border-black/5 sticky z-10"
       style={{ top: 'calc(137px + env(safe-area-inset-top))' }}
     >
       <div
         ref={scrollRef}
-        className="flex overflow-x-auto no-scrollbar scroll-touch px-4 gap-1 py-2"
+        className="flex overflow-x-auto no-scrollbar scroll-touch px-4 gap-2 py-2.5"
       >
         {days.map((day) => {
           const isActive = day.dayIndex === activeDay
@@ -38,16 +38,16 @@ export function DayTabs({ days, activeDay, onDayChange }: DayTabsProps) {
               ref={isActive ? activeRef : undefined}
               onClick={() => onDayChange(day.dayIndex)}
               className={clsx(
-                'flex-shrink-0 flex flex-col items-center px-4 py-2 rounded-xl transition-all duration-150 tap-target',
+                'flex-shrink-0 flex flex-col items-center px-4 py-1.5 rounded-xl transition-all duration-150 tap-target',
                 isActive
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-500 hover:bg-gray-100 active:bg-gray-100',
+                  ? 'bg-gray-800 text-white shadow-sm'
+                  : 'bg-white text-gray-600 border border-black/5 hover:bg-gray-50 active:bg-gray-50',
               )}
             >
               <span className="text-xs font-medium">第 {day.dayIndex + 1} 天</span>
-              <span className="text-[10px] opacity-75 mt-0.5">{formatDateShort(day.date)}（{formatWeekday(day.date)}）</span>
+              <span className={clsx('text-[10px] mt-0.5', isActive ? 'text-white/75' : 'text-gray-400')}>{formatDateShort(day.date)}（{formatWeekday(day.date)}）</span>
               {deriveDayCity(day) && (
-                <span className="text-[10px] opacity-75 truncate max-w-[64px]">{deriveDayCity(day)}</span>
+                <span className={clsx('text-[10px] truncate max-w-[64px]', isActive ? 'text-white/75' : 'text-gray-400')}>{deriveDayCity(day)}</span>
               )}
             </button>
           )
