@@ -116,8 +116,9 @@ export async function POST(request: Request) {
         try {
           const model = gemini.getGenerativeModel({
             model: modelName,
-            // 詳情欄位（intro/transport/recommendation/tips）讓輸出變長，需提高上限避免 JSON 被截斷
-            generationConfig: { maxOutputTokens: 32768 },
+            // JSON 模式：強制輸出合法 JSON（拿掉 <itinerary> 標籤抽取與髒 JSON 清理）。
+            // 詳情欄位讓輸出變長，提高 maxOutputTokens 避免 JSON 被截斷。
+            generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 32768 },
           })
           const result = await model.generateContentStream(prompt)
           for await (const chunk of result.stream) {

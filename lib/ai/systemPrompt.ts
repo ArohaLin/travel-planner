@@ -654,7 +654,7 @@ export function buildGeneratePrompt(params: {
   }
   const routeDesc = routeParts.join(' → ')
 
-  return `請為以下旅遊需求規劃完整行程，以 <itinerary> 標籤包裹 JSON 輸出（不要加 markdown code fence）。
+  return `請為以下旅遊需求規劃完整行程，直接輸出行程 JSON 物件（純 JSON，不要任何標籤、不要 markdown code fence、不要說明文字）。
 
 旅遊需求：
 - 目的地：${params.destination}
@@ -672,7 +672,6 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 
 ## 嚴格遵守以下 JSON 結構（欄位名稱不能更改）
 
-<itinerary>
 {
   "metadata": {
     "title": "${params.tripTitle || '行程標題'}",
@@ -743,7 +742,6 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
   "generatedAt": "${now}",
   "lastModifiedAt": "${now}"
 }
-</itinerary>
 
 ## 規則
 1. dayIndex 從 0 開始（第一天=0，第二天=1，以此類推）
@@ -765,6 +763,6 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 6. 若有成員年齡性別資訊，請根據成員特性規劃適合的活動
 7. 若有偏好交通方式，盡量採用該交通方式規劃城市間移動
 8. 如果使用者提供了行程名稱（tripTitle），直接使用該名稱作為 title；否則根據目的地和風格自動生成
-9. 直接輸出 <itinerary>...</itinerary>，不要任何說明文字，不要 markdown
+9. 直接輸出 JSON 物件本身（以 { 開頭、} 結尾），不要任何標籤、說明文字或 markdown code fence
 10. **時間合理性**：每天的活動時間必須按序排列，不得重疊。若第一天有長途交通（如 08:00–14:00 飛機+轉車），則當天其他活動只能安排在交通結束後（14:00 以後）`
 }

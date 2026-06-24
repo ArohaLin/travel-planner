@@ -38,7 +38,11 @@ function tryParseItinerary(candidate: string): Itinerary | null {
 }
 
 export function extractItinerary(text: string): Itinerary | null {
-  // Primary: look for <itinerary>...</itinerary> XML tag
+  // 0) JSON 模式（Gemini responseMimeType=json）：整段就是純 JSON 物件 → 直接解析（最常見路徑）
+  const direct = tryParseItinerary(text)
+  if (direct) return direct
+
+  // 1) 舊格式相容：<itinerary>...</itinerary> XML 標籤
   const xmlMatch = text.match(/<itinerary>([\s\S]*?)<\/itinerary>/)
   if (xmlMatch) {
     const result = tryParseItinerary(xmlMatch[1])
