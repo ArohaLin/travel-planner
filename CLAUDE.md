@@ -420,3 +420,4 @@ git push    # → Vercel 自動偵測 main branch push 並重新部署
 | 2026-05-24 | `.claude/` 本機設定資料夾加入 `.gitignore` |
 | 2026-06-13 | git remote URL 內嵌的 PAT（`ghp_…`）移除，改乾淨 URL + `gh` 認證推送；舊 token 已請使用者於 GitHub 撤銷 |
 | 2026-06-13 | `ollama-api-key.txt` / `OLLAMA_*.md` / `*.pdf` 加入 `.gitignore`，避免金鑰與內部文件入庫 |
+| 2026-06-24 | `push_log` 表未啟用 RLS（Supabase 安全警示 `rls_disabled_in_public`，anon 金鑰可讀寫）→ 補 `alter table … enable row level security` ＋管理員可讀 policy（service role 寫入繞過 RLS、推播照常）。`migration_push_log.sql` 已補並執行。**經驗：新增資料表的 migration 一律記得 enable RLS ＋ 加 policy** |
