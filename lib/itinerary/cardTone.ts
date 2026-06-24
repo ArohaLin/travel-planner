@@ -23,7 +23,19 @@ export function fmtKm(meters?: number | null): string | null {
   return `${Math.round(meters / 10) * 10} m`
 }
 
-/** 停留時長文字（膠囊用）。優先用起迄時間差，其次 duration 欄位。 */
+/** 停留時長極簡格式（放時間欄、加括號用）：「30m」「1h20m」「2h」。無效回 null。 */
+export function stayShort(startMin: number | null, endMin: number | null, durationField?: number): string | null {
+  let min: number | null = null
+  if (startMin != null && endMin != null && endMin > startMin) min = endMin - startMin
+  else if (durationField && durationField > 0) min = durationField
+  if (min == null) return null
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m ? `${h}h${m}m` : `${h}h`
+}
+
+/** 停留時長文字（詳情視窗用）。優先用起迄時間差，其次 duration 欄位。 */
 export function stayText(startMin: number | null, endMin: number | null, durationField?: number): string | null {
   let min: number | null = null
   if (startMin != null && endMin != null && endMin > startMin) min = endMin - startMin

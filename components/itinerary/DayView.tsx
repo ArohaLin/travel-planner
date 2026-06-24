@@ -6,7 +6,7 @@ import { ActivityContent } from './ActivityCard'
 import { AccommodationCard } from './AccommodationCard'
 import { CostSummary } from './CostSummary'
 import { useLongPress } from '@/lib/hooks/useLongPress'
-import { fmtKm, toneFor } from '@/lib/itinerary/cardTone'
+import { fmtKm, toneFor, stayShort } from '@/lib/itinerary/cardTone'
 
 const toMin = (t?: string): number | null => {
   if (!t) return null
@@ -56,6 +56,8 @@ function bufferStatus(allottedSec: number, googleSec: number): { color: string; 
 interface RowFrameProps {
   timeTop?: string | null
   timeBottom?: string | null
+  /** 停留時長（已含括號，如「(1h30m)」）顯示在時間欄最下方，淺色 */
+  timeStay?: string | null
   /** 軸點顏色 class（活動用）；提供 icon 時忽略 */
   dotClass?: string
   /** 軸上以圖示取代圓點（交通/出發地等） */
@@ -68,12 +70,13 @@ interface RowFrameProps {
   longPress?: Record<string, unknown>
   children: React.ReactNode
 }
-function RowFrame({ timeTop, timeBottom, dotClass, icon, hollow, hideTopLine, hideBottomLine, onClick, longPress, children }: RowFrameProps) {
+function RowFrame({ timeTop, timeBottom, timeStay, dotClass, icon, hollow, hideTopLine, hideBottomLine, onClick, longPress, children }: RowFrameProps) {
   return (
     <div className="flex gap-2">
-      <div className="w-[42px] flex-shrink-0 pt-2 text-right leading-tight">
+      <div className="w-[46px] flex-shrink-0 pt-2 text-right leading-tight">
         {timeTop && <div className="text-[13px] font-semibold text-gray-800 tabular-nums">{timeTop}</div>}
         {timeBottom && <div className="text-[11px] text-gray-400 tabular-nums mt-0.5">{timeBottom}</div>}
+        {timeStay && <div className="text-[11px] text-gray-300 tabular-nums mt-0.5">{timeStay}</div>}
       </div>
       <div className="w-4 flex-shrink-0 flex flex-col items-center">
         <div className={clsx('w-0.5 h-2.5', hideTopLine ? 'bg-transparent' : 'bg-gray-200')} />
@@ -227,24 +230,23 @@ function ArrivalRow({ name, time }: { name: string; time?: string | null }) {
   )
 }
 
-/* ─── 插入鈕（軸上的 ＋）─── */
-function InsertRow({ label, onClick }: { label: string; onClick: () => void }) {
+/* ─── 插入鈕（軸上的 ＋，無文字說明）─── */
+function InsertRow({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex gap-2 items-stretch">
-      <div className="w-[42px] flex-shrink-0" />
-      <div className="w-4 flex-shrink-0 flex flex-col items-center">
+    <div className="flex gap-2 items-center">
+      <div className="w-[46px] flex-shrink-0" />
+      <div className="w-4 flex-shrink-0 flex justify-center">
         <button
           onClick={onClick}
-          className="my-1 w-5 h-5 rounded-full border border-dashed border-purple-300 text-purple-500 hover:border-purple-500 hover:bg-purple-50 flex items-center justify-center flex-shrink-0 transition-colors"
+          aria-label="插入卡片"
+          className="my-0.5 w-5 h-5 rounded-full border border-dashed border-purple-300 text-purple-400 hover:border-purple-500 hover:text-purple-600 hover:bg-purple-50 flex items-center justify-center flex-shrink-0 transition-colors"
         >
           <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
         </button>
       </div>
-      <button onClick={onClick} className="flex-1 text-left text-[11px] text-purple-500 hover:text-purple-700 self-center -ml-0.5">
-        {label}
-      </button>
+      <div className="flex-1" />
     </div>
   )
 }
@@ -277,16 +279,18 @@ function ActivityRow({ activity, isLast, onClick, onLongPress }: {
   const s = toMin(activity.startTime)
   const e = toMin(activity.endTime)
   const tone = toneFor(activity.type)
+  const stay = stayShort(s, e, activity.duration)
   return (
     <RowFrame
       timeTop={activity.startTime}
       timeBottom={activity.endTime || null}
+      timeStay={stay ? `(${stay})` : null}
       dotClass={tone.dot}
       hideBottomLine={isLast}
       onClick={onClick ? () => onClick(activity) : undefined}
       longPress={onLongPress ? longPress : undefined}
     >
-      <ActivityContent activity={activity} startMin={s} endMin={e} />
+      <ActivityContent activity={activity} />
     </RowFrame>
   )
 }
@@ -349,16 +353,13 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               onEdit={canEdit ? onEditDeparture : undefined}
             />
           )}
-          {canEdit && <InsertRow label="在開始插入" onClick={() => onAddActivity?.(-1)} />}
+          {canEdit && <InsertRow onClick={() => onAddActivity?.(-1)} />}
 
           {acts.map((activity, idx) => {
             const prev = idx > 0 ? acts[idx - 1] : undefined
             const next = idx < acts.length - 1 ? acts[idx + 1] : undefined
             const addBtn = canEdit && (
-              <InsertRow
-                label={idx === acts.length - 1 ? '在結尾新增' : '在此之後插入'}
-                onClick={() => onAddActivity?.(idx)}
-              />
+              <InsertRow onClick={() => onAddActivity?.(idx)} />
             )
 
             if (activity.type === 'transport') {

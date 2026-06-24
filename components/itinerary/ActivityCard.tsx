@@ -3,7 +3,7 @@
 import type { Activity, GeoLocation } from '@/lib/types/itinerary'
 import { clsx } from 'clsx'
 import { RESERVATION, effectiveReservation } from '@/lib/itinerary/reservation'
-import { toneFor, stayText } from '@/lib/itinerary/cardTone'
+import { toneFor } from '@/lib/itinerary/cardTone'
 
 /** Google Maps 導航連結：有座標用座標（較精準），否則用地址文字 */
 export function mapsNavUrl(loc: GeoLocation): string {
@@ -37,26 +37,19 @@ export function formatCardMain(activity: Activity): string {
 }
 
 /**
- * 景點列內容（簡潔風時間軸）：主標題 ＋ 停留膠囊／分類／預約狀態 ＋ 地址 ＋ 特別註解 ＋ 右側照片縮圖。
- * 不含編輯/刪除/備註鈕——這些移到「點卡片→詳情視窗」內，讓列表保持乾淨。
+ * 景點列內容（簡潔風時間軸）：主標題 ＋ 類型彩色膠囊／預約狀態 ＋ 地址 ＋ 特別註解 ＋ 右側照片縮圖。
+ * 停留時長改放左側時間欄；不含編輯/刪除/備註鈕——這些移到「點卡片→詳情視窗」內，讓列表保持乾淨。
  */
-export function ActivityContent({ activity, startMin, endMin }: { activity: Activity; startMin: number | null; endMin: number | null }) {
+export function ActivityContent({ activity }: { activity: Activity }) {
   const tone = toneFor(activity.type)
   const resv = effectiveReservation(activity)
-  const stay = stayText(startMin, endMin, activity.duration)
 
   return (
     <div className="flex gap-3">
       <div className="flex-1 min-w-0">
         <h3 className="font-medium text-gray-900 leading-snug text-[15px]">{formatCardMain(activity)}</h3>
         <div className="flex items-center gap-1.5 flex-wrap mt-1">
-          {stay && (
-            <span className={clsx('text-[11px] font-medium px-2 py-0.5 rounded-full', tone.pill)}>{stay}</span>
-          )}
-          <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
-            <span className={clsx('w-1.5 h-1.5 rounded-full', tone.dot)} />
-            {tone.label}
-          </span>
+          <span className={clsx('text-[11px] font-medium px-2 py-0.5 rounded-full', tone.pill)}>{tone.label}</span>
           {resv !== 'none' && (
             <span className={clsx('text-[11px] font-medium px-2 py-0.5 rounded-full', RESERVATION[resv].badge)}>
               {RESERVATION[resv].icon} {RESERVATION[resv].label}
