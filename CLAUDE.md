@@ -141,6 +141,8 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **我的待辦**（手動）：`todo_items` 表（每行程一份，Realtime 同步協作者）。新增/勾選/編輯/刪除走 `app/api/itinerary/[id]/todos`（service role + `getItineraryAccess`）。`useTodos` hook 抓取 + 訂閱 Realtime。
 - **資料**：migration `supabase/migration_todos.sql`（已執行，含 RLS 與加入 `supabase_realtime` publication）。住宿加 `reservationStatus` 欄位（schema + 住宿卡顯示徽章 + 住宿編輯三態，沿用活動的 `RESERVATION`）。
 - **徽章數** = 未略過的自動提醒 ＋ 未勾的手動待辦（`ItineraryClient` 的 `todoBadge`）。自動提醒「略過/完成」存一筆 `kind='auto'` 的覆蓋記號（`auto_key`），不再計入。
+- **恢復**：被「略過/完成」且條件仍成立的自動提醒，會出現在抽屜底部「顯示已完成・已略過」區，可按「恢復」清掉覆蓋記號（`resolveAuto(key,false)`）讓它回到清單。
+- **處理中動畫**：所有非同步操作（標已預訂/完成/略過/新增/打勾/刪除/編輯/恢復）按下後顯示 spinner，等套用＋畫面更新才消失，避免以為沒反應。
 
 ---
 

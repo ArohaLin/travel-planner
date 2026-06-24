@@ -136,9 +136,13 @@ export function ItineraryClient({
     const d = new Date()
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }, [])
-  const autoTodosActive = useMemo(() => {
+  const { autoTodosActive, resolvedAutoTodos } = useMemo(() => {
     const doneKeys = new Set(todoState.todos.filter((t) => t.kind === 'auto' && t.isDone).map((t) => t.autoKey))
-    return deriveAutoTodos(displayItinerary, todayISO).filter((t) => !doneKeys.has(t.key))
+    const all = deriveAutoTodos(displayItinerary, todayISO)
+    return {
+      autoTodosActive: all.filter((t) => !doneKeys.has(t.key)),
+      resolvedAutoTodos: all.filter((t) => doneKeys.has(t.key)),
+    }
   }, [displayItinerary, todayISO, todoState.todos])
   const manualTodos = useMemo(() => todoState.todos.filter((t) => t.kind === 'manual'), [todoState.todos])
   const todoBadge = autoTodosActive.length + manualTodos.filter((t) => !t.isDone).length
@@ -1094,6 +1098,7 @@ export function ItineraryClient({
         open={todoOpen}
         onClose={() => setTodoOpen(false)}
         autoTodos={autoTodosActive}
+        resolvedAutoTodos={resolvedAutoTodos}
         manualTodos={manualTodos}
         canEdit={userCanEdit}
         onAddTodo={todoState.addTodo}
