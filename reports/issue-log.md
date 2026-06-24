@@ -313,6 +313,22 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+## 6. 樣式 / Tailwind
+
+### 6-A 動態 class 放在 `lib/` 不生效（膠囊/節點無色）
+
+**發生時間**：2026-06-24（行程表簡潔風改版時）
+
+**症狀**：行程卡的類型彩色膠囊、時間軸節點在正式站沒有顏色（背景透明），但同檔其他寫死的 class（如地址 `text-blue-500`）正常。
+
+**根本原因**：Tailwind 的 `content` glob 只含 `pages/ components/ app/`，**沒有 `lib/`**。類型色調 class（`bg-blue-50`/`bg-*-500`/`text-*-700`…）以字串集中定義在 `lib/itinerary/cardTone.ts`，Tailwind 掃不到 → JIT 不生成 → class 名存在於 HTML 但無對應 CSS 規則。部分 tone class 剛好也被其他元件用到而「碰巧」生成，造成「半套樣式」更難察覺。
+
+**修復方法**：`tailwind.config.ts` 的 `content` 加入 `'./lib/**/*.{js,ts,jsx,tsx,mdx}'`。驗證：`npm run build` 後 `grep '\.bg-pink-50' .next/static/css/*.css`（用罕用色當鑑別）確認已生成。
+
+**預防**：**任何把 Tailwind class 以字串定義在 `lib/`（或 content 未涵蓋的資料夾）的模組，都要確認該資料夾在 content glob 內**；否則改用 safelist 或把 class 留在元件檔。本機 dev server 對 config 變更不一定熱重載，驗證以 `npm run build` 產出的 CSS 為準。
+
+---
+
 ## 附錄：四條 geocode 管線一覽
 
 每次改過濾規則，以下四處要同步：
