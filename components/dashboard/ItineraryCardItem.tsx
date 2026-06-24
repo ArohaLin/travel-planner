@@ -96,7 +96,7 @@ export function ItineraryCardItem({ trip }: { trip: Trip }) {
   return (
     <div className="relative">
       <Link href={`/itinerary/${trip.id}`}>
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 active:bg-gray-50 transition-colors">
+        <div className="bg-white rounded-2xl border border-black/5 shadow-sm p-4 active:bg-gray-50 transition-colors">
           <div className="flex items-start justify-between gap-2 mb-2">
             <h2 className="font-semibold text-gray-900 leading-snug flex-1">{trip.title}</h2>
             <div className="flex items-center gap-1 flex-shrink-0">

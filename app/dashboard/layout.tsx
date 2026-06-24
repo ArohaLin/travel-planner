@@ -15,7 +15,7 @@ export default async function DashboardLayout({
 
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-gray-50 pb-[calc(64px+env(safe-area-inset-bottom))]">
+      <div className="min-h-screen bg-[#FBFAF7] pb-[calc(64px+env(safe-area-inset-bottom))]">
         {children}
       </div>
       <BottomNav />
