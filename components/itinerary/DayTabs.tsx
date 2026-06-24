@@ -40,7 +40,7 @@ export function DayTabs({ days, activeDay, onDayChange }: DayTabsProps) {
               className={clsx(
                 'flex-shrink-0 flex flex-col items-center px-4 py-1.5 rounded-xl transition-all duration-150 tap-target',
                 isActive
-                  ? 'bg-gray-800 text-white shadow-sm'
+                  ? 'bg-[#C2613B] text-white shadow-sm'
                   : 'bg-white text-gray-600 border border-black/5 hover:bg-gray-50 active:bg-gray-50',
               )}
             >
