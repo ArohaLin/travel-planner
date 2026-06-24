@@ -63,7 +63,11 @@ function buildTravelTimeSection(itinerary: Itinerary): string {
       '出發地'
 
     for (const leg of legs) {
-      const googleMin = Math.round(leg.seconds / 60)
+      // 與行程卡（DayView）/緩衝掃描一致：≤1km 且車程<5分的短程改以「步行」計時
+      //（短距離找停車位反而比走路慢，步行時間才是真實時間）→ 給 AI 的清單也用步行時間，三處統一。
+      const treatAsWalk = leg.seconds < 300 && leg.meters <= 1000
+      const effSec = treatAsWalk ? Math.max(60, Math.round(leg.meters / 80) * 60) : leg.seconds
+      const googleMin = Math.round(effSec / 60)
 
       // 目的地名稱 + 行程實際留的移動時間（前一張交通卡時長，或兩活動間的空檔）
       let toName: string
@@ -102,7 +106,7 @@ function buildTravelTimeSection(itinerary: Itinerary): string {
           else if (allottedMin < comfortable) note = `；目前留 ${fmtMin(allottedMin)} 🟡偏緊`
         }
         lines.push(
-          `- 第${day.dayIndex + 1}天 ${fromName} → ${toName}：路程 ${fmtMin(googleMin)}，建議預留 ${fmtMin(recMin)}${note}`,
+          `- 第${day.dayIndex + 1}天 ${fromName} → ${toName}：路程 ${fmtMin(googleMin)}${treatAsWalk ? '（步行）' : ''}，建議預留 ${fmtMin(recMin)}${note}`,
         )
       }
       fromName = toName

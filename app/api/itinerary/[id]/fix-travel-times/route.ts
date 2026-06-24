@@ -4,7 +4,7 @@ import { getItineraryAccess } from '@/lib/auth/access'
 import { getGeminiClient, MODEL_GEMINI, MODEL_GEMINI_PRO } from '@/lib/ai/client'
 import { buildAdjustPromptGemini } from '@/lib/ai/systemPrompt'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
-import { extractPlans } from '@/lib/ai/patchParser'
+import { extractPlans, parseAdjustJson } from '@/lib/ai/patchParser'
 import { applyPatch, PatchError } from '@/lib/ai/patchApplier'
 import { enrichPatchForHistory } from '@/lib/history/enrich'
 import { scanBufferWarnings } from '@/lib/maps/bufferScan'
@@ -86,7 +86,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'AI 暫時無回應，請稍後再試' }, { status: 502 })
   }
 
-  const plans = extractPlans(text)
+  // 解析方案：prompt 現以 JSON 物件輸出 → 優先 parseAdjustJson，退回舊 extractPlans（標籤/容錯）
+  const parsedJson = parseAdjustJson(text)
+  const plans = parsedJson && parsedJson.plans.length > 0 ? parsedJson.plans : extractPlans(text)
   if (!plans || plans.length === 0) {
     return NextResponse.json(
       { error: 'AI 沒有提供可套用的修正，請改用聊天微調' },

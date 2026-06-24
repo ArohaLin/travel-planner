@@ -343,7 +343,19 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **修復方法**：`scanBufferWarnings` 套用與 DayView 相同的 `treatAsWalk`（`leg.seconds<300 && leg.meters<=1000` → `effSec = max(60, round(meters/80)*60)`），警示一律以「實際會用的交通方式時間」判定。實測台東行程修正後 紅2 黃2（第3/5/7天），橫幅正確出現。
 
-**設計準則**：**短距離找停車位反而比走路慢，步行時間才是真實時間** → 短程的緩衝警示用步行時間是對的；要修的是「整體掃描」沒跟上，不是把警示改回開車。**移動列警示與整體掃描必須用同一套 effSec 邏輯**（未來改任一邊要同步另一邊；AI prompt 的 `buildTravelTimeSection` 路程摘要亦同源，改動時一併確認）。
+**設計準則**：**短距離找停車位反而比走路慢，步行時間才是真實時間** → 短程的緩衝警示用步行時間是對的；要修的是「整體掃描」沒跟上，不是把警示改回開車。**移動列警示與整體掃描必須用同一套 effSec 邏輯**。
+
+### 7-B 「一鍵自動修正」跑完卻沒改到偏緊段（第三處同源）
+
+**發生時間**：2026-06-25（接 7-A）
+
+**症狀**：按「一鍵自動修正路程時間」，收到「✅ 已完成」通知，但回去看偏緊段（步行）仍在、時間沒變。
+
+**根本原因**：餵給 AI 的路程清單 `lib/ai/systemPrompt.ts` 的 `buildTravelTimeSection`（**第三處 effSec 同源**）仍用**開車時間**（`leg.seconds`）→ 短程步行段在清單裡標成「路程 4 分・建議預留 10 分」、**沒有 ⚠️不足 標記** → AI 認為無需修正 → 套用無關緊要的小變更、發完成通知，但步行偏緊段沒動。
+
+**修復方法**：① `buildTravelTimeSection` 套用同一套 `treatAsWalk`（短程改步行時間，行末標「（步行）」讓 AI 理解為何較長）→ 清單正確標出 ⚠️不足/🟡偏緊。② 順手把 `app/api/itinerary/[id]/fix-travel-times/route.ts` 的解析從 `extractPlans` 改為 `parseAdjustJson`（對應 `buildAdjustPromptGemini` 現以 JSON 物件輸出，避免靠 extractPlans 容錯 fallback 撈陣列的脆弱性）。實測台東行程：第3天富岡、第5天陳家麻糬等步行段現於清單標 ⚠️不足。
+
+**教訓**：effSec（短程改步行）共**三處**——`DayView TravelRow`（顯示+警示）、`scanBufferWarnings`（橫幅/待辦掃描）、`buildTravelTimeSection`（餵 AI 的路程清單）。**改任一處，三處都要同步**，否則「看到警示→按修正→沒效果」。
 
 ---
 
