@@ -1241,12 +1241,17 @@ export function ItineraryClient({
         </>
       )}
 
-      {/* Activity detail modal（點擊卡片開啟） */}
+      {/* Activity detail modal（點擊卡片開啟；編輯/刪除/備註收在此） */}
       {detailActivity && (
         <ActivityDetailModal
           activity={detailActivity}
           dayNumber={activeDay + 1}
           onClose={() => setDetailActivity(null)}
+          canEdit={userCanEdit}
+          onEdit={handleEditActivity}
+          onDelete={handleDeleteActivity}
+          onAddNote={userCanEdit ? setAddNoteFor : undefined}
+          hasNote={aiNotes.hasNoteFor(detailActivity.id)}
         />
       )}
 
