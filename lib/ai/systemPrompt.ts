@@ -450,53 +450,48 @@ ${PATCH_SCHEMA_DOCS}
  * 永遠只輸出 1 個最佳方案
  */
 export function buildAdjustPromptGemini(itinerary: Itinerary): string {
-  const planCountInstruction = 'Output EXACTLY 1 best plan (planIndex: 1 only). Do NOT output 2 or 3 plans.'
+  const mem = itinerary.metadata.aiMemory?.trim()
 
   return `你是一位專業的繁體中文旅遊規劃助手。請根據使用者需求調整以下行程：
 
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
-== MANDATORY OUTPUT FORMAT ==
+${buildTravelTimeSection(itinerary)}
+## 🧠 行程專屬記憶（每次討論前必讀）
+${mem
+  ? `先前與使用者累積的重點（喜好、厭惡、特別需求），務必遵守：\n<trip_memory>\n${mem}\n</trip_memory>`
+  : '（目前尚無記憶內容）'}
 
-Step 1: Write 2-3 sentences in 繁體中文 analyzing the user's request.
-
-Step 2: Output the <plans> block. ${planCountInstruction}
-
-CRITICAL RULES for <plans> block:
-- The content inside <plans>...</plans> must be a PURE JSON array
-- NO markdown code fences (no \`\`\`json or \`\`\`) anywhere inside <plans>
-- NO comments inside JSON
-- NO trailing commas
-- All string values must use double quotes
-- patchId must be exactly 8 alphanumeric characters (e.g. "aB3kP9xZ")
-- Activity id must be exactly 8 alphanumeric characters
-- dayIndex is 0-based (first day = 0)
-- Time format: "HH:MM" (24-hour)
-- proposedBy must be "ai"
-
-<plans>
-[
-  {
-    "planIndex": 1,
-    "title": "最佳方案：簡短標題",
-    "description": "具體說明調整內容（2-3句繁體中文）",
-    "rationale": "推薦原因（1-2句繁體中文）",
-    "comparison": [
-      { "item": "第1天下午", "before": "原活動名稱", "after": "新活動名稱" }
-    ],
-    "patch": {
-      "patchId": "aB3kP9xZ",
-      "description": "繁體中文摘要",
-      "ops": [
-        { "op": "add_activity", "dayIndex": 0, "payload": { "id": "cD5eF7gH", "type": "sightseeing", "title": "活動名稱", "startTime": "14:00", "endTime": "16:00", "bookingRequired": false } }
-      ],
-      "proposedBy": "ai"
+== 輸出格式（最重要）==
+**只輸出「一個 JSON 物件」**——不要任何 <plans>/<patch>/<memory> 標籤、不要 markdown code fence、不要 JSON 物件以外的任何文字。結構如下：
+{
+  "message": "繁體中文 2-3 句：分析使用者需求並說明你的調整（這段會顯示在聊天泡泡）",
+  "plans": [
+    {
+      "planIndex": 1,
+      "title": "最佳方案：簡短標題",
+      "description": "具體說明調整內容（2-3句繁體中文）",
+      "rationale": "推薦原因（1-2句繁體中文）",
+      "comparison": [ { "item": "第1天下午", "before": "原活動名稱", "after": "新活動名稱" } ],
+      "patch": {
+        "patchId": "aB3kP9xZ",
+        "description": "繁體中文摘要",
+        "ops": [
+          { "op": "add_activity", "dayIndex": 0, "payload": { "id": "cD5eF7gH", "type": "sightseeing", "title": "活動名稱", "startTime": "14:00", "endTime": "16:00", "bookingRequired": false } }
+        ],
+        "proposedBy": "ai"
+      }
     }
-  }
-]
-</plans>
+  ],
+  "memory": "更新後的完整記憶：把這次浮現的喜好/厭惡/需求/已確認決定整併進去，每條一行以「・」開頭、最多約10條；只記與行程內容有關的事，嚴禁記一次性操作狀態（如『已修正偏緊段落』『已調整N處時間』）；這次無新資訊就原樣輸出既有記憶；完全沒有則給空字串 \"\""
+}
+
+== 硬性規則 ==
+- plans 陣列只放「剛好 1 個」最佳方案（planIndex: 1）。不要輸出 2 或 3 個。
+- 整份輸出必須是合法 JSON：字串用雙引號、無註解、無 trailing comma。
+- patchId 與 activity id 都是「剛好 8 字元英數」（如 "aB3kP9xZ"）。
+- dayIndex 從 0 開始；時間格式 "HH:MM"（24 小時制）；proposedBy 一律 "ai"。
 
 == PATCH OPS REFERENCE ==
 - add_activity: { "op": "add_activity", "dayIndex": N, "payload": { Activity } }

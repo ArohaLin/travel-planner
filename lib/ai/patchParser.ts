@@ -220,6 +220,51 @@ export function extractPlans(text: string): AIPlan[] | null {
  * displayText 並外漏到聊天泡泡（且讓 content 暴增、被字元上限過濾器丟棄）。
  * 與 extractPlans 的截斷修復、前端串流的 /<plans>[\s\S]*\/ 清除邏輯對齊。
  */
+/** 從文字抓「第一個平衡的 JSON 物件」字串（字串內的括號不計）。找不到回 null。 */
+function firstBalancedObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start === -1) return null
+  let depth = 0, inStr = false, esc = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+    } else if (ch === '"') inStr = true
+    else if (ch === '{') depth++
+    else if (ch === '}') { depth--; if (depth === 0) return text.slice(start, i + 1) }
+  }
+  return null
+}
+
+/**
+ * 解析 adjust 的 JSON 物件輸出（Gemini JSON 模式）：{ message, plans, memory }。
+ * 先直接 JSON.parse；失敗再抓第一個平衡物件（claude -p 可能在 JSON 外夾帶文字）。
+ * 失敗回 null → 呼叫端會退回舊的 extractPlans 解析（安全網）。
+ */
+export function parseAdjustJson(text: string): { message: string; plans: AIPlan[]; memory: string | null } | null {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  let raw: unknown = null
+  try { raw = JSON.parse(cleaned) } catch {
+    const obj = firstBalancedObject(cleaned)
+    if (obj) { try { raw = JSON.parse(obj) } catch { /* ignore */ } }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  if (!Array.isArray(o.plans)) return null
+  const parsed = AIPlansArraySchema.safeParse(o.plans)
+  if (!parsed.success) {
+    console.error('[patchParser] adjust JSON plans 驗證失敗:', JSON.stringify(parsed.error.flatten()).slice(0, 300))
+    return null
+  }
+  return {
+    message: typeof o.message === 'string' ? o.message.trim() : '',
+    plans: parsed.data,
+    memory: typeof o.memory === 'string' && o.memory.trim() ? o.memory.trim() : null,
+  }
+}
+
 export function stripPlansTag(text: string): string {
   return text
     .replace(/<plans>[\s\S]*?<\/plans>/g, '') // 完整成對

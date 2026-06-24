@@ -1,7 +1,7 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getAnthropicClient, getNvidiaClient, getGeminiClient, getOllamaClient, MODEL_CLAUDE, MODEL_MINIMAX, MODEL_GEMINI, MODEL_GEMINI_PRO, MODEL_OLLAMA } from '@/lib/ai/client'
 import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, buildConsultPrompt, buildConsultPromptLocal } from '@/lib/ai/systemPrompt'
-import { extractPlans, stripPlansTag, stripLeakedPlanJson, extractMemory, stripMemoryTag } from '@/lib/ai/patchParser'
+import { extractPlans, stripPlansTag, stripLeakedPlanJson, extractMemory, stripMemoryTag, parseAdjustJson } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
@@ -127,6 +127,10 @@ export async function POST(request: Request) {
     `| historyChars=${usedHistoryChars}/${historyCharLimit}`,
   )
 
+  // ② adjust 改 JSON 模式（L1）：Gemini 的 adjust 走「單一 JSON 物件」輸出（buildAdjustPromptGemini）。
+  // 此時不即時串流文字（串出來是 JSON），前端顯示「處理中」動畫，方案完成後一次出（由 DB/Realtime 帶）。
+  const jsonAdjust = mode === 'adjust' && modelProvider === 'gemini'
+
   let fullResponse = ''
 
   const stream = new ReadableStream({
@@ -181,7 +185,8 @@ export async function POST(request: Request) {
             userMessage,
           })
           fullResponse = text
-          safeEnqueue(text)
+          // jsonAdjust（gemini prompt 但本機 claude -p 執行）：輸出是 JSON，不即時顯示
+          if (!jsonAdjust) safeEnqueue(text)
         } else if (modelProvider === 'minimax') {
           // ── MiniMax via NVIDIA OpenAI-compatible endpoint ──────────────────
           const nvidia = getNvidiaClient()
@@ -260,7 +265,10 @@ export async function POST(request: Request) {
               })
               const chat = model.startChat({
                 history: geminiHistory,
-                generationConfig: { maxOutputTokens: 32768 },
+                // adjust：JSON 模式（強制合法 JSON）；consult：純文字串流
+                generationConfig: jsonAdjust
+                  ? { responseMimeType: 'application/json', maxOutputTokens: 32768 }
+                  : { maxOutputTokens: 32768 },
               })
 
               const result = await chat.sendMessageStream(userMessage)
@@ -268,7 +276,8 @@ export async function POST(request: Request) {
                 const delta = chunk.text()
                 if (delta) {
                   fullResponse += delta
-                  safeEnqueue(delta)
+                  // JSON 模式不即時顯示（內容是 JSON）；前端改顯示「處理中」動畫
+                  if (!jsonAdjust) safeEnqueue(delta)
                 }
               }
               // Gemini usage 在 aggregated response 的 usageMetadata
@@ -340,9 +349,24 @@ export async function POST(request: Request) {
 
       let plans: AIPlan[] | null = null
       let patchStatus = 'none'
+      let usedJsonParse = false
+      let jsonMessage: string | null = null
+      let jsonMemory: string | null = null
 
       if (mode === 'adjust') {
-        plans = extractPlans(fullResponse)
+        // jsonAdjust：先試 JSON 物件解析（message/plans/memory）；失敗則退回舊的標籤/容錯解析（安全網）
+        if (jsonAdjust) {
+          const parsed = parseAdjustJson(fullResponse)
+          if (parsed) {
+            usedJsonParse = true
+            plans = parsed.plans
+            jsonMessage = parsed.message
+            jsonMemory = parsed.memory
+          } else {
+            console.warn('[chat] adjust JSON 解析失敗，退回舊 extractPlans')
+          }
+        }
+        if (!plans) plans = extractPlans(fullResponse)
         if (plans && plans.length > 0) {
           patchStatus = 'pending_selection'
         }
@@ -356,11 +380,17 @@ export async function POST(request: Request) {
         safeEnqueue(fullResponse)
       }
 
-      // #15：擷取並更新行程記憶，並從顯示文字移除 <memory> 區塊
-      const newMemory = extractMemory(fullResponse)
-      let displayText = stripMemoryTag(stripPlansTag(fullResponse))
-      // adjust 模式：再清掉「漏包 <plans> 標籤」的方案 JSON（code fence / 裸陣列），避免外漏
-      if (mode === 'adjust') displayText = stripLeakedPlanJson(displayText)
+      // #15：擷取並更新行程記憶，並組出顯示文字
+      // jsonAdjust 成功：message/memory 直接來自 JSON 物件；其餘走舊的標籤剝離。
+      const newMemory = usedJsonParse ? jsonMemory : extractMemory(fullResponse)
+      let displayText: string
+      if (usedJsonParse) {
+        displayText = jsonMessage ?? ''
+      } else {
+        displayText = stripMemoryTag(stripPlansTag(fullResponse))
+        // adjust 模式：再清掉「漏包 <plans> 標籤」的方案 JSON（code fence / 裸陣列），避免外漏
+        if (mode === 'adjust') displayText = stripLeakedPlanJson(displayText)
+      }
 
       if (newMemory && newMemory !== itinerary.metadata.aiMemory) {
         try {
