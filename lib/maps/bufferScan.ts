@@ -45,7 +45,11 @@ export function scanBufferWarnings(itinerary: Itinerary): BufferScanResult {
 
     for (const leg of legs) {
       if (leg.meters < 50) continue
-      const googleMin = Math.round(leg.seconds / 60)
+      // 與 DayView TravelRow（#42）一致：≤1km 且車程<5分的短程改以「步行」計時
+      //（短距離找停車位反而比走路慢，步行時間才是真實時間）→ 警示也用步行時間，橫幅與移動列一致。
+      const treatAsWalk = leg.seconds < 300 && leg.meters <= 1000
+      const effSec = treatAsWalk ? Math.max(60, Math.round(leg.meters / 80) * 60) : leg.seconds
+      const googleMin = Math.round(effSec / 60)
       if (googleMin < 3) continue
 
       let allottedMin: number | null = null
