@@ -3,6 +3,7 @@ import { createServerClient, createServiceRoleClient } from '@/lib/supabase/serv
 import { getItineraryAccess } from '@/lib/auth/access'
 import { getGeminiClient, MODEL_GEMINI, MODEL_GEMINI_PRO } from '@/lib/ai/client'
 import { buildAssistantPrompt } from '@/lib/ai/systemPrompt'
+import { computePlanComparison } from '@/lib/ai/planDiff'
 import { parseAssistantJson } from '@/lib/ai/patchParser'
 import { fetchUrlText, extractUrls } from '@/lib/ai/fetchUrl'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
@@ -129,6 +130,11 @@ export async function POST(request: Request) {
   const parsed = parseAssistantJson(text)
   const message = parsed?.message || '我看了你提供的資料，但暫時無法判斷怎麼填入行程，可以補一下這是哪家店／哪一天的安排嗎？'
   const plans = parsed?.plans ?? []
+  // 用「真實 patch × 目前行程」自動算修改前後對照，覆蓋 AI 自填的 comparison（確保列全且與實際一致）
+  for (const pl of plans) {
+    const computed = computePlanComparison(itinerary, pl.patch?.ops ?? [])
+    if (computed.length) pl.comparison = computed
+  }
   const candidates = parsed?.candidates ?? []
   const patchStatus = plans.length > 0 ? 'pending_selection' : 'none'
 

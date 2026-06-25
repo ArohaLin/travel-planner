@@ -249,7 +249,7 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
               </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <label className="text-xs text-gray-500 mb-1 block">已付訂金（{depositCurrency}）</label>
+                  <label className="text-xs text-gray-500 mb-1 block">訂金（{depositCurrency}）</label>
                   <input type="number" inputMode="numeric" min={0} value={depositAmount} onChange={(e) => setDepositAmount(e.target.value)} placeholder="例：1000" className={inputCls} />
                 </div>
                 <div className="flex-1">

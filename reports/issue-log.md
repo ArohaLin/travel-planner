@@ -395,6 +395,16 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **修復方法**：① 把新欄位補進 prompt 的 Accommodation 清單（含 depositPaid 為 Money 格式、cost 為每晚單價）；② 加明確指令「訂房確認單要逐項拆進對應欄位、嚴禁整段塞 notes」。spike 實證：合成 Agoda 確認單→AI 正確填 bookingPlatform/orderNumber/depositPaid/freeCancelBy/contact/reservationStatus，notes 留空。**教訓**：改 schema 欄位時，凡是 AI 會讀寫該物件的 prompt 欄位清單都要同步（grep schema 欄位名確認 prompt 有列）。
 
+### 9-C 小幫手方案：對照表沒列全 ＋ 待匯訂金沒進欄位
+
+**發生時間**：2026-06-25
+
+**症狀**：用小幫手更新住宿後 ①方案的「修改前後對照」只列了聯絡人＋預訂狀態，實際 patch 還改了金額/入住時間/說明/重要事項等卻沒顯示；②訂房通知寫「請先匯訂金 1200 元」，1200 沒進訂金欄位、連同匯款期限/帳號被塞進 notes。
+
+**根本原因**：①`PlanSelector` 顯示的對照表 = AI 自填的 `plan.comparison`（AI 沒誠實列全；且元件根本沒有目前行程資料、無法自算）。②`depositPaid` 欄位語意是「已付訂金」，而通知是「待匯訂金」→ AI 判斷「沒付」就不填，連帶匯款資訊無處可放→塞 notes。
+
+**修復方法**：①新增 `lib/ai/planDiff.ts` 的 `computePlanComparison(itinerary, ops)`，後端用「真實 patch × 目前行程」自動算對照、覆蓋 AI 自填的 comparison（一定列全、與實際一致）。②`depositPaid` 改語意為「訂金」（已付或待匯都填金額，UI 標籤同步改）；prompt 明確：匯款期限/帳號/付款指示放 `tips(重要事項)`、不要塞 notes。spike 實證（用真實自由風民宿通知）：1200 進 depositPaid、匯款指示進 tips、notes 留空；自動對照列出 7 項變更。**教訓**：給使用者確認的「變更摘要」不要靠 AI 自述，能用真實 diff 算就算；欄位語意要涵蓋實際情境（待付≠已付）。
+
 ---
 
 ## 附錄：四條 geocode 管線一覽

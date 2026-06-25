@@ -622,7 +622,7 @@ export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivi
   const lock = opts?.lockedActivityId
     ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${(opts.lockedDayIndex ?? 0) + 1} 天、id="${opts.lockedActivityId}" 的那張卡。請只對它產生 update_activity，不要新增或動其他卡。`
     : opts?.lockedAccommodationDayIndex != null
-      ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${opts.lockedAccommodationDayIndex + 1} 天的**住宿**。請只產生一個 set_day_accommodation（dayIndex=${opts.lockedAccommodationDayIndex}，payload 為更新後的完整 Accommodation 物件、沿用既有 id 與未變更欄位），不要新增活動或動其他卡。可填入訂房平台、訂單編號、訂房連結、已付訂金、最晚免費取消、入退房時間、金額、地址等資訊。`
+      ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${opts.lockedAccommodationDayIndex + 1} 天的**住宿**。請只產生一個 set_day_accommodation（dayIndex=${opts.lockedAccommodationDayIndex}，payload 為更新後的完整 Accommodation 物件、沿用既有 id 與未變更欄位），不要新增活動或動其他卡。可填入訂房平台、訂單編號、訂房連結、訂金、最晚免費取消、入退房時間、每晚金額、地址等資訊；匯款指示/入住須知放 tips。`
       : ''
   return `你是一位繁體中文旅遊行程「小幫手」。使用者會丟給你**照片、網頁文字、和/或一段補充文字**（可能只有其中一種），你要把其中的重要資訊抽出來，**填入或更新下方現有行程對應的地方**。
 
@@ -676,13 +676,13 @@ ${buildMemorySection(itinerary)}${lock}
 - set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } }
 
 Activity 必填 id(8字)/type/title/startTime/bookingRequired；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl
-Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 cost(Money) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingUrl(訂房連結) / depositPaid(已付訂金,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知) / notes(無法歸類的其他補充)
+Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 cost(每晚價,Money) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingUrl(訂房連結) / depositPaid(訂金金額,已付或待匯都填,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知/匯款指示) / notes(無法歸類的其他補充)
 
 == 欄位與地址規則 ==
 - title 保持簡短純名稱；詳細介紹放 intro/recommendation/tips，餐飲項目放 foodItems，地點簡稱放 placeLabel。
 - 預約狀態用 reservationStatus："reserved"（已預訂）/"needed"（需預訂）/"none"。
 - 價格 cost 格式 { "amount": 數字, "currency": "TWD", "isEstimate": false }（從確認單抽到的是實際價、isEstimate=false）。
-- **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、已付訂金→depositPaid(Money 格式)、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。notes 只留真的無法歸類的零碎補充。
+- **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、**訂金金額→depositPaid(Money 格式)（不論「已付」或「請先匯/待付」都要填金額）**、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。**匯款期限、匯款帳號、付款指示、入住須知等「重要提醒」放 tips(重要事項)，不要放 notes**；notes 只留真的無法歸類的零碎補充。
 - 更新住宿/景點成不同地點時，不要保留舊座標；location.address 填正確新地址（縣市/鄉鎮要對），不確定門牌就給「縣市+鄉鎮+地標名」。
 - 若動到某天活動，同步用 update_day 更新該天 theme。
 

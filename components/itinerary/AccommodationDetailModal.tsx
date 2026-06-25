@@ -82,7 +82,7 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
               <p className="text-xs font-semibold text-emerald-700 mb-1">訂房資訊</p>
               {acc.bookingPlatform && <Row label="訂房平台" value={acc.bookingPlatform} />}
               {acc.orderNumber && <Row label="訂單編號" value={acc.orderNumber} />}
-              {acc.depositPaid && <Row label="已付訂金" value={formatMoney(acc.depositPaid)} />}
+              {acc.depositPaid && <Row label="訂金" value={formatMoney(acc.depositPaid)} />}
               {acc.freeCancelBy && <Row label="最晚免費取消" value={acc.freeCancelBy} />}
               {acc.bookingUrl && (
                 <a href={acc.bookingUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-sm text-emerald-700 underline mt-0.5">
