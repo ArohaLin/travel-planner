@@ -533,6 +533,7 @@ function WishCard({
   const [open, setOpen] = useState(false)
   const [hours, setHours] = useState<Hours | null>(null)
   const [confirmReplaceDayIndex, setConfirmReplaceDayIndex] = useState<number | null>(null)
+  const [replacePicker, setReplacePicker] = useState(false)
   const isLodging = item.category === '住宿'
 
   useEffect(() => {
@@ -570,7 +571,7 @@ function WishCard({
             {busy ? '處理中…' : '確認取代'}
           </button>
           <button
-            onClick={() => setConfirmReplaceDayIndex(null)}
+            onClick={() => { setConfirmReplaceDayIndex(null); setReplacePicker(false) }}
             className="flex-1 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm active:bg-gray-50"
           >
             取消
@@ -616,8 +617,36 @@ function WishCard({
                 {confirmReplaceDayIndex === top.dayIndex && <ConfirmReplacePanel dayIndex={top.dayIndex} />}
               </div>
             )
-          ) : !open ? (
-            <button onClick={() => setOpen(true)} disabled={busy} className="w-full text-sm border border-purple-200 text-purple-700 rounded-xl px-3 py-2 active:bg-purple-50 disabled:opacity-50">📍 排入行程</button>
+          ) : !open && !replacePicker && confirmReplaceDayIndex === null ? (
+            <div className="space-y-2">
+              <button onClick={() => setOpen(true)} disabled={busy} className="w-full text-sm border border-purple-200 text-purple-700 rounded-xl px-3 py-2 active:bg-purple-50 disabled:opacity-50">
+                📍 排入行程
+              </button>
+              {isLodging && onReplaceAccommodation && (
+                <button onClick={() => setReplacePicker(true)} disabled={busy} className="w-full text-sm border border-amber-200 text-amber-700 rounded-xl px-3 py-2 active:bg-amber-50 disabled:opacity-50">
+                  🏨 設為某天住宿
+                </button>
+              )}
+            </div>
+          ) : replacePicker && confirmReplaceDayIndex === null ? (
+            <div className="space-y-2">
+              <p className="text-xs text-amber-700 font-medium">選擇要設為住宿的天：</p>
+              <div className="flex flex-wrap gap-1.5">
+                {days.map((d) => (
+                  <button
+                    key={d.dayIndex}
+                    onClick={() => setConfirmReplaceDayIndex(d.dayIndex)}
+                    disabled={busy}
+                    className="text-xs border border-amber-200 text-amber-700 rounded-full px-2.5 py-1 active:bg-amber-50 disabled:opacity-50"
+                  >
+                    第 {d.dayIndex + 1} 天{d.accommodation ? `（取代「${d.accommodation.name}」）` : ''}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setReplacePicker(false)} className="text-xs text-gray-400 active:text-gray-600">取消</button>
+            </div>
+          ) : !open && confirmReplaceDayIndex !== null ? (
+            <ConfirmReplacePanel dayIndex={confirmReplaceDayIndex} />
           ) : (
             <div className="space-y-2">
               {top && (
@@ -656,10 +685,10 @@ function WishCard({
                   })}
                 </div>
               </details>
-              {isLodging && onReplaceAccommodation && (
-                <details>
-                  <summary className="text-xs text-amber-600 cursor-pointer">🏨 設為某天住宿</summary>
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {isLodging && onReplaceAccommodation && confirmReplaceDayIndex === null && (
+                <div>
+                  <p className="text-xs text-amber-700 font-medium mb-1.5">🏨 或設為某天住宿：</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {days.map((d) => (
                       <button
                         key={d.dayIndex}
@@ -667,14 +696,14 @@ function WishCard({
                         disabled={busy}
                         className="text-xs border border-amber-200 text-amber-700 rounded-full px-2.5 py-1 active:bg-amber-50 disabled:opacity-50"
                       >
-                        第 {d.dayIndex + 1} 天{d.accommodation ? `（取代「${d.accommodation.name}」）` : ''}
+                        第 {d.dayIndex + 1} 天{d.accommodation ? `（取代）` : ''}
                       </button>
                     ))}
                   </div>
-                  {confirmReplaceDayIndex !== null && (
-                    <ConfirmReplacePanel dayIndex={confirmReplaceDayIndex} />
-                  )}
-                </details>
+                </div>
+              )}
+              {confirmReplaceDayIndex !== null && (
+                <ConfirmReplacePanel dayIndex={confirmReplaceDayIndex} />
               )}
             </div>
           )}
