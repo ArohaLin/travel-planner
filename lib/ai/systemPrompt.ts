@@ -23,8 +23,8 @@ function forPrompt(itinerary: Itinerary): Itinerary {
         }),
         accommodation: rest.accommodation
           ? (() => {
-              const { photoRef, ...acc } = rest.accommodation!
-              void photoRef
+              const { photoRef, userPhotoUrl, ...acc } = rest.accommodation!
+              void photoRef; void userPhotoUrl
               return acc
             })()
           : rest.accommodation,

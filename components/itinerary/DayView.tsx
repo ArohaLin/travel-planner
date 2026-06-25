@@ -265,6 +265,7 @@ interface DayViewProps {
   hasNoteFor?: (activityId: string) => boolean
   onEditAccommodation?: (acc: Accommodation) => void
   onAddNoteAccommodation?: (acc: Accommodation) => void
+  onOpenAccommodation?: (acc: Accommodation) => void
   hasNoteForAccommodation?: boolean
   onEditTheme?: () => void
   onEditDeparture?: () => void
@@ -295,7 +296,7 @@ function ActivityRow({ activity, isLast, onClick, onLongPress }: {
   )
 }
 
-export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onLongPressActivity }: DayViewProps) {
+export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, onOpenAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onLongPressActivity }: DayViewProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void (onEditActivity || onDeleteActivity || onAddNote || hasNoteFor) // 這些改由詳情視窗觸發；保留 props 相容
   const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
@@ -429,6 +430,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               hasNote={hasNoteForAccommodation}
               onEdit={onEditAccommodation}
               onAddNote={onAddNoteAccommodation}
+              onOpen={onOpenAccommodation}
             />
           </RowFrame>
         </>

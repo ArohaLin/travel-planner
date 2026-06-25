@@ -10,17 +10,23 @@ interface AccommodationCardProps {
   hasNote?: boolean
   onEdit?: (acc: Accommodation) => void
   onAddNote?: (acc: Accommodation) => void
+  /** 點卡片開詳情視窗 */
+  onOpen?: (acc: Accommodation) => void
 }
 
-export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onAddNote }: AccommodationCardProps) {
+export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onAddNote, onOpen }: AccommodationCardProps) {
   const resv = effectiveLodgingReservation(accommodation.reservationStatus)
+  const photoSrc = accommodation.userPhotoUrl ?? (accommodation.photoRef ? `/api/photo?ref=${encodeURIComponent(accommodation.photoRef)}` : null)
   return (
-    <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 relative">
+    <div
+      onClick={onOpen ? () => onOpen(accommodation) : undefined}
+      className={`rounded-xl border border-emerald-100 bg-emerald-50/50 p-3 relative ${onOpen ? 'cursor-pointer active:bg-emerald-50' : ''}`}
+    >
       {canEdit && (
         <div className="absolute top-2.5 right-2.5 flex gap-1">
           {onAddNote && (
             <button
-              onClick={() => onAddNote(accommodation)}
+              onClick={(e) => { e.stopPropagation(); onAddNote(accommodation) }}
               title="AI 備註"
               className="relative w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-amber-600 hover:bg-white shadow-sm transition-colors"
             >
@@ -32,7 +38,7 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
           )}
           {onEdit && (
             <button
-              onClick={() => onEdit(accommodation)}
+              onClick={(e) => { e.stopPropagation(); onEdit(accommodation) }}
               title="編輯住宿"
               className="w-7 h-7 flex items-center justify-center rounded-lg bg-white/80 text-gray-400 hover:text-emerald-600 hover:bg-white shadow-sm transition-colors"
             >
@@ -44,37 +50,42 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
         </div>
       )}
 
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm">🏨</span>
-        <span className="text-[11px] font-medium text-emerald-700">住宿</span>
-        {resv !== 'none' && (
-          <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${RESERVATION[resv].badge}`}>
-            {RESERVATION[resv].icon} {RESERVATION[resv].label}
-          </span>
+      <div className="flex gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm">🏨</span>
+            <span className="text-[11px] font-medium text-emerald-700">住宿</span>
+            {resv !== 'none' && (
+              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${RESERVATION[resv].badge}`}>
+                {RESERVATION[resv].icon} {RESERVATION[resv].label}
+              </span>
+            )}
+          </div>
+
+          <h3 className="font-medium text-gray-900 text-[15px] leading-snug pr-16">{accommodation.name}</h3>
+          {accommodation.location?.address && (
+            <a
+              href={mapsNavUrl(accommodation.location)}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="block text-[11px] text-blue-500 underline decoration-blue-200 underline-offset-2 mt-1 active:text-blue-700"
+            >
+              📍 {accommodation.location.address}
+            </a>
+          )}
+          <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1.5">
+            <span>入住 {accommodation.checkInTime}</span>
+            <span>退房 {accommodation.checkOutTime}</span>
+            {accommodation.cost && <span className="font-medium text-gray-600">{formatMoney(accommodation.cost)}/晚</span>}
+          </div>
+        </div>
+
+        {photoSrc && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photoSrc} alt="" loading="lazy" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100 self-start" />
         )}
       </div>
-
-      <h3 className="font-medium text-gray-900 text-[15px] leading-snug pr-16">{accommodation.name}</h3>
-      {accommodation.location?.address && (
-        <a
-          href={mapsNavUrl(accommodation.location)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block text-[11px] text-blue-500 underline decoration-blue-200 underline-offset-2 mt-1 active:text-blue-700"
-        >
-          📍 {accommodation.location.address}
-        </a>
-      )}
-      <div className="flex items-center gap-3 text-[11px] text-gray-500 mt-1.5">
-        <span>入住 {accommodation.checkInTime}</span>
-        <span>退房 {accommodation.checkOutTime}</span>
-        {accommodation.cost && <span className="ml-auto font-medium text-gray-600">{formatMoney(accommodation.cost)}/晚</span>}
-      </div>
-      {accommodation.bookingUrl && (
-        <a href={accommodation.bookingUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-emerald-600 underline mt-1 inline-block">
-          訂房連結
-        </a>
-      )}
     </div>
   )
 }

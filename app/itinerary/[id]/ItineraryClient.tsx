@@ -31,6 +31,7 @@ import { AddNoteModal } from '@/components/ai/AddNoteModal'
 import { ActivityEditModal } from '@/components/itinerary/ActivityEditModal'
 import { ActivityDetailModal } from '@/components/itinerary/ActivityDetailModal'
 import { AccommodationEditModal } from '@/components/itinerary/AccommodationEditModal'
+import { AccommodationDetailModal } from '@/components/itinerary/AccommodationDetailModal'
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { DepartureEditModal } from '@/components/itinerary/DepartureEditModal'
 import { TodoSheet } from '@/components/itinerary/TodoSheet'
@@ -101,6 +102,7 @@ export function ItineraryClient({
   // 小幫手「用資料更新這張卡」鎖定目標（從卡片詳情開啟）
   const [assistantLock, setAssistantLock] = useState<{ activityId: string; dayIndex: number; title: string } | null>(null)
   const [editAccommodation, setEditAccommodation] = useState<Accommodation | null>(null)
+  const [detailAccommodation, setDetailAccommodation] = useState<Accommodation | null>(null)
   const [editThemeOpen, setEditThemeOpen] = useState(false)
   // 日期變更導致天數變化的處理對話
   const [dateChange, setDateChange] = useState<{
@@ -923,6 +925,7 @@ export function ItineraryClient({
               hasNoteFor={aiNotes.hasNoteFor}
               onEditAccommodation={userCanEdit ? setEditAccommodation : undefined}
               onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+              onOpenAccommodation={setDetailAccommodation}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
               onEditDeparture={userCanEdit ? () => setDepartureEditOpen(true) : undefined}
@@ -1087,12 +1090,27 @@ export function ItineraryClient({
         />
       )}
 
+      {/* Accommodation detail modal（點卡片開）*/}
+      {detailAccommodation && (
+        <AccommodationDetailModal
+          accommodation={detailAccommodation}
+          dayNumber={activeDay + 1}
+          onClose={() => setDetailAccommodation(null)}
+          canEdit={userCanEdit}
+          onEdit={userCanEdit ? setEditAccommodation : undefined}
+          onAddNote={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+          hasNote={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
+        />
+      )}
+
       {/* Accommodation edit modal */}
       {editAccommodation && (
         <AccommodationEditModal
           accommodation={editAccommodation}
           onSave={handleSaveAccommodation}
           onClose={() => setEditAccommodation(null)}
+          onUploadPhoto={userCanEdit ? uploadActivityPhoto : undefined}
+          currency={displayItinerary.metadata.currency}
         />
       )}
 

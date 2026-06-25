@@ -92,6 +92,24 @@ export const AccommodationSchema = z.object({
   notes: z.string().optional(),
   /** Google Places 代表照片 reference（背景抓取後快取；宣傳冊用） */
   photoRef: z.string().optional(),
+  // ─── 比照活動卡的詳情欄位（選填）───
+  /** 使用者自行上傳的卡片照片（Supabase Storage 公開 URL）；顯示時優先於 photoRef */
+  userPhotoUrl: z.string().optional(),
+  /** 住宿說明 / 介紹 */
+  intro: z.string().optional(),
+  /** 重要事項（入住須知、注意事項）*/
+  tips: z.string().optional(),
+  /** 聯絡資訊（電話 / Email / 訂房人）*/
+  contact: z.string().optional(),
+  // ─── 訂房資訊 ───
+  /** 訂房平台，如 Agoda / Booking.com / 官網 */
+  bookingPlatform: z.string().optional(),
+  /** 訂單編號 */
+  orderNumber: z.string().optional(),
+  /** 已付訂金 */
+  depositPaid: MoneySchema.optional(),
+  /** 最晚免費取消（自由文字，如「2026-06-20 23:59 前」）*/
+  freeCancelBy: z.string().optional(),
 })
 
 export const CityTransportSchema = z.object({
