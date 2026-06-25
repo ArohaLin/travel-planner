@@ -11,6 +11,11 @@ import type { AIResultInfo } from '@/lib/ai/pricing'
 export type ChatMode = 'adjust' | 'consult' | 'assistant'
 export type { ModelProvider }
 
+/** 小幫手「用資料更新這張卡」鎖定目標（活動或住宿）*/
+export type AssistantLock =
+  | { kind: 'activity'; activityId: string; dayIndex: number; title: string }
+  | { kind: 'accommodation'; dayIndex: number; title: string }
+
 /** 小幫手送出的附件 payload */
 export interface AssistantPayload {
   note?: string
@@ -18,6 +23,7 @@ export interface AssistantPayload {
   urls?: string[]
   lockedActivityId?: string
   lockedDayIndex?: number
+  lockedAccommodationDayIndex?: number
 }
 
 interface UseChatReturn {

@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid'
 import { useItinerary } from '@/lib/hooks/useItinerary'
 import { usePresence } from '@/lib/hooks/usePresence'
 import { useChat } from '@/lib/hooks/useChat'
+import type { AssistantLock } from '@/lib/hooks/useChat'
 import { canChat, canEdit } from '@/lib/utils/permissions'
 import {
   computeInsertShiftOps,
@@ -100,7 +101,7 @@ export function ItineraryClient({
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
   // 小幫手「用資料更新這張卡」鎖定目標（從卡片詳情開啟）
-  const [assistantLock, setAssistantLock] = useState<{ activityId: string; dayIndex: number; title: string } | null>(null)
+  const [assistantLock, setAssistantLock] = useState<AssistantLock | null>(null)
   const [editAccommodation, setEditAccommodation] = useState<Accommodation | null>(null)
   const [detailAccommodation, setDetailAccommodation] = useState<Accommodation | null>(null)
   const [editThemeOpen, setEditThemeOpen] = useState(false)
@@ -487,7 +488,15 @@ export function ItineraryClient({
   // 小幫手「用資料更新這張卡」：關詳情、鎖定此卡、切小幫手模式、開聊天
   function handleAssistantUpdate(activity: Activity) {
     setDetailActivity(null)
-    setAssistantLock({ activityId: activity.id, dayIndex: activeDay, title: activity.title })
+    setAssistantLock({ kind: 'activity', activityId: activity.id, dayIndex: activeDay, title: activity.title })
+    chat.setChatMode('assistant')
+    setChatOpen(true)
+  }
+
+  // 同上，但鎖定「住宿」（AI 只產 set_day_accommodation）
+  function handleAssistantUpdateAccommodation(acc: Accommodation) {
+    setDetailAccommodation(null)
+    setAssistantLock({ kind: 'accommodation', dayIndex: activeDay, title: acc.name })
     chat.setChatMode('assistant')
     setChatOpen(true)
   }
@@ -1099,6 +1108,7 @@ export function ItineraryClient({
           canEdit={userCanEdit}
           onEdit={userCanEdit ? setEditAccommodation : undefined}
           onAddNote={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+          onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdateAccommodation : undefined}
           hasNote={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
         />
       )}

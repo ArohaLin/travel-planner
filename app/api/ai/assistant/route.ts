@@ -28,11 +28,11 @@ export async function POST(request: Request) {
   const {
     itineraryId, threadId, note = '',
     images = [], urls = [],
-    lockedActivityId, lockedDayIndex,
+    lockedActivityId, lockedDayIndex, lockedAccommodationDayIndex,
   } = body as {
     itineraryId: string; threadId: string; note?: string
     images?: AttachImage[]; urls?: string[]
-    lockedActivityId?: string; lockedDayIndex?: number
+    lockedActivityId?: string; lockedDayIndex?: number; lockedAccommodationDayIndex?: number
   }
 
   if (!itineraryId || !threadId) return NextResponse.json({ error: '缺少必要欄位' }, { status: 400 })
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     .filter((_, i) => (i === 0 ? geminiHistory[0].role === 'user' : true))
     .filter((m, i, arr) => i < arr.length - 1 || m.role === 'model')
 
-  const systemPrompt = buildAssistantPrompt(itinerary, { lockedActivityId, lockedDayIndex })
+  const systemPrompt = buildAssistantPrompt(itinerary, { lockedActivityId, lockedDayIndex, lockedAccommodationDayIndex })
   const userText = `使用者補充：${noteText || '（無，請從附件判斷）'}${urlBlock}${imgs.length ? `\n\n（另附 ${imgs.length} 張照片，見圖片）` : ''}`
 
   // ── 呼叫 AI（多模態）：Flash 主、Pro 備援；本機開發走 claude -p（無視覺，僅用文字部分）──

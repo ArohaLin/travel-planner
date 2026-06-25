@@ -192,43 +192,47 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
         {/* Form */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
 
-          {/* 卡片照片（最上方）：預覽 ＋ 上傳/換/移除 */}
+          {/* 卡片照片（最上方）：上傳/換/移除 ＋ 兩種裁切預覽（行程列縮圖＋點開大圖）*/}
           {onUploadPhoto && (
             <div>
               <label className="text-xs font-semibold text-gray-500 mb-1.5 block">卡片照片</label>
-              <div className="flex items-center gap-3">
-                <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200 flex items-center justify-center">
-                  {previewSrc ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={previewSrc} alt="卡片照片預覽" className="w-full h-full object-cover" />
-                  ) : (
-                    <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                      <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l5-4 4 3 3-2 6 4" />
-                    </svg>
-                  )}
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => photoInputRef.current?.click()}
-                    disabled={uploadingPhoto}
-                    className="flex items-center justify-center gap-1.5 h-10 rounded-xl border border-gray-200 text-sm text-gray-700 bg-white active:scale-[0.98] transition disabled:opacity-60"
-                  >
-                    {uploadingPhoto ? (
-                      <><span className="w-4 h-4 border-2 border-gray-300 border-t-purple-500 rounded-full animate-spin" />上傳中…</>
-                    ) : (previewSrc ? '換一張照片' : '上傳照片')}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => photoInputRef.current?.click()}
+                  disabled={uploadingPhoto}
+                  className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-xl border border-gray-200 text-sm text-gray-700 bg-white active:scale-[0.98] transition disabled:opacity-60"
+                >
+                  {uploadingPhoto ? (
+                    <><span className="w-4 h-4 border-2 border-gray-300 border-t-purple-500 rounded-full animate-spin" />上傳中…</>
+                  ) : (previewSrc ? '換一張照片' : '上傳照片')}
+                </button>
+                {form.userPhotoUrl && !uploadingPhoto && (
+                  <button type="button" onClick={() => set('userPhotoUrl', undefined)} className="text-xs text-gray-400 hover:text-red-500">
+                    移除{form.photoRef ? '（改用系統圖）' : ''}
                   </button>
-                  {form.userPhotoUrl && !uploadingPhoto && (
-                    <button type="button" onClick={() => set('userPhotoUrl', undefined)} className="text-xs text-gray-400 hover:text-red-500 self-start">
-                      移除我的照片{form.photoRef ? '（改用系統圖）' : ''}
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
+              {previewSrc ? (
+                <div className="flex gap-3 mt-2.5">
+                  <div className="flex flex-col items-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewSrc} alt="行程列縮圖預覽" className="w-14 h-14 rounded-xl object-cover bg-gray-100 border border-gray-200" />
+                    <span className="text-[10px] text-gray-400 mt-1">行程列縮圖</span>
+                  </div>
+                  <div className="flex-1 flex flex-col min-w-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={previewSrc} alt="點開卡片大圖預覽" className="w-full h-24 rounded-xl object-cover bg-gray-100 border border-gray-200" />
+                    <span className="text-[10px] text-gray-400 mt-1 text-center">點開卡片的大圖</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-400 mt-1.5">尚未設定照片</p>
+              )}
               <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePickPhoto} />
               {photoError
                 ? <p className="text-[11px] text-red-500 mt-1">{photoError}</p>
-                : <p className="text-[11px] text-gray-400 mt-1">上傳後即可預覽；按下方「{mode === 'edit' ? '儲存' : '新增'}」才正式套用。</p>}
+                : <p className="text-[11px] text-gray-400 mt-1.5">兩種裁切都會用到；按下方「{mode === 'edit' ? '儲存' : '新增'}」才正式套用。</p>}
             </div>
           )}
 

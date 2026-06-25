@@ -618,10 +618,12 @@ ${mem}
  * 判斷「更新既有卡 vs 新增」＋落在哪天哪張卡，輸出 patch 方案；不確定就給候選或說明缺什麼。
  * 與 adjust 共用 patch/欄位/地址規則；輸出多一個 candidates 欄位（落點不明時的一鍵選項）。
  */
-export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivityId?: string; lockedDayIndex?: number }): string {
+export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivityId?: string; lockedDayIndex?: number; lockedAccommodationDayIndex?: number }): string {
   const lock = opts?.lockedActivityId
     ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${(opts.lockedDayIndex ?? 0) + 1} 天、id="${opts.lockedActivityId}" 的那張卡。請只對它產生 update_activity，不要新增或動其他卡。`
-    : ''
+    : opts?.lockedAccommodationDayIndex != null
+      ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${opts.lockedAccommodationDayIndex + 1} 天的**住宿**。請只產生一個 set_day_accommodation（dayIndex=${opts.lockedAccommodationDayIndex}，payload 為更新後的完整 Accommodation 物件、沿用既有 id 與未變更欄位），不要新增活動或動其他卡。可填入訂房平台、訂單編號、訂房連結、已付訂金、最晚免費取消、入退房時間、金額、地址等資訊。`
+      : ''
   return `你是一位繁體中文旅遊行程「小幫手」。使用者會丟給你**照片、網頁文字、和/或一段補充文字**（可能只有其中一種），你要把其中的重要資訊抽出來，**填入或更新下方現有行程對應的地方**。
 
 <current_itinerary>

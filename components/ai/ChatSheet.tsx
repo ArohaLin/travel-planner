@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import type { useChat } from '@/lib/hooks/useChat'
+import type { useChat, AssistantLock } from '@/lib/hooks/useChat'
 import type { AIPlan } from '@/lib/types/patch'
 import { ChatMessage } from './ChatMessage'
 import { PlanSelector } from './PlanSelector'
@@ -20,7 +20,7 @@ interface ChatSheetProps {
   /** 方案套用成功後呼叫（讓行程頁立即刷新，不等 Realtime） */
   onPatchApplied?: () => void
   /** 小幫手「用資料更新這張卡」鎖定目標（從卡片詳情開啟）*/
-  assistantLock?: { activityId: string; dayIndex: number; title: string } | null
+  assistantLock?: AssistantLock | null
   onClearAssistantLock?: () => void
 }
 
@@ -164,12 +164,20 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
     } catch { showToast('圖片處理失敗，請換一張試試', 'error') }
   }
 
+  // 把鎖定目標換成送 API 的欄位（活動 → 活動 id+天；住宿 → 住宿天）
+  function lockPayload() {
+    if (!assistantLock) return {}
+    return assistantLock.kind === 'activity'
+      ? { lockedActivityId: assistantLock.activityId, lockedDayIndex: assistantLock.dayIndex }
+      : { lockedAccommodationDayIndex: assistantLock.dayIndex }
+  }
+
   async function handleAssistantSend() {
     const note = input.trim()
     if ((!note && pendingImages.length === 0) || isStreaming) return
     const payload = {
       note, images: pendingImages,
-      ...(assistantLock ? { lockedActivityId: assistantLock.activityId, lockedDayIndex: assistantLock.dayIndex } : {}),
+      ...lockPayload(),
     }
     setInput('')
     setPendingImages([])
@@ -184,7 +192,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
     isAtBottomRef.current = true
     const r = await sendAssistant({
       note: value,
-      ...(assistantLock ? { lockedActivityId: assistantLock.activityId, lockedDayIndex: assistantLock.dayIndex } : {}),
+      ...lockPayload(),
     })
     if (!r.ok) showToast(r.error ?? '小幫手暫時無回應', 'error')
   }

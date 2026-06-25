@@ -14,9 +14,11 @@ interface AccommodationDetailModalProps {
   onEdit?: (acc: Accommodation) => void
   onAddNote?: (acc: Accommodation) => void
   hasNote?: boolean
+  /** 用資料（照片/網址/文字）更新住宿 → 開「AI 小幫手」並鎖定此住宿 */
+  onAssistantUpdate?: (acc: Accommodation) => void
 }
 
-export function AccommodationDetailModal({ accommodation, dayNumber, onClose, canEdit, onEdit, onAddNote, hasNote }: AccommodationDetailModalProps) {
+export function AccommodationDetailModal({ accommodation, dayNumber, onClose, canEdit, onEdit, onAddNote, hasNote, onAssistantUpdate }: AccommodationDetailModalProps) {
   const acc = accommodation
   const resv = effectiveLodgingReservation(acc.reservationStatus)
   const photoSrc = acc.userPhotoUrl ?? (acc.photoRef ? `/api/photo?ref=${encodeURIComponent(acc.photoRef)}` : null)
@@ -96,6 +98,16 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
           {acc.contact && <Section title="聯絡資訊" text={acc.contact} />}
           {acc.notes && <Section title="備註" text={acc.notes} />}
         </div>
+
+        {/* 用資料更新這筆住宿：開 AI 小幫手並鎖定 */}
+        {canEdit && onAssistantUpdate && (
+          <button
+            onClick={() => { onAssistantUpdate(acc); onClose() }}
+            className="flex-shrink-0 mx-5 mt-1 mb-1 flex items-center justify-center gap-1.5 h-10 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium active:scale-[0.98] transition"
+          >
+            🤖 用照片／網址／文字更新這筆住宿
+          </button>
+        )}
 
         {/* Footer */}
         {canEdit && (onEdit || onAddNote) && (
