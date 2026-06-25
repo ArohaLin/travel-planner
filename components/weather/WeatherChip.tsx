@@ -5,18 +5,8 @@ import { clsx } from 'clsx'
 import type { ItineraryDay } from '@/lib/types/itinerary'
 import { useWeather } from '@/lib/hooks/useWeather'
 import { ICON_EMOJI } from '@/lib/weather/display'
+import { dayCoords } from '@/lib/weather/dayCoords'
 import { WeatherDetailSheet } from './WeatherDetailSheet'
-
-/** 當天代表座標：第一個有座標的景點，否則住宿；都沒有則 null */
-function dayCoords(day: ItineraryDay): { lat: number; lng: number } | null {
-  for (const a of day.activities) {
-    const l = a.location
-    if (l && (l.lat !== 0 || l.lng !== 0)) return { lat: l.lat, lng: l.lng }
-  }
-  const ac = day.accommodation?.location
-  if (ac && (ac.lat !== 0 || ac.lng !== 0)) return { lat: ac.lat, lng: ac.lng }
-  return null
-}
 
 export function WeatherChip({ day }: { day: ItineraryDay }) {
   const coords = dayCoords(day)

@@ -1,5 +1,28 @@
 import { NextResponse } from 'next/server'
 import { getForecast, getClimatology, type WeatherResult } from '@/lib/weather/openMeteo'
+import { createServiceRoleClient } from '@/lib/supabase/server'
+
+const NORMALS_TTL = 180 * 86400000 // 歷年統計 180 天才重算（幾乎不變）
+
+/**
+ * 歷年同期：先查 DB 快取（同月日＋同地點格點 0.1°≈11km，跨所有行程/使用者共用）。
+ * 命中且未過期 → 毫秒回；否則現算（~6s archive）一次、寫回 DB，之後全部秒開。
+ */
+async function climatologyCached(lat: number, lng: number, date: string): Promise<WeatherResult> {
+  const latG = Math.round(lat * 10) / 10
+  const lngG = Math.round(lng * 10) / 10
+  const [, mm, dd] = date.split('-').map(Number)
+  const db = createServiceRoleClient()
+  const { data: row } = await db.from('climate_normals')
+    .select('data, computed_at').eq('lat', latG).eq('lng', lngG).eq('month', mm).eq('day', dd).maybeSingle()
+  if (row && Date.now() - new Date(row.computed_at).getTime() < NORMALS_TTL) {
+    return { ...(row.data as object), date } as WeatherResult // echo 請求日期
+  }
+  const c = await getClimatology(latG, lngG, date) // 在格點中心算，與 key 一致
+  if (!c) return { mode: 'none' }
+  await db.from('climate_normals').upsert({ lat: latG, lng: lngG, month: mm, day: dd, data: c, computed_at: new Date().toISOString() })
+  return c
+}
 
 // 公開、非敏感（只吃景點座標＋日期）；模式由伺服器依「距今天數」決定：
 //   過去 → none；≤14 天 → 實際預報；>14 天 → 歷年同期統計。
@@ -33,7 +56,7 @@ export async function GET(request: Request) {
       result = (await getForecast(lat, lng, date)) ?? { mode: 'none' }
       sMaxage = 3600 // 預報 1 小時
     } else {
-      result = (await getClimatology(lat, lng, date)) ?? { mode: 'none' }
+      result = await climatologyCached(lat, lng, date) // 先查 DB 快取，沒有才現算並寫回
       sMaxage = 604800 // 歷年統計幾乎不變 → 7 天
     }
   } catch (e) {

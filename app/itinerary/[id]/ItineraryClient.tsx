@@ -40,6 +40,7 @@ import { useTodos } from '@/lib/hooks/useTodos'
 import { deriveAutoTodos } from '@/lib/todo/deriveTodos'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
+import { WeatherPrefetcher } from '@/components/weather/WeatherPrefetcher'
 import { scanBufferWarnings } from '@/lib/maps/bufferScan'
 import { useToast } from '@/components/ui/Toast'
 import { APIProvider } from '@vis.gl/react-google-maps'
@@ -772,6 +773,8 @@ export function ItineraryClient({
           onSaved={refreshItinerary}
         />
       )}
+      {/* 一進行程就背景預抓所有天的天氣（不必等點到某天）*/}
+      <WeatherPrefetcher itinerary={displayItinerary} />
       <ItineraryHeader
         itinerary={displayItinerary}
         itineraryId={itineraryId}

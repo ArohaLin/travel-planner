@@ -168,6 +168,7 @@ npm run dev        # 開發伺服器 http://localhost:3000
 ### ✅ 每日天氣（2026-06-25）
 兩段式「少＋晚＋可展開」：每天標題列上方一個晴雨小晶片，點擊展開當日詳情。資料源 **Open-Meteo（免費免金鑰）**。
 - **後端**：`lib/weather/openMeteo.ts`（`getForecast` ≤14天實際預報；`getClimatology` >14天近10年同期±3天統計——平均高低溫/降雨機率/雨量/溫度區間，ERA5 archive，archive 查詢約6s、timeout 22s）。`app/api/weather/route.ts` 依「距今天數」決定模式（過去→`mode:'none'`），CDN 快取：預報 `s-maxage=3600`、歷年 `604800`、`maxDuration=30`。middleware 放行 `/api/weather`（公開、只吃座標+日期、非敏感）。
+  - **歷年同期 DB 共用快取**（解「每次等 6 秒」）：`climate_normals` 表（key＝經緯度格點 0.1°≈11km＋月＋日；`migration_climate_normals.sql` 已執行、RLS 開、service role 存取）。route 的 `climatologyCached`：先查 DB → 命中且 <180天 即毫秒回；否則在**格點中心**現算一次（~6–12s）寫回 DB → **同月日＋同地點（含鄰近）所有行程/使用者永久共用、之後 0.15s**。為何慢過：登入 middleware 帶 cookie 使 Vercel CDN 無法快取 `/api/weather`，原本每次重算；DB 快取繞過此問題。
 - **前端**：`lib/hooks/useWeather.ts`（SWR）、`components/weather/WeatherChip.tsx`（座標取當天首個有座標景點，否則住宿；預報=實心晶片、歷年=虛線+「歷年」標籤；emoji 圖示見 `lib/weather/display.ts`）、`WeatherDetailSheet.tsx`（含浮動 X；預報顯示早午晚+日出日落+體感；歷年顯示統計+颱風季提醒）。掛在 `DayView` 頂部。
 - **誠實處理**：歷年標清楚「非預報」，夏季(6–10月)加颱風季提醒。
 
