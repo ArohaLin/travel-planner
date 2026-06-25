@@ -3,7 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 
 // /share + /api/share：對外宣傳冊公開頁與其圖片 proxy（免登入）
 // /api/photo：卡片與宣傳冊共用的景點照片 proxy（公開、以 photoRef 為鍵共用快取）
-const PUBLIC_ROUTES = ['/login', '/register', '/itinerary', '/share', '/api/share', '/api/photo']
+// /api/weather：每日天氣（公開、非敏感，只吃座標＋日期；可 CDN 快取）
+const PUBLIC_ROUTES = ['/login', '/register', '/itinerary', '/share', '/api/share', '/api/photo', '/api/weather']
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })

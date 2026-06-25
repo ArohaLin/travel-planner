@@ -4,6 +4,7 @@ import type { ItineraryDay, Activity, Accommodation, TravelLeg, GeoLocation } fr
 import { clsx } from 'clsx'
 import { ActivityContent } from './ActivityCard'
 import { AccommodationCard } from './AccommodationCard'
+import { WeatherChip } from '@/components/weather/WeatherChip'
 import { CostSummary } from './CostSummary'
 import { useLongPress } from '@/lib/hooks/useLongPress'
 import { fmtKm, toneFor, stayShort } from '@/lib/itinerary/cardTone'
@@ -307,6 +308,9 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
 
   return (
     <div className="px-4 pt-4">
+      {/* 當日天氣晶片（≤14天預報／>14天歷年同期；過去或無座標則不顯示）*/}
+      <WeatherChip day={day} />
+
       {/* Day header（每日簡介，可編輯）*/}
       {day.theme ? (
         <div className="mb-4 px-4 py-3 bg-purple-50 rounded-2xl border border-purple-100 flex items-start gap-2">
