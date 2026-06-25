@@ -84,6 +84,17 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
         className="fixed left-0 right-0 bottom-0 z-[60] bg-white rounded-t-3xl shadow-2xl flex flex-col"
         style={{ maxHeight: '88dvh' }}
       >
+        {/* 明顯的關閉鈕（壓在頂部，照片上也清楚）*/}
+        <button
+          onClick={onClose}
+          aria-label="關閉"
+          className="absolute top-3 right-3 z-[70] w-10 h-10 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm active:scale-90 transition"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
         {hasPhoto ? (
           /* 景點照片 hero（拖曳把手疊在圖上） */
           <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
@@ -103,22 +114,15 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex items-start justify-between px-5 py-3 border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-start gap-2 min-w-0">
-            <span className="text-2xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
-            <div className="min-w-0">
-              <h2 className="font-semibold text-gray-900 text-base leading-snug">{activity.title}</h2>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {dayNumber ? `第 ${dayNumber} 天 · ` : ''}{TYPE_LABELS[activity.type]}
-              </p>
-            </div>
+        {/* Header（關閉鈕已改為頂部浮動 X）*/}
+        <div className="flex items-start gap-2 px-5 py-3 border-b border-gray-100 flex-shrink-0 min-w-0">
+          <span className="text-2xl leading-none mt-0.5">{TYPE_ICONS[activity.type]}</span>
+          <div className="min-w-0 pr-10">
+            <h2 className="font-semibold text-gray-900 text-base leading-snug">{activity.title}</h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {dayNumber ? `第 ${dayNumber} 天 · ` : ''}{TYPE_LABELS[activity.type]}
+            </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         {/* Body */}

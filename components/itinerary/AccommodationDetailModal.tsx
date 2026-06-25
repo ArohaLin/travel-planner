@@ -31,6 +31,17 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
         className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
         style={{ maxHeight: 'calc(94dvh - env(safe-area-inset-top))' }}
       >
+        {/* 明顯的關閉鈕（壓在頂部，照片上也清楚）*/}
+        <button
+          onClick={onClose}
+          aria-label="關閉"
+          className="absolute top-3 right-3 z-[70] w-10 h-10 flex items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm active:scale-90 transition"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
         {/* Hero / handle */}
         {photoSrc ? (
           <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
