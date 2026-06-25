@@ -14,8 +14,16 @@ const shortAddr = (a: string | null) => {
 }
 
 /** 商家評價：列表（單選看詳情／多選比較）。資料來自離線研究 lodging_research。
- *  kind='lodging'（住宿評價）或 'shop'（店家評價，如台東衝浪）；category 指定要讀的類別。 */
-export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initialItems?: LodgingResearch[]; category?: string; kind?: 'lodging' | 'shop' } = {}) {
+ *  kind='lodging'（住宿評價）或 'shop'（店家評價，如台東衝浪）；category 指定要讀的類別。
+ *  inWishlist / onAddToWishlist / busyWishlistId：由 ExploreSheet 傳入，讓每張卡顯示「加入願望清單」按鈕。 */
+export function LodgingTab({ initialItems, category, kind = 'lodging', inWishlist, onAddToWishlist, busyWishlistId }: {
+  initialItems?: LodgingResearch[]
+  category?: string
+  kind?: 'lodging' | 'shop'
+  inWishlist?: Set<string>
+  onAddToWishlist?: (item: LodgingResearch) => Promise<void>
+  busyWishlistId?: string | null
+} = {}) {
   const L = kind === 'shop'
     ? { noun: '店家', icon: '🏄', emptyHint: '深入研究店家後會出現在這裡', tapHint: '點店家看完整介紹', regionEmpty: '此地區目前沒有店家資料。', noCon: '評論與文章中未見明顯負評。', reviewTitle: '真實評論分析' }
     : { noun: '住宿', icon: '🏨', emptyHint: '離線用 lodging-review 技能研究後會出現在這裡', tapHint: '點住宿看完整介紹', regionEmpty: '此地區目前沒有住宿資料。', noCon: '近一年幾乎無負評。', reviewTitle: '近一年評價' }
@@ -49,7 +57,16 @@ export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initi
 
   if (view.kind === 'detail') {
     const item = items.find((i) => i.id === view.id)
-    if (item) return <Detail item={item} onBack={() => setView({ kind: 'list' })} L={L} />
+    if (item) return (
+      <Detail
+        item={item}
+        onBack={() => setView({ kind: 'list' })}
+        L={L}
+        onAddToWishlist={onAddToWishlist ? () => onAddToWishlist(item) : undefined}
+        wishlistAdded={!!item.googlePlaceId && (inWishlist?.has(item.googlePlaceId) ?? false)}
+        busyWishlist={busyWishlistId === item.googlePlaceId}
+      />
+    )
   }
   if (view.kind === 'compare') {
     const list = items.filter((i) => selected.has(i.id))
@@ -100,8 +117,13 @@ export function LodgingTab({ initialItems, category, kind = 'lodging' }: { initi
       </div>
       <div className="px-4 pb-2 space-y-2.5">
         {visible.map((it) => (
-          <LodgingCard key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)} icon={L.icon}
-            onTap={() => (compareMode ? toggle(it.id) : setView({ kind: 'detail', id: it.id }))} />
+          <LodgingCard
+            key={it.id} item={it} compareMode={compareMode} checked={selected.has(it.id)} icon={L.icon}
+            onTap={() => (compareMode ? toggle(it.id) : setView({ kind: 'detail', id: it.id }))}
+            onAddToWishlist={onAddToWishlist ? () => onAddToWishlist(it) : undefined}
+            wishlistAdded={!!it.googlePlaceId && (inWishlist?.has(it.googlePlaceId) ?? false)}
+            busyWishlist={busyWishlistId === it.googlePlaceId}
+          />
         ))}
         {visible.length === 0 && <p className="text-center text-[13px] text-gray-400 py-10">{L.regionEmpty}</p>}
       </div>
@@ -135,41 +157,57 @@ function RegionPill({ label, count, active, onClick }: { label: string; count: n
 }
 
 // ── 列表卡 ───────────────────────────────────────────────────────────────────
-function LodgingCard({ item, compareMode, checked, onTap, icon }: { item: LodgingResearch; compareMode: boolean; checked: boolean; onTap: () => void; icon: string }) {
+function LodgingCard({ item, compareMode, checked, onTap, icon, onAddToWishlist, wishlistAdded, busyWishlist }: {
+  item: LodgingResearch; compareMode: boolean; checked: boolean; onTap: () => void; icon: string
+  onAddToWishlist?: () => void; wishlistAdded?: boolean; busyWishlist?: boolean
+}) {
   const photo = photoUrl(item.photoRef)
   return (
-    <button
-      onClick={onTap}
-      className={clsx('w-full flex items-center gap-3 rounded-2xl border p-2.5 text-left transition-colors active:bg-gray-50',
-        compareMode && checked ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50/40' : 'border-gray-200 bg-white')}
-    >
-      {photo ? (
-        <img src={photo} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" loading="lazy" />
-      ) : (
-        <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">{icon}</div>
+    <div className={clsx('rounded-2xl border overflow-hidden transition-colors',
+      compareMode && checked ? 'border-purple-400 ring-2 ring-purple-200 bg-purple-50/40' : 'border-gray-200 bg-white')}>
+      <button
+        onClick={onTap}
+        className="w-full flex items-center gap-3 p-2.5 text-left active:bg-gray-50"
+      >
+        {photo ? (
+          <img src={photo} alt="" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 bg-gray-100" loading="lazy" />
+        ) : (
+          <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center text-2xl flex-shrink-0">{icon}</div>
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="text-[17px] font-semibold text-gray-900 truncate">{item.name}</div>
+          <div className="text-[13px] text-gray-500 truncate">
+            {[item.city, item.district].filter(Boolean).join('')}・{shortAddr(item.address)}
+          </div>
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            <span className={clsx('text-[18px] font-bold leading-none', rateColor(item.rating))}>★ {item.rating ?? '—'}</span>
+            <span className="text-[12px] text-gray-400">{item.totalReviews != null ? `${item.totalReviews.toLocaleString()} 則` : ''}</span>
+            {item.starClass && <span className="text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{item.starClass}</span>}
+            {item.confidence === 'med' && <span className="text-[11px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">名稱相近</span>}
+          </div>
+        </div>
+        {/* 比較模式：勾選框；一般模式：箭頭 */}
+        {compareMode ? (
+          <div className={clsx('w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0',
+            checked ? 'bg-purple-600 border-purple-600' : 'border-gray-300')}>
+            {checked && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+          </div>
+        ) : (
+          <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+        )}
+      </button>
+      {/* 加入願望清單（比較模式隱藏；僅當 ExploreSheet 傳入 handler 才出現） */}
+      {!compareMode && onAddToWishlist && (
+        <button
+          onClick={onAddToWishlist}
+          disabled={wishlistAdded || busyWishlist}
+          className={clsx('w-full py-2 text-[13px] font-medium border-t border-gray-100 flex items-center justify-center gap-1.5',
+            wishlistAdded ? 'text-gray-400' : 'text-purple-600 active:bg-purple-50')}
+        >
+          {busyWishlist ? '加入中…' : wishlistAdded ? '✓ 已加入願望清單' : '♡ 加入願望清單'}
+        </button>
       )}
-      <div className="flex-1 min-w-0">
-        <div className="text-[17px] font-semibold text-gray-900 truncate">{item.name}</div>
-        <div className="text-[13px] text-gray-500 truncate">
-          {[item.city, item.district].filter(Boolean).join('')}・{shortAddr(item.address)}
-        </div>
-        <div className="mt-1 flex items-center gap-2 flex-wrap">
-          <span className={clsx('text-[18px] font-bold leading-none', rateColor(item.rating))}>★ {item.rating ?? '—'}</span>
-          <span className="text-[12px] text-gray-400">{item.totalReviews != null ? `${item.totalReviews.toLocaleString()} 則` : ''}</span>
-          {item.starClass && <span className="text-[11px] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">{item.starClass}</span>}
-          {item.confidence === 'med' && <span className="text-[11px] text-amber-600 bg-amber-50 rounded px-1.5 py-0.5">名稱相近</span>}
-        </div>
-      </div>
-      {/* 比較模式：勾選框；一般模式：箭頭（暗示點進去看介紹） */}
-      {compareMode ? (
-        <div className={clsx('w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0',
-          checked ? 'bg-purple-600 border-purple-600' : 'border-gray-300')}>
-          {checked && <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
-        </div>
-      ) : (
-        <svg className="w-5 h-5 text-gray-300 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-      )}
-    </button>
+    </div>
   )
 }
 
@@ -216,7 +254,10 @@ function ProConRow({ pc, kind }: { pc: ProCon; kind: 'pro' | 'con' }) {
 }
 
 // ── 詳情（單間）──────────────────────────────────────────────────────────────
-function Detail({ item, onBack, L }: { item: LodgingResearch; onBack: () => void; L: TabLabels }) {
+function Detail({ item, onBack, L, onAddToWishlist, wishlistAdded, busyWishlist }: {
+  item: LodgingResearch; onBack: () => void; L: TabLabels
+  onAddToWishlist?: () => void; wishlistAdded?: boolean; busyWishlist?: boolean
+}) {
   const photo = photoUrl(item.photoRef)
   const sysPros = item.pros.filter((p) => p.systematic)
   const otherPros = item.pros.filter((p) => !p.systematic)
@@ -238,6 +279,18 @@ function Detail({ item, onBack, L }: { item: LodgingResearch; onBack: () => void
             </div>
           </div>
         </div>
+
+        {/* 加入願望清單 */}
+        {onAddToWishlist && (
+          <button
+            onClick={onAddToWishlist}
+            disabled={wishlistAdded || busyWishlist}
+            className={clsx('w-full py-3 rounded-2xl text-[15px] font-semibold flex items-center justify-center gap-1.5',
+              wishlistAdded ? 'bg-gray-100 text-gray-400' : 'bg-purple-600 text-white active:bg-purple-700 disabled:opacity-60')}
+          >
+            {busyWishlist ? '加入中…' : wishlistAdded ? '✓ 已在願望清單中' : '♡ 加入願望清單'}
+          </button>
+        )}
 
         {/* 官網 / Google 介紹連結 */}
         {(item.features?.official || item.googlePlaceId) && (

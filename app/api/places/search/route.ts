@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getServerMapsKey } from '@/lib/maps/places'
 import { mapRecommendation, type Recommendation } from '@/lib/types/recommendation'
+import { mapLodgingToRecommendation, cityToRegion } from '@/lib/utils/lodgingToRec'
 
 /**
  * 地點搜尋：同時回「我方策展清單命中」＋「Google Places 即時結果」。
@@ -25,14 +26,35 @@ export async function GET(req: Request) {
 
   // 1) 策展清單命中（名稱模糊比對）
   //    指定地區（非 all）→ 限該區；否則用目的地文字 near 比對地區（全部則不限）。
-  const { data: recRows } = await db
-    .from('recommendations').select('*').eq('status', 'published').ilike('name', `%${q}%`)
-  const curated = (recRows ?? [])
+  const [recResult, lodgingResult] = await Promise.all([
+    db.from('recommendations').select('*').eq('status', 'published').ilike('name', `%${q}%`),
+    db.from('lodging_research')
+      .select('id, google_place_id, name, category, city, district, address, rating, total_reviews, photo_ref, verdict, suitable_for, researched_at, features')
+      .ilike('name', `%${q}%`)
+      .order('rating', { ascending: false })
+      .limit(8),
+  ])
+
+  const curated = (recResult.data ?? [])
     .map(mapRecommendation)
     .filter((r: Recommendation) =>
       region && region !== 'all' ? r.region === region : (!near || near.includes(r.region)))
     .slice(0, 8)
   const curatedPlaceIds = new Set(curated.map((r: Recommendation) => r.googlePlaceId))
+
+  // 也納入 lodging_research 命中（去重，依地區篩選）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lodgingCurated = (lodgingResult.data ?? []).filter((lr: any) => {
+    if (!lr.google_place_id || curatedPlaceIds.has(lr.google_place_id)) return false
+    if (region && region !== 'all') return cityToRegion(lr.city, lr.district) === region
+    if (near) { const rgn = cityToRegion(lr.city, lr.district); return !rgn || near.includes(rgn) }
+    return true
+  }).slice(0, 5).map(mapLodgingToRecommendation)
+
+  const allCurated = [...curated, ...lodgingCurated]
+  // 讓 Google 搜尋去除所有已策展項目（含 lodging）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  lodgingCurated.forEach((lc: any) => curatedPlaceIds.add(lc.googlePlaceId as string))
 
   // 2) Google Places Text Search（即時）
   const key = getServerMapsKey()
@@ -77,5 +99,5 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ curated, places })
+  return NextResponse.json({ curated: allCurated, places })
 }

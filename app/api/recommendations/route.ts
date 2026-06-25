@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
-import { mapRecommendation } from '@/lib/types/recommendation'
+import { mapRecommendation, type Recommendation } from '@/lib/types/recommendation'
+import { mapLodgingToRecommendation } from '@/lib/utils/lodgingToRec'
 
 /**
  * 精選推薦讀取。
@@ -19,15 +20,27 @@ export async function GET(req: Request) {
   const region = (searchParams.get('region') ?? '').trim()
 
   const db = createServiceRoleClient()
-  const { data, error } = await db
-    .from('recommendations')
-    .select('*')
-    .eq('status', 'published')
-    .order('credibility', { ascending: false })
-  if (error) return NextResponse.json({ error: '讀取失敗' }, { status: 500 })
+  const [recResult, lodgingResult] = await Promise.all([
+    db.from('recommendations').select('*').eq('status', 'published').order('credibility', { ascending: false }),
+    db.from('lodging_research')
+      .select('id, google_place_id, name, category, city, district, address, rating, total_reviews, photo_ref, verdict, suitable_for, researched_at, features')
+      .gte('rating', 4.0),
+  ])
+  if (recResult.error) return NextResponse.json({ error: '讀取失敗' }, { status: 500 })
 
-  const all = data ?? []
-  const regions: string[] = Array.from(new Set(all.map((r: { region: string }) => r.region as string)))
+  const all = recResult.data ?? []
+  const recPlaceIds = new Set(all.map((r: { google_place_id: string }) => r.google_place_id))
+
+  // lodging_research → 合併進精選推薦（去除與 recommendations 重複的 place_id）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lodgingItems: Recommendation[] = (lodgingResult.data ?? [])
+    .filter((lr: any) => lr.google_place_id && !recPlaceIds.has(lr.google_place_id as string))
+    .map(mapLodgingToRecommendation)
+
+  // 所有可用地區（recommendations + lodging_research）
+  const recRegions = Array.from(new Set(all.map((r: { region: string }) => r.region as string)))
+  const lodgingRegions = lodgingItems.map((lr) => lr.region).filter((r): r is string => !!r)
+  const regions: string[] = Array.from(new Set([...recRegions, ...lodgingRegions])).filter((r): r is string => !!r)
 
   // 決定生效地區：明確指定 > 目的地比對 > 全部
   let effective: string
@@ -35,7 +48,16 @@ export async function GET(req: Request) {
   else if (region) effective = region
   else effective = regions.find((rg) => q && q.includes(rg)) ?? 'all'
 
-  const rows = effective === 'all' ? all : all.filter((r: { region: string }) => r.region === effective)
-  const items = rows.map(mapRecommendation)
+  const filteredRecs = effective === 'all' ? all : all.filter((r: { region: string }) => r.region === effective)
+  const filteredLodging = effective === 'all'
+    ? lodgingItems
+    : lodgingItems.filter((lr) => lr.region === effective)
+
+  // 合併並依可信度排序
+  const items = [
+    ...filteredRecs.map(mapRecommendation),
+    ...filteredLodging,
+  ].sort((a, b) => (b.credibility ?? 0) - (a.credibility ?? 0))
+
   return NextResponse.json({ items, regions, region: effective })
 }

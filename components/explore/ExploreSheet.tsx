@@ -7,6 +7,8 @@ import type { ItineraryDay } from '@/lib/types/itinerary'
 import type { Recommendation, RecommendationCategory, WishlistItem } from '@/lib/types/recommendation'
 import { suggestSlots, slotForTargetDay, type Slot } from '@/lib/explore/placement'
 import { LodgingTab } from '@/components/explore/LodgingTab'
+import type { LodgingResearch } from '@/lib/types/lodging'
+import { mapLodgingCategory } from '@/lib/utils/lodgingToRec'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
 
@@ -131,12 +133,34 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
       })
   const openCount = wishlist.filter((w) => !titles.has(w.name)).length
 
-  async function addToWishlist(r: Recommendation) {
-    setBusyId(r.id)
+  // 從住宿評價 / 店家評價 tab 加入願望清單
+  async function addLodgingToWishlist(item: LodgingResearch) {
+    const gid = item.googlePlaceId
+    setBusyId(gid)
     try {
       const res = await fetch(`/api/itinerary/${itineraryId}/wishlist`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'recommendation', recommendationId: r.id, googlePlaceId: r.googlePlaceId, name: r.name, category: r.category, lat: r.lat, lng: r.lng, photoRef: r.photoRef }),
+        body: JSON.stringify({ source: 'search', googlePlaceId: gid, name: item.name, category: mapLodgingCategory(item.category), lat: null, lng: null, photoRef: item.photoRef }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) { setWishlist((prev) => [data.item, ...prev]); showToast(`已加入願望清單：${item.name}`, 'success') }
+      else if (res.status === 409) showToast('已在願望清單中', 'info')
+      else showToast(data.error ?? '加入失敗', 'error')
+    } catch { showToast('網路錯誤', 'error') } finally { setBusyId(null) }
+  }
+
+  async function addToWishlist(r: Recommendation) {
+    setBusyId(r.id)
+    // lodging_research 來的 Recommendation（id 以 "lodging:" 開頭）→ source='search'，不存 recommendationId
+    const isLodgingSource = r.id.startsWith('lodging:')
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}/wishlist`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: isLodgingSource ? 'search' : 'recommendation',
+          recommendationId: isLodgingSource ? null : r.id,
+          googlePlaceId: r.googlePlaceId, name: r.name, category: r.category, lat: r.lat, lng: r.lng, photoRef: r.photoRef,
+        }),
       })
       const data = await res.json().catch(() => ({}))
       if (res.ok) { setWishlist((prev) => [data.item, ...prev]); showToast(`已加入願望清單：${r.name}`, 'success') }
@@ -218,9 +242,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
 
         <div className="flex-1 overflow-y-auto scroll-touch" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
           {tab === 'lodging' ? (
-            <LodgingTab />
+            <LodgingTab inWishlist={inWishlist} onAddToWishlist={addLodgingToWishlist} busyWishlistId={busyId} />
           ) : tab === 'shop' ? (
-            <LodgingTab kind="shop" />
+            <LodgingTab kind="shop" inWishlist={inWishlist} onAddToWishlist={addLodgingToWishlist} busyWishlistId={busyId} />
           ) : loading ? (
             <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" /></div>
           ) : tab === 'recommend' ? (
