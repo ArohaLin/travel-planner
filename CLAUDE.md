@@ -144,6 +144,17 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **恢復**：被「略過/完成」且條件仍成立的自動提醒，會出現在抽屜底部「顯示已完成・已略過」區，可按「恢復」清掉覆蓋記號（`resolveAuto(key,false)`）讓它回到清單。
 - **處理中動畫**：所有非同步操作（標已預訂/完成/略過/新增/打勾/刪除/編輯/恢復）按下後顯示 spinner，等套用＋畫面更新才消失，避免以為沒反應。
 
+### ✅ AI 小幫手（多模態匯入，2026-06-25）
+把照片／網址／文字丟給 AI → 自動抽取重要資訊 → 判斷新增或更新既有卡＋落在哪天 → 出 patch 方案（沿用方案卡→確認→歷程快照）；不確定就給候選或說明缺什麼。**「Gemini vision」不是新模型——現有 Flash/Pro 本身就多模態**。
+- **入口/模式**：ChatSheet 第三模式「🤖 小幫手」（amber），對話串獨立（thread `mode=assistant`，chat_threads.mode 無 CHECK、免 migration）。輸入區附件版：📷 加照片（壓縮後 base64）＋貼網址＋補充文字；AI 回的候選做成一鍵回覆。
+- **後端**：獨立路由 `app/api/ai/assistant/route.ts`（**非串流**、`maxDuration=300`、Gemini 多模態 Flash→Pro 備援、JSON `{message,plans,candidates}`）。`buildAssistantPrompt`（systemPrompt.ts）＋`parseAssistantJson`（patchParser.ts）。網址抓取 `lib/ai/fetchUrl.ts`（HTML→文字）、圖片壓縮 `lib/utils/image.ts`（canvas ≤1280px JPEG）。本機 `LOCAL_AI` 走 claude -p（無視覺）。
+- **Phase 2 單卡鎖定**：卡片詳情「🤖 用照片/網址/文字更新這張卡」→ 開小幫手並鎖定該卡（`lockedActivityId/lockedDayIndex` 傳進 prompt 的 🔒 段，AI 只對該卡 `update_activity`）。ChatSheet 顯示「🔒 只更新這張卡」橫幅、可解除；切到調整/咨詢自動清鎖。
+- **Phase 3 使用者照片設為卡片照**：
+  - **Storage**：公開 bucket `card-photos`（單檔5MB、限圖片；用 service role `createBucket` 建立）。Activity 加 `userPhotoUrl` 欄位，**卡片縮圖＋詳情 hero 優先顯示它**（其次 Google `photoRef`）。
+  - **流程**：卡片詳情「設為卡片照片／換一張」→ 選圖 → client 壓縮 → `POST /api/itinerary/[id]/upload-photo`（auth+canEdit，路徑固定 `{id}/{activityId}.jpg`、upsert 覆蓋不留孤兒檔，回公開 URL 帶 `?v=ts` 破 CDN 快取）→ `update_activity` patch 寫 `userPhotoUrl`（進歷程）。
+  - `forPrompt()` 濾掉 `userPhotoUrl`（與 `photoRef`、travelLegs 同）。
+- **未做**：小幫手上傳的店家照自動設成卡片照（目前設卡片照走獨立按鈕）；更強的動態網頁抓取。
+
 ---
 
 ## 專案結構（重點檔案）
