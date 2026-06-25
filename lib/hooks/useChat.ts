@@ -8,8 +8,17 @@ import type { ModelProvider } from '@/lib/ai/client'
 import { saveLastAIInfo } from '@/lib/hooks/useLastAIInfo'
 import type { AIResultInfo } from '@/lib/ai/pricing'
 
-export type ChatMode = 'adjust' | 'consult'
+export type ChatMode = 'adjust' | 'consult' | 'assistant'
 export type { ModelProvider }
+
+/** 小幫手送出的附件 payload */
+export interface AssistantPayload {
+  note?: string
+  images?: { mimeType: string; data: string }[]
+  urls?: string[]
+  lockedActivityId?: string
+  lockedDayIndex?: number
+}
 
 interface UseChatReturn {
   messages: ChatMessage[]
@@ -25,6 +34,8 @@ interface UseChatReturn {
   markPlanApplied: (messageId: string, planIndex: number, planTitle: string) => void
   markPlanCancelled: (messageId: string) => void
   sendMessage: (text: string, itineraryId: string, modelProvider?: ModelProvider) => Promise<void>
+  /** 小幫手模式：送出照片/網址/文字 → /api/ai/assistant（非串流）→ 完成後重載訊息與方案 */
+  sendAssistant: (payload: AssistantPayload) => Promise<{ ok: boolean; error?: string }>
   queueMessage: (text: string, modelProvider?: ModelProvider) => void
   cancelStreaming: () => void
   /** 重新從 DB 抓最新訊息並還原待選方案（開啟視窗/回前景時呼叫，補救行動裝置斷線漏接） */
@@ -391,6 +402,37 @@ export function useChat(itineraryId: string): UseChatReturn {
     abortRef.current?.abort()
   }, [])
 
+  // 小幫手：送附件給 /api/ai/assistant（非串流；伺服器寫 user+assistant 訊息）→ 完成後重載
+  const sendAssistant = useCallback(
+    async (payload: AssistantPayload): Promise<{ ok: boolean; error?: string }> => {
+      if (!threadId || isStreaming) return { ok: false, error: '尚未就緒' }
+      setIsStreaming(true)
+      setStreamingText('')
+      setIsGeneratingPlans(true) // 顯示「處理中」動畫
+      setLastPlans(null)
+      setLastPlansMessageId(null)
+      try {
+        const res = await fetch('/api/ai/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itineraryId, threadId, ...payload }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (data?.aiInfo) saveLastAIInfo(data.aiInfo)
+        if (!res.ok) return { ok: false, error: data?.error ?? '小幫手暫時無回應' }
+        return { ok: true }
+      } catch {
+        return { ok: false, error: '網路錯誤，請再試一次' }
+      } finally {
+        setIsStreaming(false)
+        setIsGeneratingPlans(false)
+        // 重載：撈出伺服器寫好的 user+assistant 訊息與待選方案（Realtime 也會送，這裡保險）
+        setTimeout(() => reloadFromDbRef.current(), 300)
+      }
+    },
+    [threadId, isStreaming, itineraryId],
+  )
+
   // 佇列一則訊息（不論 threadId 是否就緒）；ready 後由下方 effect 自動送出
   const queueMessage = useCallback((text: string, model: ModelProvider = 'claude') => {
     setChatMode('adjust')
@@ -465,6 +507,7 @@ export function useChat(itineraryId: string): UseChatReturn {
     markPlanApplied,
     markPlanCancelled,
     sendMessage,
+    sendAssistant,
     queueMessage,
     cancelStreaming,
     refreshMessages,

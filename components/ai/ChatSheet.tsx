@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { useAIInfoHistory } from '@/lib/hooks/useLastAIInfo'
 import { usePushNotification } from '@/lib/hooks/usePushNotification'
+import { fileToCompressedBase64 } from '@/lib/utils/image'
 
 interface ChatSheetProps {
   itineraryId: string
@@ -34,6 +35,12 @@ const SUGGESTIONS_CONSULT = [
   '旅遊保險需要買嗎？',
 ]
 
+const SUGGESTIONS_ASSISTANT = [
+  '丟訂房確認截圖，幫我標已預訂',
+  '貼一個景點/餐廳連結，加進行程',
+  '上傳店家照片，補進對應的卡片',
+]
+
 export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSheetProps) {
   const [input, setInput] = useState('')
   const [isApplying, setIsApplying] = useState(false)
@@ -55,10 +62,22 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
     messages, streamingText, isStreaming, isGeneratingPlans,
     chatMode, setChatMode,
     lastPlans, lastPlansMessageId, clearLastPlans, markPlanApplied, markPlanCancelled,
-    sendMessage, cancelStreaming,
+    sendMessage, sendAssistant, cancelStreaming,
   } = chat
 
-  const suggestions = chatMode === 'adjust' ? SUGGESTIONS_ADJUST : SUGGESTIONS_CONSULT
+  // 小幫手：待送照片（壓縮後 base64）
+  const [pendingImages, setPendingImages] = useState<{ mimeType: string; data: string }[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const suggestions = chatMode === 'adjust' ? SUGGESTIONS_ADJUST : chatMode === 'consult' ? SUGGESTIONS_CONSULT : SUGGESTIONS_ASSISTANT
+
+  // 小幫手候選落點：最後一則是 assistant 且帶 candidates、且無待選方案時顯示
+  const lastMsg = messages[messages.length - 1]
+  const candidates: { label: string; value: string }[] =
+    chatMode === 'assistant' && !isStreaming && !(lastPlans && lastPlans.length) && lastMsg?.role === 'assistant'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (((lastMsg.patch as any)?.candidates as { label: string; value: string }[] | undefined) ?? [])
+      : []
 
   // Track whether the user is near the bottom of the scroll container
   const handleScroll = useCallback(() => {
@@ -127,6 +146,38 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
     // Scroll to bottom when user sends
     isAtBottomRef.current = true
     await sendMessage(text, itineraryId, modelProvider)
+  }
+
+  // ── 小幫手：加照片（壓縮）/ 送出 / 點候選 ──────────────────────────────
+  async function handleAddPhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // 允許重選同檔
+    if (!files.length) return
+    const room = 6 - pendingImages.length
+    if (room <= 0) { showToast('最多 6 張照片', 'info'); return }
+    try {
+      const compressed = await Promise.all(files.slice(0, room).map((f) => fileToCompressedBase64(f)))
+      setPendingImages((prev) => [...prev, ...compressed].slice(0, 6))
+    } catch { showToast('圖片處理失敗，請換一張試試', 'error') }
+  }
+
+  async function handleAssistantSend() {
+    const note = input.trim()
+    if ((!note && pendingImages.length === 0) || isStreaming) return
+    const payload = { note, images: pendingImages }
+    setInput('')
+    setPendingImages([])
+    if (inputRef.current) inputRef.current.style.height = 'auto'
+    isAtBottomRef.current = true
+    const r = await sendAssistant(payload)
+    if (!r.ok) showToast(r.error ?? '小幫手暫時無回應', 'error')
+  }
+
+  async function handleCandidate(value: string) {
+    if (isStreaming) return
+    isAtBottomRef.current = true
+    const r = await sendAssistant({ note: value })
+    if (!r.ok) showToast(r.error ?? '小幫手暫時無回應', 'error')
   }
 
   function handleCancel() {
@@ -209,7 +260,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (!isStreaming) handleSend()
+      if (isStreaming) return
+      if (chatMode === 'assistant') handleAssistantSend()
+      else handleSend()
     }
   }
 
@@ -236,35 +289,8 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
 
         {/* Header */}
         <div className="flex flex-col border-b border-gray-100 flex-shrink-0">
-          <div className="flex items-center justify-between px-4 py-2">
-            <h2 className="font-semibold text-gray-900">和 AI 說說你的想法</h2>
-
-            {/* 模式切換 Toggle */}
-            <div className="flex items-center bg-gray-100 rounded-xl p-0.5 gap-0.5">
-              <button
-                onClick={() => { setChatMode('adjust'); setModelProvider('gemini'); clearLastPlans() }}
-                className={clsx(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  chatMode === 'adjust'
-                    ? 'bg-white text-purple-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                ✎ 行程調整
-              </button>
-              <button
-                onClick={() => { setChatMode('consult'); clearLastPlans() }}
-                className={clsx(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                  chatMode === 'consult'
-                    ? 'bg-white text-blue-700 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                )}
-              >
-                💬 咨詢服務
-              </button>
-            </div>
-
+          <div className="flex items-center justify-between px-4 pt-2 pb-1">
+            <h2 className="font-semibold text-gray-900 text-sm">和 AI 說</h2>
             <button
               onClick={onClose}
               className="tap-target text-gray-400 hover:text-gray-600 p-1"
@@ -275,9 +301,34 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
             </button>
           </div>
 
+          {/* 模式切換 Toggle（獨立一列、滿版三等分）*/}
+          <div className="flex items-stretch bg-gray-100 rounded-xl p-0.5 gap-0.5 mx-4 mb-2">
+            <button
+              onClick={() => { setChatMode('adjust'); setModelProvider('gemini'); clearLastPlans() }}
+              className={clsx('flex-1 py-1.5 rounded-lg text-xs font-medium transition-all', chatMode === 'adjust' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500')}
+            >
+              ✎ 調整
+            </button>
+            <button
+              onClick={() => { setChatMode('consult'); clearLastPlans() }}
+              className={clsx('flex-1 py-1.5 rounded-lg text-xs font-medium transition-all', chatMode === 'consult' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500')}
+            >
+              💬 咨詢
+            </button>
+            <button
+              onClick={() => { setChatMode('assistant'); clearLastPlans() }}
+              className={clsx('flex-1 py-1.5 rounded-lg text-xs font-medium transition-all', chatMode === 'assistant' ? 'bg-white text-amber-700 shadow-sm' : 'text-gray-500')}
+            >
+              🤖 小幫手
+            </button>
+          </div>
+
           {/* 模型切換列：調整模式只有 Gemini；咨詢模式可選 Gemini 或 本地 AI */}
           <div className="flex items-center gap-2 px-4 pb-2">
             <span className="text-xs text-gray-400">AI 模型：</span>
+            {chatMode === 'assistant' ? (
+              <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded-md">✦ Gemini · 看圖</span>
+            ) : (
             <div className="flex items-center bg-gray-100 rounded-lg p-0.5 gap-0.5">
               <button
                 onClick={() => setModelProvider('gemini')}
@@ -306,6 +357,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
                 </button>
               )}
             </div>
+            )}
 
             {/* AI 完成通知開關（iOS 需從主畫面開啟的 PWA 才支援） */}
             {push.state !== 'unsupported' && push.state !== 'loading' && (
@@ -345,15 +397,17 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
           {messages.length === 0 && !isStreaming && (
             <div className="text-center py-6 text-gray-400">
               <div className="text-3xl mb-2">
-                {chatMode === 'adjust' ? '✎' : '💬'}
+                {chatMode === 'adjust' ? '✎' : chatMode === 'consult' ? '💬' : '🤖'}
               </div>
               <p className="text-sm font-medium text-gray-500 mb-1">
-                {chatMode === 'adjust' ? '行程調整模式' : '咨詢服務模式'}
+                {chatMode === 'adjust' ? '行程調整模式' : chatMode === 'consult' ? '咨詢服務模式' : '小幫手模式'}
               </p>
               <p className="text-xs text-gray-400 mb-4">
                 {chatMode === 'adjust'
                   ? 'AI 會提供 1 個調整方案，你決定是否採用'
-                  : 'AI 提供旅遊建議，不修改行程'}
+                  : chatMode === 'consult'
+                    ? 'AI 提供旅遊建議，不修改行程'
+                    : '丟照片／網址／文字，AI 自動抽取資訊填入行程；確認方案才套用'}
               </p>
               <div className="flex flex-wrap gap-2 justify-center">
                 {suggestions.map((s) => (
@@ -432,6 +486,22 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
             </div>
           )}
 
+          {/* 小幫手候選落點：一鍵選擇要怎麼填 */}
+          {candidates.length > 0 && (
+            <div className="flex flex-col gap-2 pl-9">
+              <p className="text-xs text-gray-400">請選擇要怎麼處理：</p>
+              {candidates.map((c, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleCandidate(c.value)}
+                  className="text-left text-sm bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2.5 rounded-2xl active:bg-amber-100 transition-colors"
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
 
@@ -477,7 +547,40 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
           className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
         >
+          {/* 小幫手：待送照片縮圖列 + 隱藏的檔案選擇 */}
+          {chatMode === 'assistant' && (
+            <>
+              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAddPhotos} />
+              {pendingImages.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 scroll-touch">
+                  {pendingImages.map((im, i) => (
+                    <div key={i} className="relative flex-shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={`data:${im.mimeType};base64,${im.data}`} alt="" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+                      <button
+                        onClick={() => setPendingImages((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900/80 text-white rounded-full flex items-center justify-center text-xs leading-none"
+                        aria-label="移除照片"
+                      >×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
           <div className="flex gap-2 items-end">
+            {chatMode === 'assistant' && !isStreaming && (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="tap-target w-11 h-11 bg-gray-100 text-gray-500 rounded-2xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 hover:bg-gray-200"
+                title="加照片"
+                aria-label="加照片"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
+                  <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l5-4 4 3 3-2 6 4" />
+                </svg>
+              </button>
+            )}
             <textarea
               ref={inputRef}
               value={input}
@@ -486,7 +589,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
               placeholder={
                 chatMode === 'adjust'
                   ? '輸入調整需求，AI 將提供最佳方案...'
-                  : '輸入旅遊問題，AI 提供建議...'
+                  : chatMode === 'consult'
+                    ? '輸入旅遊問題，AI 提供建議...'
+                    : '貼網址、或補充說明（可不填，直接加照片送出）...'
               }
               rows={1}
               className={clsx(
@@ -503,22 +608,26 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
               }}
             />
             {isStreaming ? (
-              /* Cancel / interrupt button */
+              /* Cancel / interrupt button — 小幫手非串流，僅顯示忙碌不可中斷 */
+              chatMode === 'assistant' ? (
+                <div className="w-11 h-11 bg-gray-200 text-gray-400 rounded-2xl flex items-center justify-center flex-shrink-0">
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" /></svg>
+                </div>
+              ) : (
               <button
                 onClick={handleCancel}
                 className="tap-target w-11 h-11 bg-red-500 text-white rounded-2xl flex items-center justify-center active:scale-95 transition-all flex-shrink-0 shadow-sm"
                 title="中斷 AI 回覆"
               >
-                {/* Stop square icon */}
                 <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                   <rect x="5" y="5" width="14" height="14" rx="2" />
                 </svg>
               </button>
+              )
             ) : (
-              /* Send button */
               <button
-                onClick={handleSend}
-                disabled={!input.trim()}
+                onClick={chatMode === 'assistant' ? handleAssistantSend : handleSend}
+                disabled={chatMode === 'assistant' ? (!input.trim() && pendingImages.length === 0) : !input.trim()}
                 className="tap-target w-11 h-11 bg-purple-600 text-white rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 flex-shrink-0"
               >
                 <svg className="w-5 h-5 -rotate-45 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">

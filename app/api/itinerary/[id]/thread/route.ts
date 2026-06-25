@@ -22,7 +22,8 @@ export async function GET(
   if (!access.visible) return NextResponse.json({ error: '無存取權限' }, { status: 403 })
 
   const url = new URL(request.url)
-  const mode = url.searchParams.get('mode') === 'consult' ? 'consult' : 'adjust'
+  const m = url.searchParams.get('mode')
+  const mode = m === 'consult' ? 'consult' : m === 'assistant' ? 'assistant' : 'adjust'
 
   // Try to find an existing thread for this itinerary+mode
   const { data: thread } = await db

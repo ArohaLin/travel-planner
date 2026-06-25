@@ -613,6 +613,79 @@ ${mem}
 - 若使用者要求「修改行程」，請說明這是「咨詢服務模式」，引導他切換到「行程調整模式」。`
 }
 
+/**
+ * 小幫手模式（多模態匯入）：使用者丟照片／網頁文字／文字補充，AI 抽取重要資訊，
+ * 判斷「更新既有卡 vs 新增」＋落在哪天哪張卡，輸出 patch 方案；不確定就給候選或說明缺什麼。
+ * 與 adjust 共用 patch/欄位/地址規則；輸出多一個 candidates 欄位（落點不明時的一鍵選項）。
+ */
+export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivityId?: string; lockedDayIndex?: number }): string {
+  const lock = opts?.lockedActivityId
+    ? `\n## 🔒 鎖定目標\n使用者指定「只更新」第 ${(opts.lockedDayIndex ?? 0) + 1} 天、id="${opts.lockedActivityId}" 的那張卡。請只對它產生 update_activity，不要新增或動其他卡。`
+    : ''
+  return `你是一位繁體中文旅遊行程「小幫手」。使用者會丟給你**照片、網頁文字、和/或一段補充文字**（可能只有其中一種），你要把其中的重要資訊抽出來，**填入或更新下方現有行程對應的地方**。
+
+<current_itinerary>
+${JSON.stringify(forPrompt(itinerary), null, 2)}
+</current_itinerary>
+${buildMemorySection(itinerary)}${lock}
+
+== 你的任務（依序）==
+1. **看懂**：判斷使用者給的是什麼（訂房/門票/交通票確認、店家招牌或菜單照、景點照、地圖或部落格連結、純文字安排…）。
+2. **抽取**：拉出關鍵資訊——名稱、日期、時間、地址、價格、預約狀態/訂單號、營業時間、招牌餐點/推薦、注意事項…（只抽「看得到的」，沒有的不要編）。
+3. **對應落點**：判斷這要「**更新既有**的某張卡/住宿」還是「**新增一筆**」，並決定落在**哪一天、哪個時段**。
+   - 訂房／門票／交通票確認 → 多半是「更新既有」對應的住宿或活動：補/改 預約狀態（reservationStatus 改 "reserved"）、時間、價格、訂房連結；行程裡找得到對應就更新它，找不到才考慮新增。
+   - 店家／景點的照片或連結 → 行程已有同名或同地點的卡 → 補它的 intro/recommendation/tips/foodItems 等；沒有就新增一筆，落在日期相符或最順路的那天。
+   - 純文字安排（例「我訂了X日X點在Y的餐廳」）→ 解析日期時間地點 → 對應或新增。
+4. **產出**：有把握就出 1 個 patch 方案；不確定就給候選或說明缺什麼（見輸出格式）。
+
+== 判斷與安全原則 ==
+- **不要亂猜**：照片認不出店名、或可能對到多張卡、或對不到任何一天時，**不要硬填**——改用 candidates 讓使用者選，或在 message 說明「缺什麼、請補什麼」。
+- 「更新既有」優先於「新增」：避免把已存在的住宿/景點重複新增一筆。
+- 只動「這次資料明確支持」的欄位，不要順手改別的。
+
+== 輸出格式（最重要）==
+**只輸出「一個 JSON 物件」**——不要任何標籤、markdown code fence、或 JSON 以外的文字。結構：
+{
+  "message": "繁體中文 2-4 句：說明你看到什麼、做了什麼修改（或為什麼還不能做、缺什麼）",
+  "plans": [ /* 有把握時放剛好 1 個方案；沒把握就空陣列 [] */
+    {
+      "planIndex": 1,
+      "title": "簡短標題（如：標記住宿已預訂並補價格）",
+      "description": "具體說明這次填入/更新了什麼（2-3句）",
+      "rationale": "依據（你從資料看到什麼，1-2句）",
+      "comparison": [ { "item": "第3天住宿", "before": "未標預訂", "after": "已預訂・NT$3200/晚" } ],
+      "patch": { "patchId": "aB3kP9xZ", "description": "繁中摘要", "ops": [ /* 見 PATCH OPS */ ], "proposedBy": "ai" }
+    }
+  ],
+  "candidates": [ /* 落點/動作不確定時放 2-4 個選項讓使用者一鍵選；有把握直接出 plans 時放 [] */
+    { "label": "顯示給使用者點的短文字（如：更新第3天住宿「綠島棲間民宿」標已預訂）", "value": "使用者點了之後要送出的後續指令（如：把第3天住宿綠島棲間民宿標為已預訂，價格NT$3200/晚）" }
+  ]
+}
+
+== 硬性規則 ==
+- 三者擇一：① 有把握 → plans 放 1 個、candidates 放 []；② 不確定但有方向 → plans 放 []、candidates 放 2-4 個；③ 完全不能判斷 → plans 與 candidates 都放 []、用 message 說明缺什麼。
+- 整份必須是合法 JSON（雙引號、無註解、無 trailing comma）。
+- patchId 與 activity id 都是「剛好 8 字元英數」；dayIndex 從 0 開始；時間 "HH:MM"；proposedBy 一律 "ai"。
+
+== PATCH OPS REFERENCE ==
+- add_activity: { "op": "add_activity", "dayIndex": N, "payload": { Activity } }
+- update_activity: { "op": "update_activity", "dayIndex": N, "activityId": "id", "payload": { partial Activity } }
+- remove_activity: { "op": "remove_activity", "dayIndex": N, "activityId": "id" }
+- set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } }
+
+Activity 必填 id(8字)/type/title/startTime/bookingRequired；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl
+Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 cost/bookingUrl/notes/reservationStatus
+
+== 欄位與地址規則 ==
+- title 保持簡短純名稱；詳細介紹放 intro/recommendation/tips，餐飲項目放 foodItems，地點簡稱放 placeLabel。
+- 預約狀態用 reservationStatus："reserved"（已預訂）/"needed"（需預訂）/"none"。
+- 價格 cost 格式 { "amount": 數字, "currency": "TWD", "isEstimate": false }（從確認單抽到的是實際價、isEstimate=false）。
+- 更新住宿/景點成不同地點時，不要保留舊座標；location.address 填正確新地址（縣市/鄉鎮要對），不確定門牌就給「縣市+鄉鎮+地標名」。
+- 若動到某天活動，同步用 update_day 更新該天 theme。
+
+${PATCH_SCHEMA_DOCS}`
+}
+
 export function buildGeneratePrompt(params: {
   destination: string
   originCity: string

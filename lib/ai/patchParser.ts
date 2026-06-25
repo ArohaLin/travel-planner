@@ -265,6 +265,43 @@ export function parseAdjustJson(text: string): { message: string; plans: AIPlan[
   }
 }
 
+/**
+ * 小幫手模式 JSON 解析：{ message, plans?, candidates? }。
+ * 與 adjust 不同：plans 可為空（落點不明時靠 candidates 或 message）。
+ */
+export function parseAssistantJson(text: string): { message: string; plans: AIPlan[]; candidates: { label: string; value: string }[] } | null {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+  let raw: unknown = null
+  try { raw = JSON.parse(cleaned) } catch {
+    const obj = firstBalancedObject(cleaned)
+    if (obj) { try { raw = JSON.parse(obj) } catch { /* ignore */ } }
+  }
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const message = typeof o.message === 'string' ? o.message.trim() : ''
+
+  let plans: AIPlan[] = []
+  if (Array.isArray(o.plans) && o.plans.length > 0) {
+    const parsed = AIPlansArraySchema.safeParse(o.plans)
+    if (parsed.success) plans = parsed.data
+    else console.error('[patchParser] assistant plans 驗證失敗:', JSON.stringify(parsed.error.flatten()).slice(0, 300))
+  }
+
+  const candidates: { label: string; value: string }[] = Array.isArray(o.candidates)
+    ? (o.candidates as unknown[])
+        .filter((c): c is { label: string; value: string } =>
+          !!c && typeof c === 'object'
+          && typeof (c as Record<string, unknown>).label === 'string'
+          && typeof (c as Record<string, unknown>).value === 'string')
+        .map((c) => ({ label: c.label.trim(), value: c.value.trim() }))
+        .filter((c) => c.label && c.value)
+        .slice(0, 4)
+    : []
+
+  if (!message && plans.length === 0 && candidates.length === 0) return null
+  return { message, plans, candidates }
+}
+
 export function stripPlansTag(text: string): string {
   return text
     .replace(/<plans>[\s\S]*?<\/plans>/g, '') // 完整成對
