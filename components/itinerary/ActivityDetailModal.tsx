@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef } from 'react'
 import type { Activity } from '@/lib/types/itinerary'
 import { formatMoney } from '@/lib/utils/currency'
 
@@ -39,8 +38,6 @@ interface ActivityDetailModalProps {
   hasNote?: boolean
   /** 用資料（照片/網址/文字）更新這張卡 → 開「AI 小幫手」並鎖定此卡 */
   onAssistantUpdate?: (activity: Activity) => void
-  /** 用自己的照片當卡片照片（上傳 Storage 後寫 userPhotoUrl）*/
-  onPickPhoto?: (activity: Activity, file: File) => void
 }
 
 /** 計算時長（分鐘），無 endTime 回 null */
@@ -69,8 +66,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onEdit, onDelete, onAddNote, hasNote, onAssistantUpdate, onPickPhoto }: ActivityDetailModalProps) {
-  const photoInputRef = useRef<HTMLInputElement>(null)
+export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onEdit, onDelete, onAddNote, hasNote, onAssistantUpdate }: ActivityDetailModalProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
   const hasDetailInfo =
     activity.transport || activity.recommendation || activity.tips
@@ -237,28 +233,6 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
           >
             🤖 用照片／網址／文字更新這張卡
           </button>
-        )}
-
-        {/* 設為卡片照片：用自己的照片 */}
-        {canEdit && onPickPhoto && (
-          <>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) { onPickPhoto(activity, f); onClose() } }}
-            />
-            <button
-              onClick={() => photoInputRef.current?.click()}
-              className="flex-shrink-0 mx-5 mb-1 flex items-center justify-center gap-1.5 h-10 rounded-2xl border border-gray-200 text-sm text-gray-600 active:scale-[0.98] transition"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
-                <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l5-4 4 3 3-2 6 4" />
-              </svg>
-              {activity.userPhotoUrl ? '換一張卡片照片' : '設為卡片照片（用自己的照片）'}
-            </button>
-          </>
         )}
 
         {/* 底部動作列：編輯／AI 備註／刪除（從列表收進這裡，列表保持乾淨） */}

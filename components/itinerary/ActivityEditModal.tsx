@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
 import { nanoid } from 'nanoid'
 import type { Activity, ActivityType } from '@/lib/types/itinerary'
@@ -24,6 +24,8 @@ interface ActivityEditModalProps {
   initial?: Partial<Activity>
   onSave: (activity: Activity) => void
   onClose: () => void
+  /** 上傳卡片照片（壓縮＋傳 Storage），回傳公開 URL；提供時表單最上方顯示照片區 */
+  onUploadPhoto?: (activityId: string, file: File) => Promise<string | null>
 }
 
 function emptyActivity(): Activity {
@@ -37,7 +39,7 @@ function emptyActivity(): Activity {
   }
 }
 
-export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEditModalProps) {
+export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhoto }: ActivityEditModalProps) {
   const [form, setForm] = useState<Activity>(() => ({
     ...emptyActivity(),
     ...initial,
@@ -45,6 +47,28 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
     id: initial?.id ?? nanoid(8),
   }))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // 卡片照片上傳狀態
+  const photoInputRef = useRef<HTMLInputElement>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [photoError, setPhotoError] = useState<string | null>(null)
+  // 預覽：使用者上傳照片優先，其次 Google Places 代表照
+  const previewSrc = form.userPhotoUrl ?? (form.photoRef ? `/api/photo?ref=${encodeURIComponent(form.photoRef)}` : null)
+
+  async function handlePickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !onUploadPhoto) return
+    setUploadingPhoto(true); setPhotoError(null)
+    try {
+      const url = await onUploadPhoto(form.id, file)
+      if (url) set('userPhotoUrl', url)
+      else setPhotoError('上傳失敗，請換一張再試')
+    } catch {
+      setPhotoError('照片處理失敗，請換一張再試')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
   // 地址欄位（對應 location.address），與座標一起管理
   const [address, setAddress] = useState<string>(initial?.location?.address ?? '')
   // 記住初始地址，用以判斷使用者是否真的改了地址 → 改了則清空座標以重新定位
@@ -167,6 +191,46 @@ export function ActivityEditModal({ mode, initial, onSave, onClose }: ActivityEd
 
         {/* Form */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          {/* 卡片照片（最上方）：預覽 ＋ 上傳/換/移除 */}
+          {onUploadPhoto && (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">卡片照片</label>
+              <div className="flex items-center gap-3">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-100 flex-shrink-0 border border-gray-200 flex items-center justify-center">
+                  {previewSrc ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={previewSrc} alt="卡片照片預覽" className="w-full h-full object-cover" />
+                  ) : (
+                    <svg className="w-7 h-7 text-gray-300" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l5-4 4 3 3-2 6 4" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    className="flex items-center justify-center gap-1.5 h-10 rounded-xl border border-gray-200 text-sm text-gray-700 bg-white active:scale-[0.98] transition disabled:opacity-60"
+                  >
+                    {uploadingPhoto ? (
+                      <><span className="w-4 h-4 border-2 border-gray-300 border-t-purple-500 rounded-full animate-spin" />上傳中…</>
+                    ) : (previewSrc ? '換一張照片' : '上傳照片')}
+                  </button>
+                  {form.userPhotoUrl && !uploadingPhoto && (
+                    <button type="button" onClick={() => set('userPhotoUrl', undefined)} className="text-xs text-gray-400 hover:text-red-500 self-start">
+                      移除我的照片{form.photoRef ? '（改用系統圖）' : ''}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input ref={photoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePickPhoto} />
+              {photoError
+                ? <p className="text-[11px] text-red-500 mt-1">{photoError}</p>
+                : <p className="text-[11px] text-gray-400 mt-1">上傳後即可預覽；按下方「{mode === 'edit' ? '儲存' : '新增'}」才正式套用。</p>}
+            </div>
+          )}
 
           {/* Type selector */}
           <div>

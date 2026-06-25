@@ -490,28 +490,17 @@ export function ItineraryClient({
     setChatOpen(true)
   }
 
-  // 設定卡片照片：壓縮 → 上傳 Storage → update_activity 寫 userPhotoUrl（走 patch、進歷程）
-  async function handleSetCardPhoto(activity: Activity, file: File) {
-    showToast('上傳照片中…', 'info')
-    try {
-      const img = await fileToCompressedBase64(file, 1280, 0.82)
-      const res = await fetch(`/api/itinerary/${itineraryId}/upload-photo`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activityId: activity.id, mimeType: img.mimeType, data: img.data }),
-      })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) { showToast(data.error ?? '上傳失敗', 'error'); return }
-      const ok = await submitPatch({
-        patchId: nanoid(8),
-        description: `設定卡片照片：${activity.title}`,
-        proposedBy: 'user',
-        ops: [{ op: 'update_activity', dayIndex: activeDay, activityId: activity.id, payload: { userPhotoUrl: data.url }, _before: activity }],
-      })
-      if (ok) showToast('已設為卡片照片 ✅', 'success')
-    } catch {
-      showToast('照片處理失敗，請換一張試試', 'error')
-    }
+  // 上傳卡片照片：壓縮 → 上傳 Storage → 回傳公開 URL（不發 patch；寫入 userPhotoUrl 由編輯視窗「儲存」統一處理）
+  async function uploadActivityPhoto(activityId: string, file: File): Promise<string | null> {
+    const img = await fileToCompressedBase64(file, 1280, 0.82)
+    const res = await fetch(`/api/itinerary/${itineraryId}/upload-photo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ activityId, mimeType: img.mimeType, data: img.data }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) return null
+    return data.url ?? null
   }
 
   async function handleSaveEdit(updated: Activity) {
@@ -1094,6 +1083,7 @@ export function ItineraryClient({
           }
           onSave={modal.mode === 'edit' ? handleSaveEdit : handleSaveAdd}
           onClose={() => setModal({ open: false })}
+          onUploadPhoto={userCanEdit ? uploadActivityPhoto : undefined}
         />
       )}
 
@@ -1275,7 +1265,6 @@ export function ItineraryClient({
           onAddNote={userCanEdit ? setAddNoteFor : undefined}
           hasNote={aiNotes.hasNoteFor(detailActivity.id)}
           onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdate : undefined}
-          onPickPhoto={userCanEdit ? handleSetCardPhoto : undefined}
         />
       )}
 
