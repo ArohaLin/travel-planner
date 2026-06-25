@@ -19,6 +19,8 @@ interface Props {
   onClose: () => void
   /** 把願望清單項目加入某一天（指定開始時間）。回傳成功與否。 */
   onAddToDay: (item: WishlistItem, dayIndex: number, startTime: string) => Promise<boolean>
+  /** 把住宿類願望清單項目取代某天住宿。回傳成功與否。 */
+  onReplaceAccommodation?: (item: WishlistItem, dayIndex: number) => Promise<boolean>
   /** 交給 AI 一次排進行程（C）。 */
   onAiArrange: (items: WishlistItem[]) => void
   initialTab?: 'recommend' | 'wishlist'
@@ -56,7 +58,7 @@ function isOpenAt(h: Hours | null, weekday: number, minutes: number): boolean | 
 const weekdayOf = (date: string) => new Date(date + 'T00:00:00').getDay()
 const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
 
-export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onAiArrange, initialTab, targetDayIndex }: Props) {
+export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onReplaceAccommodation, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
   const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist' | 'lodging' | 'shop'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
   const [recs, setRecs] = useState<Recommendation[] | null>(null)
@@ -203,6 +205,18 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
     } finally { setBusyId(null) }
   }
 
+  async function replaceAccommodation(item: WishlistItem, dayIndex: number) {
+    if (!onReplaceAccommodation) return
+    setBusyId(item.id)
+    try {
+      const ok = await onReplaceAccommodation(item, dayIndex)
+      if (ok) {
+        setWishlist((prev) => prev.map((w) => (w.id === item.id ? { ...w, status: 'added' } : w)))
+        showToast(`已設為第 ${dayIndex + 1} 天住宿：${item.name}`, 'success')
+      }
+    } finally { setBusyId(null) }
+  }
+
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={onClose} />
@@ -344,6 +358,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
                     busy={busyId === item.id}
                     onAdd={(dayIndex, startTime) => addToDay(item, dayIndex, startTime)}
                     onRemove={() => removeFromWishlist(item)}
+                    onReplaceAccommodation={onReplaceAccommodation
+                      ? (dayIndex) => replaceAccommodation(item, dayIndex)
+                      : undefined}
                   />
                 ))}
               </div>
@@ -501,7 +518,7 @@ function SearchCard({ place, added, busy, onAdd }: { place: PlaceResult; added: 
 
 /* ── 願望清單卡（A 智慧建議 / B 加入指定天）──────────────────────────────── */
 function WishCard({
-  item, days, targetDayIndex, inItinerary, busy, onAdd, onRemove,
+  item, days, targetDayIndex, inItinerary, busy, onAdd, onRemove, onReplaceAccommodation,
 }: {
   item: WishlistItem
   days: ItineraryDay[]
@@ -510,10 +527,13 @@ function WishCard({
   busy: boolean
   onAdd: (dayIndex: number, startTime: string) => void
   onRemove: () => void
+  onReplaceAccommodation?: (dayIndex: number) => void
 }) {
   const img = photoUrl(item.photoRef)
   const [open, setOpen] = useState(false)
   const [hours, setHours] = useState<Hours | null>(null)
+  const [confirmReplaceDayIndex, setConfirmReplaceDayIndex] = useState<number | null>(null)
+  const isLodging = item.category === '住宿'
 
   useEffect(() => {
     if (!open || !item.googlePlaceId || hours) return
@@ -530,6 +550,35 @@ function WishCard({
     : suggestSlots(item, days)
   const top = slots[0]
   const alts = slots.slice(1, 3)
+
+  function ConfirmReplacePanel({ dayIndex }: { dayIndex: number }) {
+    const existingAcc = days.find((d) => d.dayIndex === dayIndex)?.accommodation
+    return (
+      <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+        <p className="text-sm text-amber-900 leading-snug">
+          確定要把「{item.name}」設為第 {dayIndex + 1} 天住宿？
+        </p>
+        {existingAcc && (
+          <p className="text-xs text-amber-600 mt-1">將取代目前的「{existingAcc.name}」</p>
+        )}
+        <div className="flex gap-2 mt-2.5">
+          <button
+            onClick={() => { onReplaceAccommodation?.(dayIndex); setConfirmReplaceDayIndex(null) }}
+            disabled={busy}
+            className="flex-1 py-1.5 rounded-lg bg-amber-500 text-white text-sm font-medium disabled:opacity-50 active:bg-amber-600"
+          >
+            {busy ? '處理中…' : '確認取代'}
+          </button>
+          <button
+            onClick={() => setConfirmReplaceDayIndex(null)}
+            className="flex-1 py-1.5 rounded-lg border border-gray-200 text-gray-600 text-sm active:bg-gray-50"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={clsx('bg-white rounded-2xl border shadow-sm overflow-hidden', inItinerary ? 'border-green-100' : 'border-gray-100')}>
@@ -551,9 +600,21 @@ function WishCard({
         <div className="px-3 pb-3">
           {targetDayIndex != null ? (
             top && (
-              <button onClick={() => onAdd(top.dayIndex, top.startTime)} disabled={busy} className="w-full text-sm bg-purple-50 text-purple-700 rounded-xl px-3 py-2 disabled:opacity-50">
-                {busy ? '加入中…' : `加入第 ${top.dayIndex + 1} 天　${top.startTime}${top.distanceKm != null ? `・約 ${top.distanceKm.toFixed(1)}km` : ''}`}
-              </button>
+              <div className="space-y-2">
+                <button onClick={() => onAdd(top.dayIndex, top.startTime)} disabled={busy} className="w-full text-sm bg-purple-50 text-purple-700 rounded-xl px-3 py-2 disabled:opacity-50">
+                  {busy ? '加入中…' : `加入第 ${top.dayIndex + 1} 天　${top.startTime}${top.distanceKm != null ? `・約 ${top.distanceKm.toFixed(1)}km` : ''}`}
+                </button>
+                {isLodging && onReplaceAccommodation && confirmReplaceDayIndex !== top.dayIndex && (
+                  <button
+                    onClick={() => setConfirmReplaceDayIndex(top.dayIndex)}
+                    disabled={busy}
+                    className="w-full text-sm border border-amber-200 text-amber-700 rounded-xl px-3 py-2 active:bg-amber-50 disabled:opacity-50"
+                  >
+                    🏨 設為第 {top.dayIndex + 1} 天住宿
+                  </button>
+                )}
+                {confirmReplaceDayIndex === top.dayIndex && <ConfirmReplacePanel dayIndex={top.dayIndex} />}
+              </div>
             )
           ) : !open ? (
             <button onClick={() => setOpen(true)} disabled={busy} className="w-full text-sm border border-purple-200 text-purple-700 rounded-xl px-3 py-2 active:bg-purple-50 disabled:opacity-50">📍 排入行程</button>
@@ -595,6 +656,26 @@ function WishCard({
                   })}
                 </div>
               </details>
+              {isLodging && onReplaceAccommodation && (
+                <details>
+                  <summary className="text-xs text-amber-600 cursor-pointer">🏨 設為某天住宿</summary>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {days.map((d) => (
+                      <button
+                        key={d.dayIndex}
+                        onClick={() => setConfirmReplaceDayIndex(d.dayIndex)}
+                        disabled={busy}
+                        className="text-xs border border-amber-200 text-amber-700 rounded-full px-2.5 py-1 active:bg-amber-50 disabled:opacity-50"
+                      >
+                        第 {d.dayIndex + 1} 天{d.accommodation ? `（取代「${d.accommodation.name}」）` : ''}
+                      </button>
+                    ))}
+                  </div>
+                  {confirmReplaceDayIndex !== null && (
+                    <ConfirmReplacePanel dayIndex={confirmReplaceDayIndex} />
+                  )}
+                </details>
+              )}
             </div>
           )}
         </div>

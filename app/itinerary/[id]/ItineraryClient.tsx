@@ -452,6 +452,35 @@ export function ItineraryClient({
     return ok
   }
 
+  async function handleReplaceAccommodation(item: WishlistItem, dayIndex: number): Promise<boolean> {
+    const accommodation: Accommodation = {
+      id: nanoid(8),
+      name: item.name,
+      location: item.lat != null && item.lng != null
+        ? { lat: item.lat, lng: item.lng }
+        : { lat: 0, lng: 0 },
+      checkInTime: '15:00',
+      checkOutTime: '11:00',
+      reservationStatus: 'needed',
+      ...(item.photoRef ? { photoRef: item.photoRef } : {}),
+    }
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `從願望清單設為住宿：${item.name}（第 ${dayIndex + 1} 天）`,
+      proposedBy: 'user',
+      ops: [{ op: 'set_day_accommodation', dayIndex, payload: accommodation }],
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      fetch(`/api/itinerary/${itineraryId}/wishlist`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id, status: 'added' }),
+      }).catch(() => {})
+    }
+    return ok
+  }
+
   // ── C：交給 AI 一次把願望清單排進行程（adjust → 方案 → 確認）─────────────────
   function handleAiArrangeWishlist(items: WishlistItem[]) {
     if (items.length === 0) return
@@ -1083,6 +1112,7 @@ export function ItineraryClient({
           targetDayIndex={exploreTargetDay}
           onClose={() => setExploreOpen(false)}
           onAddToDay={handleAddWishlistToDay}
+          onReplaceAccommodation={userCanEdit ? handleReplaceAccommodation : undefined}
           onAiArrange={handleAiArrangeWishlist}
         />
       )}
