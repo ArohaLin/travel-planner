@@ -21,6 +21,7 @@ function clip(s: string, n = 48): string {
 function fmt(field: string, val: any): string {
   if (val == null || val === '') return '（無）'
   if (field === 'reservationStatus') return RESV[val] ?? String(val)
+  if (field === 'breakfast') return val === 'included' ? '含早餐' : val === 'excluded' ? '不含早餐' : String(val)
   if (field === 'cost' || field === 'depositPaid') return money(val)
   if (field === 'location') return val.address ? clip(String(val.address)) : '（座標）'
   return clip(String(val))
@@ -28,8 +29,8 @@ function fmt(field: string, val: any): string {
 
 // 住宿 / 活動的欄位中文標籤（顯示順序）
 const ACC_LABELS: [string, string][] = [
-  ['name', '名稱'], ['location', '地址'], ['checkInTime', '入住'], ['checkOutTime', '退房'],
-  ['reservationStatus', '預約狀態'], ['cost', '每晚金額'], ['depositPaid', '訂金'],
+  ['name', '名稱'], ['location', '地址'], ['roomType', '房型'], ['checkInTime', '入住'], ['checkOutTime', '退房'],
+  ['reservationStatus', '預約狀態'], ['cost', '每晚金額'], ['breakfast', '早餐'], ['feeIncludes', '費用包含'], ['depositPaid', '訂金'],
   ['bookingPlatform', '訂房平台'], ['orderNumber', '訂單編號'], ['freeCancelBy', '免費取消'],
   ['contact', '聯絡資訊'], ['bookingUrl', '訂房連結'], ['intro', '說明'], ['tips', '重要事項'], ['notes', '備註'],
 ]

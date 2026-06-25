@@ -25,6 +25,10 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
   // 金額（每晚）/ 已付訂金
   const [costAmount, setCostAmount] = useState(accommodation.cost?.amount != null ? String(accommodation.cost.amount) : '')
   const [depositAmount, setDepositAmount] = useState(accommodation.depositPaid?.amount != null ? String(accommodation.depositPaid.amount) : '')
+  // 房型 / 早餐 / 費用包含
+  const [roomType, setRoomType] = useState(accommodation.roomType ?? '')
+  const [breakfast, setBreakfast] = useState<'' | 'included' | 'excluded'>(accommodation.breakfast ?? '')
+  const [feeIncludes, setFeeIncludes] = useState(accommodation.feeIncludes ?? '')
   // 詳情欄位
   const [intro, setIntro] = useState(accommodation.intro ?? '')
   const [tips, setTips] = useState(accommodation.tips ?? '')
@@ -93,6 +97,9 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
       checkOutTime: checkOut,
       reservationStatus: reservation,
       cost: parseMoney(costAmount, costCurrency, accommodation.cost),
+      roomType: roomType.trim() || undefined,
+      breakfast: breakfast || undefined,
+      feeIncludes: feeIncludes.trim() || undefined,
       bookingUrl: bookingUrl.trim() || undefined,
       bookingPlatform: bookingPlatform.trim() || undefined,
       orderNumber: orderNumber.trim() || undefined,
@@ -209,11 +216,37 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
             </div>
           </div>
 
+          {/* 房型 */}
+          <div>
+            <label className={labelCls}>房型</label>
+            <input type="text" value={roomType} onChange={(e) => setRoomType(e.target.value)} placeholder="例：四人房、雙人房、C1房" className={inputCls} />
+          </div>
+
           {/* 每晚金額 */}
           <div>
             <label className={labelCls}>每晚金額（{costCurrency}）</label>
             <input type="number" inputMode="numeric" min={0} value={costAmount} onChange={(e) => setCostAmount(e.target.value)}
               placeholder="例：5200" className={inputCls} />
+          </div>
+
+          {/* 早餐 */}
+          <div>
+            <label className={labelCls}>早餐</label>
+            <div className="grid grid-cols-3 gap-2">
+              {([['', '未指定'], ['included', '✓ 含早餐'], ['excluded', '✗ 不含早餐']] as const).map(([v, lbl]) => (
+                <button key={v || 'none'} type="button" onClick={() => setBreakfast(v)}
+                  className={`py-2.5 rounded-xl text-sm font-medium border transition-colors ${breakfast === v ? 'bg-purple-50 border-purple-400 text-purple-700' : 'bg-white border-gray-200 text-gray-500'}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 費用包含項目 */}
+          <div>
+            <label className={labelCls}>費用包含項目</label>
+            <textarea rows={2} value={feeIncludes} onChange={(e) => setFeeIncludes(e.target.value)}
+              placeholder="早餐以外的餐食／活動／票券，例：晚餐、獨木舟體驗、夜遊門票（可省略）" className={clsx(inputCls, 'resize-none')} />
           </div>
 
           {/* 預約狀態 */}

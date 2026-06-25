@@ -93,6 +93,12 @@ export const AccommodationSchema = z.object({
   /** Google Places 代表照片 reference（背景抓取後快取；宣傳冊用） */
   photoRef: z.string().optional(),
   // ─── 比照活動卡的詳情欄位（選填）───
+  /** 房型，如「四人房」「雙人房」「C1房」 */
+  roomType: z.string().optional(),
+  /** 早餐：included 含早餐 / excluded 不含早餐 */
+  breakfast: z.enum(['included', 'excluded']).optional(),
+  /** 費用包含項目（早餐以外的餐食、活動、票券等），自由文字 */
+  feeIncludes: z.string().optional(),
   /** 使用者自行上傳的卡片照片（Supabase Storage 公開 URL）；顯示時優先於 photoRef */
   userPhotoUrl: z.string().optional(),
   /** 住宿說明 / 介紹 */

@@ -79,6 +79,12 @@ export function AccommodationCard({ accommodation, canEdit, hasNote, onEdit, onA
             <span>退房 {accommodation.checkOutTime}</span>
             {accommodation.cost && <span className="font-medium text-gray-600">{formatMoney(accommodation.cost)}/晚</span>}
           </div>
+          {(accommodation.roomType || accommodation.breakfast) && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-500 mt-1 flex-wrap">
+              {accommodation.roomType && <span>🛏 {accommodation.roomType}</span>}
+              {accommodation.breakfast && <span>{accommodation.breakfast === 'included' ? '🍳 含早餐' : '🍳 不含早餐'}</span>}
+            </div>
+          )}
         </div>
 
         {photoSrc && (

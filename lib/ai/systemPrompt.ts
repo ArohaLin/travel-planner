@@ -676,13 +676,13 @@ ${buildMemorySection(itinerary)}${lock}
 - set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } }
 
 Activity 必填 id(8字)/type/title/startTime/bookingRequired；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl
-Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 cost(每晚價,Money) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingUrl(訂房連結) / depositPaid(訂金金額,已付或待匯都填,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知/匯款指示) / notes(無法歸類的其他補充)
+Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 roomType(房型) / cost(每晚價,Money) / breakfast(早餐:"included"含/"excluded"不含) / feeIncludes(費用包含項目,早餐以外的餐食/活動/票券) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingUrl(訂房連結) / depositPaid(訂金金額,已付或待匯都填,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知/匯款指示) / notes(無法歸類的其他補充)
 
 == 欄位與地址規則 ==
 - title 保持簡短純名稱；詳細介紹放 intro/recommendation/tips，餐飲項目放 foodItems，地點簡稱放 placeLabel。
 - 預約狀態用 reservationStatus："reserved"（已預訂）/"needed"（需預訂）/"none"。
 - 價格 cost 格式 { "amount": 數字, "currency": "TWD", "isEstimate": false }（從確認單抽到的是實際價、isEstimate=false）。
-- **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、**訂金金額→depositPaid(Money 格式)（不論「已付」或「請先匯/待付」都要填金額）**、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。**匯款期限、匯款帳號、付款指示、入住須知等「重要提醒」放 tips(重要事項)，不要放 notes**；notes 只留真的無法歸類的零碎補充。
+- **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、**訂金金額→depositPaid(Money 格式)（不論「已付」或「請先匯/待付」都要填金額）**、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、房型（如「四人C1房」「雙人房」）→roomType、含/不含早餐→breakfast("included"/"excluded")、費用包含的餐食/活動/票券（早餐除外）→feeIncludes、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。**匯款期限、匯款帳號、付款指示、入住須知等「重要提醒」放 tips(重要事項)，不要放 notes**；notes 只留真的無法歸類的零碎補充。
 - 更新住宿/景點成不同地點時，不要保留舊座標；location.address 填正確新地址（縣市/鄉鎮要對），不確定門牌就給「縣市+鄉鎮+地標名」。
 - 若動到某天活動，同步用 update_day 更新該天 theme。
 

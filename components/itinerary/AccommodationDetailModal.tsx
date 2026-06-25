@@ -68,6 +68,18 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
             {acc.cost && <span className="ml-auto font-medium text-gray-800">{formatMoney(acc.cost)}/晚</span>}
           </div>
 
+          {/* 房型 / 早餐 */}
+          {(acc.roomType || acc.breakfast) && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {acc.roomType && <span className="text-sm text-gray-700 bg-gray-100 px-2.5 py-1 rounded-lg">🛏 {acc.roomType}</span>}
+              {acc.breakfast && (
+                <span className={`text-sm px-2.5 py-1 rounded-lg ${acc.breakfast === 'included' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {acc.breakfast === 'included' ? '🍳 含早餐' : '🍳 不含早餐'}
+                </span>
+              )}
+            </div>
+          )}
+
           {/* 地址 */}
           {acc.location?.address && (
             <a href={mapsNavUrl(acc.location)} target="_blank" rel="noopener noreferrer"
@@ -93,6 +105,7 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
           )}
 
           {/* 詳情段落 */}
+          {acc.feeIncludes && <Section title="費用包含" text={acc.feeIncludes} />}
           {acc.intro && <Section title="說明" text={acc.intro} />}
           {acc.tips && <Section title="重要事項" text={acc.tips} accent />}
           {acc.contact && <Section title="聯絡資訊" text={acc.contact} />}
