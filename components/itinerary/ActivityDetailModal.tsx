@@ -92,7 +92,7 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
           /* 景點照片 hero（拖曳把手疊在圖上） */
           <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
             <img
-              src={`/api/photo?ref=${encodeURIComponent(activity.photoRef!)}`}
+              src={photoSrc!}
               alt={activity.title}
               className="w-full h-full object-cover"
             />

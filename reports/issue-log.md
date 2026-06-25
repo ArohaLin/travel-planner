@@ -373,6 +373,20 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+## 9. 卡片照片 / 使用者上傳
+
+### 9-A 設了使用者照片，卡片詳情大圖仍是舊的 Google 圖
+
+**發生時間**：2026-06-25
+
+**症狀**：用「設為卡片照片」上傳自己的照片後，時間軸小縮圖換成新照片了，但**點進卡片詳情、最上方的 hero 大圖仍是舊的 Google 照片**。
+
+**根本原因**：`ActivityDetailModal` 改用「使用者照片優先」時，只把 `hasPhoto` 判斷改成 `photoSrc = userPhotoUrl ?? photoRef`，**漏改 `<img>` 的 `src`**——它仍寫死 `/api/photo?ref=${activity.photoRef}`，所以照舊抓 Google 圖。縮圖（`ActivityContent`）那邊有正確用 `userPhotoUrl`，所以只有 hero 沒換。
+
+**修復方法**：hero 的 `<img src>` 改用同一個 `photoSrc`（`src={photoSrc!}`）。**教訓**：同一張圖的「要不要顯示」與「顯示哪張」兩個判斷要用同一個來源變數，別一個改了另一個忘了。
+
+---
+
 ## 附錄：四條 geocode 管線一覽
 
 每次改過濾規則，以下四處要同步：
