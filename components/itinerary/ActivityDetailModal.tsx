@@ -36,6 +36,8 @@ interface ActivityDetailModalProps {
   onDelete?: (activity: Activity) => void
   onAddNote?: (activity: Activity) => void
   hasNote?: boolean
+  /** 用資料（照片/網址/文字）更新這張卡 → 開「AI 小幫手」並鎖定此卡 */
+  onAssistantUpdate?: (activity: Activity) => void
 }
 
 /** 計算時長（分鐘），無 endTime 回 null */
@@ -64,7 +66,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onEdit, onDelete, onAddNote, hasNote }: ActivityDetailModalProps) {
+export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onEdit, onDelete, onAddNote, hasNote, onAssistantUpdate }: ActivityDetailModalProps) {
   const dur = durationMinutes(activity.startTime, activity.endTime)
   const hasDetailInfo =
     activity.transport || activity.recommendation || activity.tips
@@ -220,6 +222,16 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
             </Section>
           )}
         </div>
+
+        {/* 用資料更新這張卡：開 AI 小幫手並鎖定此卡 */}
+        {canEdit && onAssistantUpdate && (
+          <button
+            onClick={() => { onAssistantUpdate(activity); onClose() }}
+            className="flex-shrink-0 mx-5 mt-1 mb-1 flex items-center justify-center gap-1.5 h-10 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium active:scale-[0.98] transition"
+          >
+            🤖 用照片／網址／文字更新這張卡
+          </button>
+        )}
 
         {/* 底部動作列：編輯／AI 備註／刪除（從列表收進這裡，列表保持乾淨） */}
         {canEdit && (onEdit || onDelete || onAddNote) && (

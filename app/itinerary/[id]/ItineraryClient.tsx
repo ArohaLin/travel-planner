@@ -97,6 +97,8 @@ export function ItineraryClient({
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [mapSelectedDays, setMapSelectedDays] = useState<number[]>([0])
   const [detailActivity, setDetailActivity] = useState<Activity | null>(null)
+  // 小幫手「用資料更新這張卡」鎖定目標（從卡片詳情開啟）
+  const [assistantLock, setAssistantLock] = useState<{ activityId: string; dayIndex: number; title: string } | null>(null)
   const [editAccommodation, setEditAccommodation] = useState<Accommodation | null>(null)
   const [editThemeOpen, setEditThemeOpen] = useState(false)
   // 日期變更導致天數變化的處理對話
@@ -477,6 +479,14 @@ export function ItineraryClient({
   // ── Edit activity ─────────────────────────────────────────────────────────
   function handleEditActivity(activity: Activity) {
     setModal({ open: true, mode: 'edit', activity, dayIndex: activeDay })
+  }
+
+  // 小幫手「用資料更新這張卡」：關詳情、鎖定此卡、切小幫手模式、開聊天
+  function handleAssistantUpdate(activity: Activity) {
+    setDetailActivity(null)
+    setAssistantLock({ activityId: activity.id, dayIndex: activeDay, title: activity.title })
+    chat.setChatMode('assistant')
+    setChatOpen(true)
   }
 
   async function handleSaveEdit(updated: Activity) {
@@ -1031,6 +1041,8 @@ export function ItineraryClient({
           chat={chat}
           onClose={() => setChatOpen(false)}
           onPatchApplied={refreshItinerary}
+          assistantLock={assistantLock}
+          onClearAssistantLock={() => setAssistantLock(null)}
         />
       )}
 
@@ -1237,6 +1249,7 @@ export function ItineraryClient({
           onDelete={handleDeleteActivity}
           onAddNote={userCanEdit ? setAddNoteFor : undefined}
           hasNote={aiNotes.hasNoteFor(detailActivity.id)}
+          onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdate : undefined}
         />
       )}
 

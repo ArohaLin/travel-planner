@@ -19,6 +19,9 @@ interface ChatSheetProps {
   onClose: () => void
   /** 方案套用成功後呼叫（讓行程頁立即刷新，不等 Realtime） */
   onPatchApplied?: () => void
+  /** 小幫手「用資料更新這張卡」鎖定目標（從卡片詳情開啟）*/
+  assistantLock?: { activityId: string; dayIndex: number; title: string } | null
+  onClearAssistantLock?: () => void
 }
 
 const SUGGESTIONS_ADJUST = [
@@ -41,7 +44,7 @@ const SUGGESTIONS_ASSISTANT = [
   '上傳店家照片，補進對應的卡片',
 ]
 
-export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSheetProps) {
+export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistantLock, onClearAssistantLock }: ChatSheetProps) {
   const [input, setInput] = useState('')
   const [isApplying, setIsApplying] = useState(false)
   const [applyingIndex, setApplyingIndex] = useState<number | null>(null)
@@ -164,7 +167,10 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
   async function handleAssistantSend() {
     const note = input.trim()
     if ((!note && pendingImages.length === 0) || isStreaming) return
-    const payload = { note, images: pendingImages }
+    const payload = {
+      note, images: pendingImages,
+      ...(assistantLock ? { lockedActivityId: assistantLock.activityId, lockedDayIndex: assistantLock.dayIndex } : {}),
+    }
     setInput('')
     setPendingImages([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
@@ -176,7 +182,10 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
   async function handleCandidate(value: string) {
     if (isStreaming) return
     isAtBottomRef.current = true
-    const r = await sendAssistant({ note: value })
+    const r = await sendAssistant({
+      note: value,
+      ...(assistantLock ? { lockedActivityId: assistantLock.activityId, lockedDayIndex: assistantLock.dayIndex } : {}),
+    })
     if (!r.ok) showToast(r.error ?? '小幫手暫時無回應', 'error')
   }
 
@@ -304,13 +313,13 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
           {/* 模式切換 Toggle（獨立一列、滿版三等分）*/}
           <div className="flex items-stretch bg-gray-100 rounded-xl p-0.5 gap-0.5 mx-4 mb-2">
             <button
-              onClick={() => { setChatMode('adjust'); setModelProvider('gemini'); clearLastPlans() }}
+              onClick={() => { setChatMode('adjust'); setModelProvider('gemini'); clearLastPlans(); onClearAssistantLock?.() }}
               className={clsx('flex-1 py-1.5 rounded-lg text-xs font-medium transition-all', chatMode === 'adjust' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500')}
             >
               ✎ 調整
             </button>
             <button
-              onClick={() => { setChatMode('consult'); clearLastPlans() }}
+              onClick={() => { setChatMode('consult'); clearLastPlans(); onClearAssistantLock?.() }}
               className={clsx('flex-1 py-1.5 rounded-lg text-xs font-medium transition-all', chatMode === 'consult' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500')}
             >
               💬 咨詢
@@ -550,6 +559,12 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied }: ChatSh
           {/* 小幫手：待送照片縮圖列 + 隱藏的檔案選擇 */}
           {chatMode === 'assistant' && (
             <>
+              {assistantLock && (
+                <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                  <span className="flex-1 truncate">🔒 只更新這張卡：<span className="font-medium">{assistantLock.title}</span></span>
+                  <button onClick={() => onClearAssistantLock?.()} className="flex-shrink-0 text-amber-600 underline">解除</button>
+                </div>
+              )}
               <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAddPhotos} />
               {pendingImages.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-2 scroll-touch">
