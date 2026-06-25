@@ -155,6 +155,14 @@ npm run dev        # 開發伺服器 http://localhost:3000
   - `forPrompt()` 濾掉 `userPhotoUrl`（與 `photoRef`、travelLegs 同）。
 - **未做**：小幫手上傳的店家照自動設成卡片照（目前設卡片照走獨立按鈕）；更強的動態網頁抓取。
 
+### ✅ 卡片照片入口移到編輯視窗＋住宿卡比照活動卡（2026-06-25，問題#44/#45）
+- **#44 照片改在編輯視窗**：`ActivityEditModal` 最上方新增「卡片照片」區（80px 預覽＋上傳/換一張/移除）。上傳走 `uploadActivityPhoto`（壓縮+傳 Storage 回 URL，**不發 patch**），`userPhotoUrl` 隨「儲存」一起進 `update_activity`（一筆歷程）。已**移除**詳情視窗的「設為卡片照片」鈕（避免重複）。
+- **#45 住宿卡比照活動卡**：
+  - `AccommodationSchema` 加 `userPhotoUrl/intro/tips/contact/bookingPlatform/orderNumber/depositPaid(Money)/freeCancelBy`；`forPrompt` 濾掉 `userPhotoUrl`。
+  - `AccommodationEditModal` 重寫：照片區＋每晚金額＋說明/重要事項/聯絡/備註＋「訂房資訊」區（平台/訂單編號/連結/已付訂金/最晚免費取消，預約≠none 才顯示）。金額用行程幣別（`currency` prop）。
+  - `AccommodationCard` 加右側照片縮圖（使用者照片優先）＋整卡可點擊；編輯/備註鈕 `stopPropagation`。
+  - 新增 `AccommodationDetailModal`（hero 大圖＋入退房/金額＋地址導航＋訂房資訊＋說明/重要事項/聯絡/備註段落＋底部編輯/備註），與活動詳情視窗一致。住宿照片重用 `uploadActivityPhoto`（路徑 `{id}/{accId}.jpg`）。
+
 ---
 
 ## 專案結構（重點檔案）
