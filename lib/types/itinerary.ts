@@ -72,6 +72,8 @@ export const ActivitySchema = z.object({
   highlight: z.string().optional(),
   /** Google Places 代表照片 reference（背景抓取後快取；詳情視窗與宣傳冊共用） */
   photoRef: z.string().optional(),
+  /** 使用者自行上傳的卡片照片（Supabase Storage 公開 URL）；顯示時優先於 photoRef */
+  userPhotoUrl: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

@@ -46,6 +46,7 @@ const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
 import { daysBetweenInclusive, getDaysInRange } from '@/lib/utils/date'
+import { fileToCompressedBase64 } from '@/lib/utils/image'
 
 type ViewMode = 'list' | 'map' | 'summary'
 
@@ -487,6 +488,30 @@ export function ItineraryClient({
     setAssistantLock({ activityId: activity.id, dayIndex: activeDay, title: activity.title })
     chat.setChatMode('assistant')
     setChatOpen(true)
+  }
+
+  // 設定卡片照片：壓縮 → 上傳 Storage → update_activity 寫 userPhotoUrl（走 patch、進歷程）
+  async function handleSetCardPhoto(activity: Activity, file: File) {
+    showToast('上傳照片中…', 'info')
+    try {
+      const img = await fileToCompressedBase64(file, 1280, 0.82)
+      const res = await fetch(`/api/itinerary/${itineraryId}/upload-photo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activityId: activity.id, mimeType: img.mimeType, data: img.data }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { showToast(data.error ?? '上傳失敗', 'error'); return }
+      const ok = await submitPatch({
+        patchId: nanoid(8),
+        description: `設定卡片照片：${activity.title}`,
+        proposedBy: 'user',
+        ops: [{ op: 'update_activity', dayIndex: activeDay, activityId: activity.id, payload: { userPhotoUrl: data.url }, _before: activity }],
+      })
+      if (ok) showToast('已設為卡片照片 ✅', 'success')
+    } catch {
+      showToast('照片處理失敗，請換一張試試', 'error')
+    }
   }
 
   async function handleSaveEdit(updated: Activity) {
@@ -1250,6 +1275,7 @@ export function ItineraryClient({
           onAddNote={userCanEdit ? setAddNoteFor : undefined}
           hasNote={aiNotes.hasNoteFor(detailActivity.id)}
           onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdate : undefined}
+          onPickPhoto={userCanEdit ? handleSetCardPhoto : undefined}
         />
       )}
 

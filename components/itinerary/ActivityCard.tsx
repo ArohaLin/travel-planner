@@ -71,15 +71,15 @@ export function ActivityContent({ activity }: { activity: Activity }) {
           <p className="text-[11px] text-amber-600 mt-1 leading-relaxed">（{activity.highlight.trim()}）</p>
         )}
       </div>
-      {activity.photoRef && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={`/api/photo?ref=${encodeURIComponent(activity.photoRef)}`}
-          alt=""
-          loading="lazy"
-          className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100"
-        />
-      )}
+      {(() => {
+        // 卡片照片：使用者自上傳照片優先，其次 Google Places photoRef
+        const src = activity.userPhotoUrl ?? (activity.photoRef ? `/api/photo?ref=${encodeURIComponent(activity.photoRef)}` : null)
+        if (!src) return null
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="" loading="lazy" className="w-14 h-14 rounded-xl object-cover flex-shrink-0 bg-gray-100" />
+        )
+      })()}
     </div>
   )
 }
