@@ -385,6 +385,16 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **修復方法**：hero 的 `<img src>` 改用同一個 `photoSrc`（`src={photoSrc!}`）。**教訓**：同一張圖的「要不要顯示」與「顯示哪張」兩個判斷要用同一個來源變數，別一個改了另一個忘了。
 
+### 9-B 小幫手更新住宿，把訂房資訊全塞 notes、沒填結構化欄位
+
+**發生時間**：2026-06-25
+
+**症狀**：用 AI 小幫手丟訂房確認單更新住宿，AI 把訂房平台/訂單編號/訂金/免費取消期限等**全部塞進 `notes`**，沒有填進對應的結構化欄位。
+
+**根本原因**：#45 幫 Accommodation 新增了 `bookingPlatform/orderNumber/depositPaid/freeCancelBy/contact/intro/tips` 等欄位（schema＋編輯 UI＋詳情視窗都改了），但**忘了同步更新小幫手 prompt 的 Accommodation 欄位清單**（`systemPrompt.ts` 的「PATCH OPS REFERENCE」只列 `cost/bookingUrl/notes/reservationStatus`）。AI 不知道那些結構化欄位存在 → 只能塞進它唯一認得的自由欄位 `notes`。資料模型加了欄位、卻沒告訴 AI。
+
+**修復方法**：① 把新欄位補進 prompt 的 Accommodation 清單（含 depositPaid 為 Money 格式、cost 為每晚單價）；② 加明確指令「訂房確認單要逐項拆進對應欄位、嚴禁整段塞 notes」。spike 實證：合成 Agoda 確認單→AI 正確填 bookingPlatform/orderNumber/depositPaid/freeCancelBy/contact/reservationStatus，notes 留空。**教訓**：改 schema 欄位時，凡是 AI 會讀寫該物件的 prompt 欄位清單都要同步（grep schema 欄位名確認 prompt 有列）。
+
 ---
 
 ## 附錄：四條 geocode 管線一覽
