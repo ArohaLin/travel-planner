@@ -162,6 +162,14 @@ npm run dev        # 開發伺服器 http://localhost:3000
   - `AccommodationEditModal` 重寫：照片區＋每晚金額＋說明/重要事項/聯絡/備註＋「訂房資訊」區（平台/訂單編號/連結/已付訂金/最晚免費取消，預約≠none 才顯示）。金額用行程幣別（`currency` prop）。
   - `AccommodationCard` 加右側照片縮圖（使用者照片優先）＋整卡可點擊；編輯/備註鈕 `stopPropagation`。
   - 新增 `AccommodationDetailModal`（hero 大圖＋入退房/金額＋地址導航＋訂房資訊＋說明/重要事項/聯絡/備註段落＋底部編輯/備註），與活動詳情視窗一致。住宿照片重用 `uploadActivityPhoto`（路徑 `{id}/{accId}.jpg`）。
+- 住宿後續再加欄位：`roomType`(房型)/`breakfast`('included'|'excluded')/`feeIncludes`(費用包含項目)，貫穿 schema/編輯/詳情/卡片/小幫手 prompt/planDiff。
+- 卡片詳情視窗（活動/住宿/天氣）右上角都有**明顯浮動 X**（`absolute top-3 right-3` 深色圓形）。
+
+### ✅ 每日天氣（2026-06-25）
+兩段式「少＋晚＋可展開」：每天標題列上方一個晴雨小晶片，點擊展開當日詳情。資料源 **Open-Meteo（免費免金鑰）**。
+- **後端**：`lib/weather/openMeteo.ts`（`getForecast` ≤14天實際預報；`getClimatology` >14天近10年同期±3天統計——平均高低溫/降雨機率/雨量/溫度區間，ERA5 archive，archive 查詢約6s、timeout 22s）。`app/api/weather/route.ts` 依「距今天數」決定模式（過去→`mode:'none'`），CDN 快取：預報 `s-maxage=3600`、歷年 `604800`、`maxDuration=30`。middleware 放行 `/api/weather`（公開、只吃座標+日期、非敏感）。
+- **前端**：`lib/hooks/useWeather.ts`（SWR）、`components/weather/WeatherChip.tsx`（座標取當天首個有座標景點，否則住宿；預報=實心晶片、歷年=虛線+「歷年」標籤；emoji 圖示見 `lib/weather/display.ts`）、`WeatherDetailSheet.tsx`（含浮動 X；預報顯示早午晚+日出日落+體感；歷年顯示統計+颱風季提醒）。掛在 `DayView` 頂部。
+- **誠實處理**：歷年標清楚「非預報」，夏季(6–10月)加颱風季提醒。
 
 ---
 
