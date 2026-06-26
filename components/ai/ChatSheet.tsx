@@ -70,6 +70,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
 
   // 小幫手：待送照片（壓縮後 base64）
   const [pendingImages, setPendingImages] = useState<{ mimeType: string; data: string }[]>([])
+  // 小幫手：待送 PDF（已上傳至 Supabase，存路徑）
+  const [pendingPdfs, setPendingPdfs] = useState<{ name: string; path: string }[]>([])
+  const [isPdfUploading, setIsPdfUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const suggestions = chatMode === 'adjust' ? SUGGESTIONS_ADJUST : chatMode === 'consult' ? SUGGESTIONS_CONSULT : SUGGESTIONS_ASSISTANT
@@ -151,17 +154,57 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
     await sendMessage(text, itineraryId, modelProvider)
   }
 
-  // ── 小幫手：加照片（壓縮）/ 送出 / 點候選 ──────────────────────────────
-  async function handleAddPhotos(e: React.ChangeEvent<HTMLInputElement>) {
+  // ── 小幫手：加照片/PDF / 送出 / 點候選 ──────────────────────────────
+  async function handleAddFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     e.target.value = '' // 允許重選同檔
     if (!files.length) return
-    const room = 6 - pendingImages.length
-    if (room <= 0) { showToast('最多 6 張照片', 'info'); return }
-    try {
-      const compressed = await Promise.all(files.slice(0, room).map((f) => fileToCompressedBase64(f)))
-      setPendingImages((prev) => [...prev, ...compressed].slice(0, 6))
-    } catch { showToast('圖片處理失敗，請換一張試試', 'error') }
+
+    const imageFiles = files.filter((f) => f.type.startsWith('image/'))
+    const pdfFiles = files.filter((f) => f.type === 'application/pdf')
+
+    // 圖片：壓縮後轉 base64
+    if (imageFiles.length) {
+      const room = 6 - pendingImages.length
+      if (room <= 0) { showToast('最多 6 張照片', 'info') }
+      else {
+        try {
+          const compressed = await Promise.all(imageFiles.slice(0, room).map((f) => fileToCompressedBase64(f)))
+          setPendingImages((prev) => [...prev, ...compressed].slice(0, 6))
+        } catch { showToast('圖片處理失敗，請換一張試試', 'error') }
+      }
+    }
+
+    // PDF：直傳 Supabase（繞過 Vercel 4.5MB body 限制）
+    for (const file of pdfFiles.slice(0, 3 - pendingPdfs.length)) {
+      if (pendingPdfs.length >= 3) { showToast('最多 3 份 PDF', 'info'); break }
+      setIsPdfUploading(true)
+      try {
+        // 1. 取得 Supabase presigned upload URL
+        const urlRes = await fetch('/api/ai/request-upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name }),
+        })
+        if (!urlRes.ok) throw new Error('無法取得上傳連結')
+        const { signedUrl, path } = await urlRes.json()
+
+        // 2. 直傳 PDF 到 Supabase（PUT，不經過 Vercel）
+        const uploadRes = await fetch(signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/pdf' },
+          body: file,
+        })
+        if (!uploadRes.ok) throw new Error('上傳失敗')
+
+        setPendingPdfs((prev) => [...prev, { name: file.name, path }])
+      } catch (err) {
+        showToast(`PDF 上傳失敗：${file.name}`, 'error')
+        console.error('[handleAddFiles] PDF 上傳失敗:', err)
+      } finally {
+        setIsPdfUploading(false)
+      }
+    }
   }
 
   // 把鎖定目標換成送 API 的欄位（活動 → 活動 id+天；住宿 → 住宿天）
@@ -174,13 +217,16 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
 
   async function handleAssistantSend() {
     const note = input.trim()
-    if ((!note && pendingImages.length === 0) || isStreaming) return
+    const hasContent = note || pendingImages.length > 0 || pendingPdfs.length > 0
+    if (!hasContent || isStreaming || isPdfUploading) return
     const payload = {
       note, images: pendingImages,
+      pdfPaths: pendingPdfs.map((p) => p.path),
       ...lockPayload(),
     }
     setInput('')
     setPendingImages([])
+    setPendingPdfs([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
     isAtBottomRef.current = true
     const r = await sendAssistant(payload)
@@ -573,11 +619,11 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
                   <button onClick={() => onClearAssistantLock?.()} className="flex-shrink-0 text-amber-600 underline">解除</button>
                 </div>
               )}
-              <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleAddPhotos} />
-              {pendingImages.length > 0 && (
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleAddFiles} />
+              {(pendingImages.length > 0 || pendingPdfs.length > 0 || isPdfUploading) && (
                 <div className="flex gap-2 overflow-x-auto pb-2 scroll-touch">
                   {pendingImages.map((im, i) => (
-                    <div key={i} className="relative flex-shrink-0">
+                    <div key={`img-${i}`} className="relative flex-shrink-0">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={`data:${im.mimeType};base64,${im.data}`} alt="" className="w-14 h-14 rounded-lg object-cover border border-gray-200" />
                       <button
@@ -587,6 +633,27 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
                       >×</button>
                     </div>
                   ))}
+                  {pendingPdfs.map((pdf, i) => (
+                    <div key={`pdf-${i}`} className="relative flex-shrink-0">
+                      <div className="w-14 h-14 rounded-lg border border-red-200 bg-red-50 flex flex-col items-center justify-center gap-0.5">
+                        <span className="text-xl leading-none">📄</span>
+                        <span className="text-[9px] text-red-600 font-medium px-1 text-center leading-tight line-clamp-2">{pdf.name}</span>
+                      </div>
+                      <button
+                        onClick={() => setPendingPdfs((prev) => prev.filter((_, j) => j !== i))}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-900/80 text-white rounded-full flex items-center justify-center text-xs leading-none"
+                        aria-label="移除 PDF"
+                      >×</button>
+                    </div>
+                  ))}
+                  {isPdfUploading && (
+                    <div className="flex-shrink-0 w-14 h-14 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center">
+                      <svg className="w-5 h-5 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -650,7 +717,7 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
             ) : (
               <button
                 onClick={chatMode === 'assistant' ? handleAssistantSend : handleSend}
-                disabled={chatMode === 'assistant' ? (!input.trim() && pendingImages.length === 0) : !input.trim()}
+                disabled={chatMode === 'assistant' ? (!input.trim() && pendingImages.length === 0 && pendingPdfs.length === 0) || isPdfUploading : !input.trim()}
                 className="tap-target w-11 h-11 bg-purple-600 text-white rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 flex-shrink-0"
               >
                 <svg className="w-5 h-5 -rotate-45 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">

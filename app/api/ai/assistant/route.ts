@@ -15,6 +15,8 @@ import type { Itinerary } from '@/lib/types/itinerary'
 export const maxDuration = 300
 
 const MAX_IMAGES = 6
+const MAX_PDFS = 3
+const TEMP_BUCKET = 'temp-uploads'
 const HISTORY_LIMIT = 20
 
 interface AttachImage { mimeType: string; data: string }
@@ -28,21 +30,22 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}))
   const {
     itineraryId, threadId, note = '',
-    images = [], urls = [],
+    images = [], urls = [], pdfPaths = [],
     lockedActivityId, lockedDayIndex, lockedAccommodationDayIndex,
   } = body as {
     itineraryId: string; threadId: string; note?: string
-    images?: AttachImage[]; urls?: string[]
+    images?: AttachImage[]; urls?: string[]; pdfPaths?: string[]
     lockedActivityId?: string; lockedDayIndex?: number; lockedAccommodationDayIndex?: number
   }
 
   if (!itineraryId || !threadId) return NextResponse.json({ error: '缺少必要欄位' }, { status: 400 })
   const imgs = (images ?? []).filter((i) => i?.data && i?.mimeType).slice(0, MAX_IMAGES)
+  const pdfs = (pdfPaths ?? []).filter(Boolean).slice(0, MAX_PDFS)
   const noteText = (note ?? '').trim()
   // 網址：明確傳入的 + note 內偵測到的
   const allUrls = Array.from(new Set([...(urls ?? []), ...extractUrls(noteText)])).slice(0, 5)
-  if (imgs.length === 0 && allUrls.length === 0 && !noteText) {
-    return NextResponse.json({ error: '請提供照片、網址或文字' }, { status: 400 })
+  if (imgs.length === 0 && allUrls.length === 0 && !noteText && pdfs.length === 0) {
+    return NextResponse.json({ error: '請提供照片、PDF、網址或文字' }, { status: 400 })
   }
 
   const db = createServiceRoleClient()
@@ -52,6 +55,20 @@ export async function POST(request: Request) {
   const { data: row } = await db.from('itineraries').select('data, version').eq('id', itineraryId).single()
   if (!row) return NextResponse.json({ error: '找不到行程' }, { status: 404 })
   const itinerary = row.data as Itinerary
+
+  // 從 Supabase 下載 PDF（繞過 Vercel 4.5MB request body 限制的大檔）
+  const pdfInlineData: AttachImage[] = []
+  if (pdfs.length) {
+    const pdfResults = await Promise.all(
+      pdfs.map(async (path) => {
+        const { data, error } = await db.storage.from(TEMP_BUCKET).download(path)
+        if (error || !data) { console.warn('[assistant] PDF 下載失敗:', path, error); return null }
+        const buf = Buffer.from(await data.arrayBuffer())
+        return { mimeType: 'application/pdf', data: buf.toString('base64') }
+      }),
+    )
+    pdfInlineData.push(...pdfResults.filter((r): r is AttachImage => r !== null))
+  }
 
   // 抓網址文字
   const fetched = await Promise.all(allUrls.map((u) => fetchUrlText(u)))
@@ -64,6 +81,7 @@ export async function POST(request: Request) {
   if (noteText) userRecordParts.push(noteText)
   const marks: string[] = []
   if (imgs.length) marks.push(`${imgs.length} 張照片`)
+  if (pdfs.length) marks.push(`${pdfs.length} 份 PDF`)
   if (allUrls.length) marks.push(`${allUrls.length} 個連結`)
   if (marks.length) userRecordParts.push(`［附 ${marks.join('、')}］`)
   const userRecord = userRecordParts.join(' ') || '［丟了資料給小幫手］'
@@ -103,6 +121,7 @@ export async function POST(request: Request) {
       const gemini = getGeminiClient()
       const userParts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [{ text: userText }]
       for (const im of imgs) userParts.push({ inlineData: { mimeType: im.mimeType, data: im.data } })
+      for (const pdf of pdfInlineData) userParts.push({ inlineData: { mimeType: pdf.mimeType, data: pdf.data } })
       let lastErr: unknown = null
       for (const modelName of [MODEL_GEMINI, MODEL_GEMINI_PRO]) {
         try {
@@ -144,6 +163,15 @@ export async function POST(request: Request) {
     patch: (plans.length || candidates.length) ? { plans, candidates } : null,
     patch_status: patchStatus,
   })
+
+  // 刪除暫存 PDF（非同步，不阻塞回應）
+  if (pdfs.length) {
+    runAfterResponse(
+      db.storage.from(TEMP_BUCKET).remove(pdfs).then(() => {
+        console.log('[assistant] 已刪除暫存 PDF:', pdfs)
+      }),
+    )
+  }
 
   // 完成通知
   runAfterResponse(sendPushToUser(user.id, {
