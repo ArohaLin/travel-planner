@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createServerClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth/user'
 import { ToastProvider } from '@/components/ui/Toast'
 import { BottomNav } from '@/components/ui/BottomNav'
 
@@ -9,7 +10,7 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
 
   if (!user) redirect('/login')
 

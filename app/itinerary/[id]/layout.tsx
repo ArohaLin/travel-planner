@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getItineraryAccess } from '@/lib/auth/access'
+import { getAuthUser } from '@/lib/auth/user'
 import { ToastProvider } from '@/components/ui/Toast'
 
 export default async function ItineraryLayout({
@@ -11,7 +12,7 @@ export default async function ItineraryLayout({
   params: { id: string }
 }) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
 
   if (!user) redirect('/login')
 

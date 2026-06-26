@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth/user'
 import { getServerMapsKey } from '@/lib/maps/places'
 import { mapRecommendation, type Recommendation } from '@/lib/types/recommendation'
 import { mapLodgingToRecommendation, cityToRegion } from '@/lib/utils/lodgingToRec'
@@ -12,7 +13,7 @@ import { mapLodgingToRecommendation, cityToRegion } from '@/lib/utils/lodgingToR
  */
 export async function GET(req: Request) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)

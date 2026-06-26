@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth/user'
 import { getServerMapsKey } from '@/lib/maps/places'
 
 /**
@@ -8,7 +9,7 @@ import { getServerMapsKey } from '@/lib/maps/places'
  */
 export async function GET(req: Request) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
   const placeId = new URL(req.url).searchParams.get('placeId')

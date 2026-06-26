@@ -1,4 +1,5 @@
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth/user'
 import Link from 'next/link'
 import { Button } from '@/components/ui/Button'
 import { BugReportSheet } from '@/components/ui/BugReportSheet'
@@ -7,7 +8,7 @@ import type { GlobalRole } from '@/lib/types/collaboration'
 
 export default async function DashboardPage() {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
 
   const db = createServiceRoleClient()
   const [{ data: members }, { data: profile }] = await Promise.all([

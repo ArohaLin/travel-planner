@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getItineraryAccess } from '@/lib/auth/access'
+import { getAuthUser } from '@/lib/auth/user'
 import { mapWishlistItem } from '@/lib/types/recommendation'
 
 /** 共用：驗證登入 + 取得 db / access。 */
 async function auth(id: string) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return { error: NextResponse.json({ error: '未登入' }, { status: 401 }) }
   const db = createServiceRoleClient()
   const access = await getItineraryAccess(db, id, user.id)

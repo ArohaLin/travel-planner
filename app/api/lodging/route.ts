@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth/user'
 import { mapLodging } from '@/lib/types/lodging'
 
 // 永遠回最新（離線研究更新 DB 後，瀏覽端立即反映，不被 fetch 快取卡住）
@@ -14,7 +15,7 @@ export const revalidate = 0
  */
 export async function GET(req: Request) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) return NextResponse.json({ error: '未登入' }, { status: 401 })
 
   // category=指定類別；kind=shop→所有非住宿類別（店家評價分頁，可含多類別）；預設住宿

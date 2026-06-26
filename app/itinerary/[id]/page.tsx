@@ -1,13 +1,14 @@
 import { redirect } from 'next/navigation'
 import { createServerClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { getItineraryAccess } from '@/lib/auth/access'
+import { getAuthUser } from '@/lib/auth/user'
 import { ItineraryClient } from './ItineraryClient'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { GlobalRole } from '@/lib/types/collaboration'
 
 export default async function ItineraryPage({ params }: { params: { id: string } }) {
   const supabase = createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
 
   if (!user) redirect('/login')
 
