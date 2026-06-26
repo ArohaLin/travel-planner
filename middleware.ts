@@ -7,7 +7,20 @@ import { createServerClient } from '@supabase/ssr'
 // /api/health：keep-warm ping 用（無 auth/DB），須放行才能打到 function 本體而非被導去登入
 const PUBLIC_ROUTES = ['/login', '/register', '/itinerary', '/share', '/api/share', '/api/photo', '/api/weather', '/api/health']
 
+// 「公開且可被 CDN 共用快取」的資產／公開資料路由：完全不碰登入驗證。
+// 為何：這些回應帶 `public`/`immutable` 快取（跨使用者共用快取鍵），若 middleware 在此
+// 跑 auth 並在 token 刷新時附上 Set-Cookie，理論上可能被 CDN 連同 cookie 一起快取後派給別人
+// （帳號錯置風險）。這些路由本就不需要使用者身分（用 token＋service role 或純座標），
+// 故直接跳過 auth：杜絕該破口，並省去每張圖／每次天氣請求的驗證開銷。
+const CACHEABLE_PUBLIC_ROUTES = ['/api/photo', '/api/weather', '/api/health', '/api/share', '/share']
+
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  if (CACHEABLE_PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -44,7 +57,6 @@ export async function middleware(request: NextRequest) {
     // 壞 token → 當未登入處理（下方非公開頁會導去 login）
   }
 
-  const pathname = request.nextUrl.pathname
   const isPublic = PUBLIC_ROUTES.some((r) => pathname.startsWith(r))
 
   if (!user && !isPublic && pathname !== '/') {
