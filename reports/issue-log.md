@@ -407,6 +407,29 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+## 10. 資安 / Session
+
+### 10-A 重裝 PWA 後登入成「別人」（本機殘留 session ＋ 公開可快取路由的 cookie 破口）
+
+**發生時間**：2026-06-26
+
+**症狀**：使用者刪掉桌面 PWA、用連結重新加到桌面後，打開直接登入成「另一個（認識的）人」的帳號。
+
+**根本原因（兩件事要分清楚）**：
+
+1. **本次真正的元凶＝本機殘留 session**：使用者**先前曾在這支手機登入過那位朋友的帳號**（幫忙建帳號時）。Supabase 的 session 用 refresh token 長時間自動續命（數週～數月），那組登入一直沒死；而 **iOS 刪除桌面 PWA 並不保證清掉它存的 cookie**。重裝後 PWA 起始頁是 `/dashboard`，middleware 看到還有效的舊 cookie → 登入成朋友。**佐證**：拿到的剛好是「自己在這台手機登入過的那個帳號」，而非隨機陌生人 → 指向本機殘留，非網路派發。**解法**：在該帳號按登出即清掉殘留 session。
+
+2. **同時發現並修掉的理論破口＝公開可快取路由仍跑 auth**：`/api/photo`（`public, max-age, immutable`、快取鍵=photoRef 跨使用者共用）、`/api/weather`（`public` s-maxage）等，middleware 先前**仍會對它們跑 `getClaims`**；若已登入使用者請求這些圖/天氣時 token 剛好刷新，回應會被附上 **Set-Cookie**，而這種可共用快取的回應理論上可能被 CDN 連同 cookie 快取後**派給下一個請求同資源的人** → 帳號錯置。**與 getClaims 無關**（舊 `getUser()` 同樣會在這些路由刷新＋塞 cookie，是既有地雷）。
+
+**修復方法**：`middleware.ts` 新增 `CACHEABLE_PUBLIC_ROUTES`（`/api/photo`、`/api/weather`、`/api/health`、`/api/share`、`/share`）→ **在建立 supabase client 前就 `return NextResponse.next()`，完全跳過 auth**。這些路由本就不需使用者身分（token＋service role 或純座標）。一舉：① 杜絕「可快取回應被附 Set-Cookie」破口；② 省每張圖／每次天氣請求的驗證開銷（效能加分）。實測：`/api/photo`/`/api/weather` 仍 200 且無 Set-Cookie；`/dashboard` 未登入仍 307 導 login（保護未變）。
+
+**預防原則**：
+- **任何帶 `public`/共用快取的回應，其產生路徑（含 middleware）絕不可附上 Set-Cookie 或任何使用者專屬資料**。公開、可快取、不需身分的路由，middleware 應在碰 auth 前就放行。
+- 「重裝 App＝乾淨狀態」是錯覺：iOS PWA storage 刪除不保證清空，且 Supabase session 長壽。換人/排查帳號錯置時，**先按登出**（清 session）才是乾淨起點。
+- 帳號錯置先分流：拿到的是「**本機登入過的帳號**」→ 多半本機殘留；拿到「**陌生人**」→ 才往 CDN/共用快取派發查。
+
+---
+
 ## 附錄：四條 geocode 管線一覽
 
 每次改過濾規則，以下四處要同步：
