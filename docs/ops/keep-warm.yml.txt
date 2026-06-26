@@ -1,0 +1,27 @@
+name: keep-warm
+
+# 定時 ping 正式站，讓 Vercel serverless function 保持「熱」，
+# 降低「隔一段時間後打開 App 第一次很慢（冷啟動）」的機率。
+#
+# 限制（誠實說明）：
+# - GitHub 排程可能延遲數分鐘（高負載時），非精準 10 分鐘。
+# - 只保溫被 ping 到的 function；App Router 其他 lambda 不保證一起保溫。
+# - 真正大幅縮短延遲的是「function 區域搬到新加坡」（見 vercel.json），這個只是補強。
+# 不想要時：刪掉本檔，或在 GitHub repo 的 Actions 分頁停用此 workflow。
+
+on:
+  schedule:
+    - cron: '*/10 * * * *' # 每 10 分鐘
+  workflow_dispatch: {} # 也可手動觸發
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping endpoints
+        run: |
+          BASE="https://travel-planner-delta-blond.vercel.app"
+          for path in "/api/health" "/login"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$BASE$path")
+            echo "$path -> $code"
+          done

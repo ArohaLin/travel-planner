@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import type { LodgingResearch, ProCon } from '@/lib/types/lodging'
+import { getCached, setCached } from '@/lib/cache/clientCache'
 
 const photoUrl = (ref: string | null) => (ref ? `/api/photo?ref=${encodeURIComponent(ref)}` : null)
 const rateColor = (r: number | null) =>
@@ -27,21 +28,24 @@ export function LodgingTab({ initialItems, category, kind = 'lodging', inWishlis
   const L = kind === 'shop'
     ? { noun: '店家', icon: '🏄', emptyHint: '深入研究店家後會出現在這裡', tapHint: '點店家看完整介紹', regionEmpty: '此地區目前沒有店家資料。', noCon: '評論與文章中未見明顯負評。', reviewTitle: '真實評論分析' }
     : { noun: '住宿', icon: '🏨', emptyHint: '離線用 lodging-review 技能研究後會出現在這裡', tapHint: '點住宿看完整介紹', regionEmpty: '此地區目前沒有住宿資料。', noCon: '近一年幾乎無負評。', reviewTitle: '近一年評價' }
-  const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? null)
+  // 快取鍵：依資料來源參數區分（住宿/店家/特定類別）
+  const cacheKey = `lodging:${category ?? (kind === 'shop' ? 'shop' : 'lodging')}`
+  const [items, setItems] = useState<LodgingResearch[] | null>(initialItems ?? getCached<LodgingResearch[]>(cacheKey) ?? null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [compareMode, setCompareMode] = useState(false)
   const [cat, setCat] = useState<string | null>(null)   // 店家模式：選中的類別（台東衝浪…）
   const [region, setRegion] = useState('全部')
   const [view, setView] = useState<{ kind: 'list' } | { kind: 'detail'; id: string } | { kind: 'compare' }>({ kind: 'list' })
 
+  // stale-while-revalidate：有快取就先顯示（不轉圈），背景重抓覆蓋；無快取才轉圈
   useEffect(() => {
     if (initialItems) return
     const url = category ? `?category=${encodeURIComponent(category)}` : kind === 'shop' ? '?kind=shop' : ''
     fetch(`/api/lodging${url}`)
       .then((r) => r.json())
-      .then((d) => setItems(d.items ?? []))
-      .catch(() => setItems([]))
-  }, [initialItems, category, kind])
+      .then((d) => { const list = d.items ?? []; setItems(list); setCached(cacheKey, list) })
+      .catch(() => setItems((prev) => prev ?? []))
+  }, [initialItems, category, kind, cacheKey])
 
   const toggle = (id: string) =>
     setSelected((prev) => {

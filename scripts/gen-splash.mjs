@@ -45,7 +45,7 @@ for (const d of devices) {
          font-size="96" font-weight="600" fill="#1f2937" letter-spacing="4">旅程規劃</text>
        <text x="50%" y="${titleY + 80}" text-anchor="middle"
          font-family="PingFang TC, Hiragino Sans, sans-serif"
-         font-size="40" font-weight="400" fill="#9ca3af" letter-spacing="2">連線中…</text>
+         font-size="40" font-weight="400" fill="#9ca3af" letter-spacing="2">啟動中…</text>
      </svg>`,
   )
 

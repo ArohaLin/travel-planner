@@ -9,6 +9,7 @@ import { suggestSlots, slotForTargetDay, type Slot } from '@/lib/explore/placeme
 import { LodgingTab } from '@/components/explore/LodgingTab'
 import type { LodgingResearch } from '@/lib/types/lodging'
 import { mapLodgingCategory } from '@/lib/utils/lodgingToRec'
+import { getCached, setCached } from '@/lib/cache/clientCache'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
 
@@ -61,42 +62,54 @@ const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
 export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onReplaceAccommodation, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
   const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist' | 'lodging' | 'shop'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
-  const [recs, setRecs] = useState<Recommendation[] | null>(null)
-  const [wishlist, setWishlist] = useState<WishlistItem[]>([])
+  // 快取鍵（掛載期固定；地區跟著目的地預設，selectedRegion 初始 null）
+  const recsKey = `recs:${destination}`
+  const wishKey = `wish:${itineraryId}`
+  const cachedRecs = getCached<{ items: Recommendation[]; regions: string[]; activeRegion: string }>(recsKey)
+  const [recs, setRecs] = useState<Recommendation[] | null>(cachedRecs?.items ?? null)
+  const [wishlist, setWishlist] = useState<WishlistItem[]>(() => getCached<WishlistItem[]>(wishKey) ?? [])
   const [cat, setCat] = useState<RecommendationCategory>('景點')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(cachedRecs == null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   // 地區選擇：selectedRegion=null 表示「跟著目的地預設」；activeRegion 為伺服器實際生效地區
-  const [regions, setRegions] = useState<string[]>([])
+  const [regions, setRegions] = useState<string[]>(cachedRecs?.regions ?? [])
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
-  const [activeRegion, setActiveRegion] = useState<string>('all')
+  const [activeRegion, setActiveRegion] = useState<string>(cachedRecs?.activeRegion ?? 'all')
 
   // 搜尋分頁狀態
   const [searchQ, setSearchQ] = useState('')
   const [searchRes, setSearchRes] = useState<{ curated: Recommendation[]; places: PlaceResult[] } | null>(null)
   const [searching, setSearching] = useState(false)
 
-  // 精選推薦：隨地區改變重抓
+  // 精選推薦：隨地區改變重抓。stale-while-revalidate——有快取就不轉圈、先顯示舊資料
   const loadRecs = useCallback(async () => {
-    setLoading(true)
+    if (!getCached(recsKey)) setLoading(true)
     const url = `/api/recommendations?q=${encodeURIComponent(destination)}` +
       (selectedRegion ? `&region=${encodeURIComponent(selectedRegion)}` : '')
     const r = await fetch(url).then((x) => (x.ok ? x.json() : null)).catch(() => null)
-    setRecs(r?.items ?? [])
-    setRegions(r?.regions ?? [])
-    setActiveRegion(r?.region ?? 'all')
+    const items = r?.items ?? []
+    const regs = r?.regions ?? []
+    const active = r?.region ?? 'all'
+    setRecs(items)
+    setRegions(regs)
+    setActiveRegion(active)
     setLoading(false)
-  }, [destination, selectedRegion])
+    // 只快取「預設地區」的結果，讓下次掛載讀到的快取與預設檢視一致
+    if (selectedRegion == null) setCached(recsKey, { items, regions: regs, activeRegion: active })
+  }, [destination, selectedRegion, recsKey])
 
   useEffect(() => { loadRecs() }, [loadRecs])
 
-  // 願望清單：只需 itineraryId，不隨地區重抓
+  // 願望清單：只需 itineraryId，不隨地區重抓（背景 revalidate，初值已從快取帶入）
   useEffect(() => {
     fetch(`/api/itinerary/${itineraryId}/wishlist`)
       .then((x) => (x.ok ? x.json() : { items: [] })).catch(() => ({ items: [] }))
       .then((w) => setWishlist(w.items ?? []))
   }, [itineraryId])
+
+  // 願望清單快取與所有變更（新增/刪除）同步，切回時可立即顯示
+  useEffect(() => { setCached(wishKey, wishlist) }, [wishlist, wishKey])
 
   // 搜尋：debounce 400ms、最少 2 字
   useEffect(() => {
