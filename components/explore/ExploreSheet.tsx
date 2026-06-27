@@ -10,7 +10,7 @@ import { LodgingTab } from '@/components/explore/LodgingTab'
 import type { LodgingResearch } from '@/lib/types/lodging'
 import { mapLodgingCategory } from '@/lib/utils/lodgingToRec'
 import { getCached, setCached } from '@/lib/cache/clientCache'
-import { FoodMap } from '@/components/explore/FoodMap'
+import { ExploreMap } from '@/components/explore/ExploreMap'
 import { RecDetailModal } from '@/components/explore/RecDetailModal'
 import { isOpenAt, weekdayOf, toMin, type Hours } from '@/lib/explore/hours'
 
@@ -56,8 +56,8 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   const [cat, setCat] = useState<RecommendationCategory>('景點')
   const [loading, setLoading] = useState(cachedRecs == null)
   const [busyId, setBusyId] = useState<string | null>(null)
-  // 美食分類的清單／地圖檢視切換；地圖點店後的完整詳情
-  const [foodView, setFoodView] = useState<'list' | 'map'>('list')
+  // 推薦的清單／地圖檢視切換（地圖跨所有類型）；地圖點店後的完整詳情
+  const [recView, setRecView] = useState<'list' | 'map'>('list')
   const [detailRec, setDetailRec] = useState<Recommendation | null>(null)
 
   // 地區選擇：selectedRegion=null 表示「跟著目的地預設」；activeRegion 為伺服器實際生效地區
@@ -296,20 +296,18 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
             ) : (
               <>
                 <div className="sticky top-0 bg-white z-10 px-4 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-50">
-                  {cats.map((c) => (
+                  {recView === 'list' && cats.map((c) => (
                     <button key={c} onClick={() => setCat(c)} className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}>{c}</button>
                   ))}
-                  {cat === '美食' && (
-                    <div className="ml-auto flex-shrink-0 flex bg-gray-100 rounded-lg p-0.5">
-                      <button onClick={() => setFoodView('list')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', foodView === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>清單</button>
-                      <button onClick={() => setFoodView('map')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', foodView === 'map' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖</button>
-                    </div>
-                  )}
+                  <div className="ml-auto flex-shrink-0 flex bg-gray-100 rounded-lg p-0.5">
+                    <button onClick={() => setRecView('list')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>清單</button>
+                    <button onClick={() => setRecView('map')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'map' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖</button>
+                  </div>
                 </div>
-                {cat === '美食' && foodView === 'map' ? (
+                {recView === 'map' ? (
                   <div className="h-[68dvh]">
-                    <FoodMap
-                      recs={(recs ?? []).filter((r) => r.category === '美食')}
+                    <ExploreMap
+                      recs={recs ?? []}
                       days={days}
                       inWishlist={inWishlist}
                       inItineraryNames={titles}
