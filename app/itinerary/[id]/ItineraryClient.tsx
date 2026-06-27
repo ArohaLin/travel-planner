@@ -1144,6 +1144,9 @@ export function ItineraryClient({
           onAddToDay={handleAddWishlistToDay}
           onReplaceAccommodation={userCanEdit ? handleReplaceAccommodation : undefined}
           onAiArrange={handleAiArrangeWishlist}
+          shoppingItems={shopping.items}
+          onToggleShopping={shopping.toggleItem}
+          onScheduleShopping={handleScheduleShopping}
         />
       )}
 

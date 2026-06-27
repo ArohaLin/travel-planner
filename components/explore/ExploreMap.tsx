@@ -9,6 +9,8 @@ import { suggestSlots, type Slot } from '@/lib/explore/placement'
 import { isOpenAt, weekdayOf, toMin, type Hours } from '@/lib/explore/hours'
 import { MyLocationButton } from '@/components/map/MyLocationButton'
 import { flyTo } from '@/lib/maps/flyTo'
+import type { ShoppingItem } from '@/lib/types/shopping'
+import type { ScheduleStore } from '@/components/shopping/ShoppingSheet'
 
 const ROUTE_COLOR = '#2563eb' // 行程脈絡（藍）
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -27,7 +29,9 @@ function recEmoji(rec: Recommendation): string {
   return rec.category === '美食' ? foodIcon(rec.subCategory, rec.name) : CAT_STYLE[rec.category]?.emoji ?? '📍'
 }
 
-const FILTERS: Array<'全部' | RecommendationCategory> = ['全部', '景點', '美食', '住宿', '親子']
+const SHOP_COLOR = '#d97706' // 採購（琥珀）
+type FilterKey = '全部' | RecommendationCategory | '採購'
+const FILTERS: FilterKey[] = ['全部', '景點', '美食', '住宿', '親子', '採購']
 
 function photoUrl(ref: string | null): string | null {
   return ref ? `/api/photo?ref=${encodeURIComponent(ref)}` : null
@@ -68,20 +72,37 @@ interface ExploreMapProps {
   onAddToWishlist: (r: Recommendation) => void
   onAddToDay: (r: Recommendation, dayIndex: number, startTime: string) => void
   onOpenDetail: (r: Recommendation) => void
+  /** 綁店的採購項（「採購」篩選層用，琥珀購物袋點） */
+  shoppingItems?: ShoppingItem[]
+  onToggleShopping?: (id: string, isDone: boolean) => void
+  onScheduleShopping?: (store: ScheduleStore, dayIndex: number, startTime: string) => void
 }
 
 export function ExploreMap({
   recs, days, showList, inWishlist, inItineraryNames, busyId, onAddToWishlist, onAddToDay, onOpenDetail,
+  shoppingItems, onToggleShopping, onScheduleShopping,
 }: ExploreMapProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showRoute, setShowRoute] = useState(true)
-  const [filter, setFilter] = useState<'全部' | RecommendationCategory>('全部')
+  const [filter, setFilter] = useState<FilterKey>('全部')
+  const isShopping = filter === '採購'
 
   const withCoord = useMemo(() => recs.filter((r) => r.lat != null && r.lng != null), [recs])
   const mappable = useMemo(
-    () => (filter === '全部' ? withCoord : withCoord.filter((r) => r.category === filter)),
-    [withCoord, filter],
+    () => (isShopping ? [] : filter === '全部' ? withCoord : withCoord.filter((r) => r.category === filter)),
+    [withCoord, filter, isShopping],
   )
+  // 採購店聚合（綁店、有座標、未買）→ 一店一點
+  const shoppingStores = useMemo(() => {
+    const m = new globalThis.Map<string, ScheduleStore & { placeId: string; items: ShoppingItem[] }>()
+    for (const it of shoppingItems ?? []) {
+      if (it.isDone || !it.placeId || it.lat == null || it.lng == null) continue
+      const g = m.get(it.placeId) ?? { placeId: it.placeId, placeName: it.placeName ?? '店家', lat: it.lat, lng: it.lng, itemNames: [], items: [] }
+      g.items.push(it); g.itemNames.push(it.name)
+      m.set(it.placeId, g)
+    }
+    return Array.from(m.values())
+  }, [shoppingItems])
   // 列表排序：精選優先，再評分高到低
   const list = useMemo(
     () => [...mappable].sort((a, b) => {
@@ -91,13 +112,16 @@ export function ExploreMap({
     [mappable],
   )
 
-  const selected = mappable.find((r) => r.id === selectedId) ?? null
+  const selected = isShopping ? null : (mappable.find((r) => r.id === selectedId) ?? null)
+  const selectedStore = isShopping ? (shoppingStores.find((s) => s.placeId === selectedId) ?? null) : null
   const center = withCoord.length ? { lat: withCoord[0].lat as number, lng: withCoord[0].lng as number } : TAIWAN_CENTER
 
-  // 切換類型後若選取已不在範圍內，清掉
+  // 切換篩選後若選取已不在目前集合內，清掉
   useEffect(() => {
-    if (selectedId && !mappable.some((r) => r.id === selectedId)) setSelectedId(null)
-  }, [mappable, selectedId])
+    const inRecs = mappable.some((r) => r.id === selectedId)
+    const inStores = shoppingStores.some((s) => s.placeId === selectedId)
+    if (selectedId && !inRecs && !inStores) setSelectedId(null)
+  }, [mappable, shoppingStores, selectedId])
 
   return (
     <div className="relative w-full h-full flex">
@@ -114,7 +138,7 @@ export function ExploreMap({
           clickableIcons={false}
           style={{ width: '100%', height: '100%' }}
         >
-          <ExploreMapContent recs={mappable} days={days} showRoute={showRoute} selectedId={selectedId} onSelect={setSelectedId} />
+          <ExploreMapContent recs={mappable} stores={isShopping ? shoppingStores : []} days={days} showRoute={showRoute} selectedId={selectedId} onSelect={setSelectedId} />
           <MyLocationButton />
         </Map>
 
@@ -133,7 +157,7 @@ export function ExploreMap({
         <div className="absolute top-14 left-2 right-2 z-10 flex gap-1.5 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => {
             const active = filter === f
-            const color = f === '全部' ? '#374151' : catColor(f)
+            const color = f === '全部' ? '#374151' : f === '採購' ? SHOP_COLOR : catColor(f)
             return (
               <button
                 key={f}
@@ -160,12 +184,40 @@ export function ExploreMap({
             onClose={() => setSelectedId(null)}
           />
         )}
+        {selectedStore && onToggleShopping && onScheduleShopping && (
+          <ShoppingMapCard
+            store={selectedStore}
+            days={days}
+            onToggle={onToggleShopping}
+            onSchedule={onScheduleShopping}
+            onClose={() => setSelectedId(null)}
+          />
+        )}
       </div>
 
       {/* 右側列表欄（僅地圖列表模式；切換不重掛地圖 → 位置/縮放不變） */}
       {showList && (
         <div className="w-[42%] max-w-[200px] overflow-y-auto scroll-touch border-l border-gray-100 bg-white">
-          {list.length === 0 ? (
+          {isShopping ? (
+            shoppingStores.length === 0 ? (
+              <p className="text-center text-gray-400 text-xs py-8 px-3">沒有綁店家的採購項</p>
+            ) : (
+              shoppingStores.map((s) => {
+                const active = s.placeId === selectedId
+                return (
+                  <button
+                    key={s.placeId}
+                    onClick={() => setSelectedId(s.placeId)}
+                    className={`w-full text-left px-2.5 py-2 border-b border-gray-50 flex flex-col gap-0.5 ${active ? 'bg-amber-50' : 'active:bg-gray-50'}`}
+                    style={active ? { boxShadow: `inset 3px 0 0 ${SHOP_COLOR}` } : undefined}
+                  >
+                    <span className="text-xs text-gray-800 leading-snug line-clamp-2">🛍 {s.placeName}</span>
+                    <span className="text-[11px] text-gray-400">{s.items.length} 項要買</span>
+                  </button>
+                )
+              })
+            )
+          ) : list.length === 0 ? (
             <p className="text-center text-gray-400 text-xs py-8 px-3">此類型沒有可顯示的地點</p>
           ) : (
             list.map((r) => {
@@ -197,10 +249,13 @@ export function ExploreMap({
   )
 }
 
+interface StorePoint { placeId: string; placeName: string; lat: number; lng: number }
+
 function ExploreMapContent({
-  recs, days, showRoute, selectedId, onSelect,
+  recs, stores, days, showRoute, selectedId, onSelect,
 }: {
   recs: Recommendation[]
+  stores: StorePoint[]
   days: ItineraryDay[]
   showRoute: boolean
   selectedId: string | null
@@ -208,27 +263,32 @@ function ExploreMapContent({
 }) {
   const map = useMap()
 
-  // fitBounds 到目前篩選後的點
-  const boundsKey = recs.map((r) => `${r.lat},${r.lng}`).join('|')
+  // 目前顯示的點（採購層用 stores，否則 recs）→ fitBounds
+  const pts = stores.length
+    ? stores.map((s) => ({ lat: s.lat, lng: s.lng }))
+    : recs.map((r) => ({ lat: r.lat as number, lng: r.lng as number }))
+  const boundsKey = pts.map((p) => `${p.lat},${p.lng}`).join('|')
   useEffect(() => {
-    if (!map || recs.length === 0) return
-    if (recs.length === 1) {
-      map.setCenter({ lat: recs[0].lat as number, lng: recs[0].lng as number })
+    if (!map || pts.length === 0) return
+    if (pts.length === 1) {
+      map.setCenter(pts[0])
       map.setZoom(15)
       return
     }
     const b = new google.maps.LatLngBounds()
-    recs.forEach((r) => b.extend({ lat: r.lat as number, lng: r.lng as number }))
+    pts.forEach((p) => b.extend(p))
     if (!b.isEmpty()) map.fitBounds(b, 56)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, boundsKey])
 
-  // 選中（含右側列表點擊）→ 平滑飛行到該點（遠距離中途拉遠再拉近，不瞬移）
+  // 選中（含右側列表點擊）→ 平滑飛行（不瞬移）
   useEffect(() => {
     if (!map || !selectedId) return
     const r = recs.find((x) => x.id === selectedId)
-    if (!r || r.lat == null || r.lng == null) return
-    return flyTo(map, { lat: r.lat, lng: r.lng }, { zoom: 16 })
+    const s = stores.find((x) => x.placeId === selectedId)
+    const t = r && r.lat != null && r.lng != null ? { lat: r.lat, lng: r.lng } : s ? { lat: s.lat, lng: s.lng } : null
+    if (!t) return
+    return flyTo(map, t, { zoom: 16 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectedId])
 
@@ -254,6 +314,26 @@ function ExploreMapContent({
               strokeWeight: isSel ? 3 : featured ? 2.5 : 2,
             }}
             label={featured ? { text: recEmoji(r), fontSize: isSel ? '15px' : '13px' } : undefined}
+          />
+        )
+      })}
+      {stores.map((s) => {
+        const isSel = s.placeId === selectedId
+        return (
+          <Marker
+            key={`shop-${s.placeId}`}
+            position={{ lat: s.lat, lng: s.lng }}
+            onClick={() => onSelect(s.placeId)}
+            zIndex={isSel ? 999 : 20}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: isSel ? 15 : 11,
+              fillColor: SHOP_COLOR,
+              fillOpacity: 1,
+              strokeColor: '#ffffff',
+              strokeWeight: 2.5,
+            }}
+            label={{ text: '🛍', fontSize: isSel ? '14px' : '12px' }}
           />
         )
       })}
@@ -438,6 +518,57 @@ function PlaceCard({
               ＋ 排進某天
             </button>
           </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** 採購店彈卡：列該店要買的東西（可勾選已買）＋整家排進某天生成購物卡。 */
+function ShoppingMapCard({
+  store, days, onToggle, onSchedule, onClose,
+}: {
+  store: ScheduleStore & { items: ShoppingItem[] }
+  days: ItineraryDay[]
+  onToggle: (id: string, isDone: boolean) => void
+  onSchedule: (store: ScheduleStore, dayIndex: number, startTime: string) => void
+  onClose: () => void
+}) {
+  const [picking, setPicking] = useState(false)
+  const slots = useMemo(() => suggestSlots({ lat: store.lat, lng: store.lng }, days), [store.lat, store.lng, days])
+  return (
+    <div className="absolute left-2 right-2 bottom-2 z-20 bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
+      <button onClick={onClose} className="absolute top-2 right-2 z-10 w-7 h-7 rounded-full bg-black/40 text-white flex items-center justify-center" aria-label="關閉">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+      </button>
+      <div className="p-3">
+        <p className="font-semibold text-gray-900 text-sm pr-6 flex items-center gap-1.5">🛍 {store.placeName}</p>
+        <div className="mt-2 flex flex-col gap-1">
+          {store.items.map((it) => (
+            <button key={it.id} onClick={() => onToggle(it.id, !it.isDone)} className="flex items-center gap-2 text-left py-0.5">
+              {it.isDone
+                ? <svg className="w-4 h-4 text-green-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-7.5 7.5a1 1 0 01-1.4 0L3.3 9.7a1 1 0 011.4-1.4L8.5 12l6.8-6.7a1 1 0 011.4 0z" clipRule="evenodd" /></svg>
+                : <span className="block w-4 h-4 rounded border-2 border-gray-300 flex-shrink-0" />}
+              <span className={`text-sm ${it.isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{it.name}{it.quantity ? ` × ${it.quantity}` : ''}</span>
+            </button>
+          ))}
+        </div>
+        {picking ? (
+          <div className="mt-2.5 space-y-1.5">
+            <p className="text-xs text-gray-500">排進哪一天？（生成購物卡）</p>
+            <div className="flex flex-wrap gap-1.5">
+              {slots.map((s) => (
+                <button key={s.dayIndex} onClick={() => { onSchedule(store, s.dayIndex, s.startTime); setPicking(false) }} className="text-xs border border-amber-200 text-amber-700 bg-white rounded-full px-2.5 py-1 active:bg-amber-50">
+                  第 {s.dayIndex + 1} 天 {s.startTime}{s.distanceKm != null ? `（${s.distanceKm.toFixed(0)}km）` : ''}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPicking(false)} className="text-xs text-gray-400">取消</button>
+          </div>
+        ) : (
+          <button onClick={() => setPicking(true)} className="mt-2.5 w-full h-9 rounded-lg text-sm font-medium text-white" style={{ background: SHOP_COLOR }}>
+            ＋ 排進某天
+          </button>
         )}
       </div>
     </div>

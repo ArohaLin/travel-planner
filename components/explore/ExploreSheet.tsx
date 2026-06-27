@@ -13,6 +13,8 @@ import { getCached, setCached } from '@/lib/cache/clientCache'
 import { ExploreMap } from '@/components/explore/ExploreMap'
 import { RecDetailModal } from '@/components/explore/RecDetailModal'
 import { isOpenAt, weekdayOf, toMin, type Hours } from '@/lib/explore/hours'
+import type { ShoppingItem } from '@/lib/types/shopping'
+import type { ScheduleStore } from '@/components/shopping/ShoppingSheet'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
 
@@ -30,6 +32,10 @@ interface Props {
   initialTab?: 'recommend' | 'wishlist'
   /** B：從某一天進來 → 願望清單依離該天遠近排序、一鍵加入該天 */
   targetDayIndex?: number | null
+  /** 採購清單（綁店項目顯示在地圖「採購」篩選層） */
+  shoppingItems?: ShoppingItem[]
+  onToggleShopping?: (id: string, isDone: boolean) => void
+  onScheduleShopping?: (store: ScheduleStore, dayIndex: number, startTime: string) => void
 }
 
 function photoUrl(ref: string | null): string | null {
@@ -44,7 +50,7 @@ interface PlaceResult {
 
 // 營業時間判斷已抽到 lib/explore/hours.ts（isOpenAt / weekdayOf / toMin / Hours），供地圖與詳情共用
 
-export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onReplaceAccommodation, onAiArrange, initialTab, targetDayIndex }: Props) {
+export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onReplaceAccommodation, onAiArrange, initialTab, targetDayIndex, shoppingItems, onToggleShopping, onScheduleShopping }: Props) {
   const { showToast } = useToast()
   const [tab, setTab] = useState<'recommend' | 'search' | 'wishlist' | 'lodging' | 'shop'>(initialTab ?? (targetDayIndex != null ? 'wishlist' : 'recommend'))
   // 快取鍵（掛載期固定；地區跟著目的地預設，selectedRegion 初始 null）
@@ -338,6 +344,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
                       onAddToWishlist={addToWishlist}
                       onAddToDay={addRecToDay}
                       onOpenDetail={setDetailRec}
+                      shoppingItems={shoppingItems}
+                      onToggleShopping={onToggleShopping}
+                      onScheduleShopping={onScheduleShopping}
                     />
                   </div>
                 )}
