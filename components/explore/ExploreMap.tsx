@@ -8,6 +8,7 @@ import { foodIcon } from '@/lib/explore/foodIcons'
 import { suggestSlots, type Slot } from '@/lib/explore/placement'
 import { isOpenAt, weekdayOf, toMin, type Hours } from '@/lib/explore/hours'
 import { MyLocationButton } from '@/components/map/MyLocationButton'
+import { flyTo } from '@/lib/maps/flyTo'
 
 const ROUTE_COLOR = '#2563eb' // 行程脈絡（藍）
 const TAIWAN_CENTER = { lat: 23.6978, lng: 120.9605 }
@@ -218,14 +219,12 @@ function ExploreMapContent({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, boundsKey])
 
-  // 選中（含右側列表點擊）→ 平移到該點
+  // 選中（含右側列表點擊）→ 平滑飛行到該點（遠距離中途拉遠再拉近，不瞬移）
   useEffect(() => {
     if (!map || !selectedId) return
     const r = recs.find((x) => x.id === selectedId)
-    if (r && r.lat != null && r.lng != null) {
-      map.panTo({ lat: r.lat, lng: r.lng })
-      if ((map.getZoom() ?? 0) < 15) map.setZoom(15)
-    }
+    if (!r || r.lat == null || r.lng == null) return
+    return flyTo(map, { lat: r.lat, lng: r.lng }, { zoom: 16 })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, selectedId])
 
