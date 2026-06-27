@@ -10,6 +10,9 @@ import { LodgingTab } from '@/components/explore/LodgingTab'
 import type { LodgingResearch } from '@/lib/types/lodging'
 import { mapLodgingCategory } from '@/lib/utils/lodgingToRec'
 import { getCached, setCached } from '@/lib/cache/clientCache'
+import { FoodMap } from '@/components/explore/FoodMap'
+import { RecDetailModal } from '@/components/explore/RecDetailModal'
+import { isOpenAt, weekdayOf, toMin, type Hours } from '@/lib/explore/hours'
 
 const CATEGORY_ORDER: RecommendationCategory[] = ['景點', '美食', '住宿', '親子']
 
@@ -39,25 +42,7 @@ interface PlaceResult {
   photoRef: string | null; lat: number | null; lng: number | null
 }
 
-// ── 營業時間判斷 ─────────────────────────────────────────────────────────────
-interface Hours { businessStatus: string | null; periods: { open?: { day: number; time: string }; close?: { day: number; time: string } }[] | null }
-const hhmm = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(2))
-function isOpenAt(h: Hours | null, weekday: number, minutes: number): boolean | null {
-  if (!h || !h.periods) return null
-  if (h.businessStatus && h.businessStatus !== 'OPERATIONAL') return false
-  if (h.periods.length === 1 && h.periods[0].open?.time === '0000' && !h.periods[0].close) return true
-  const cand = weekday * 1440 + minutes
-  for (const p of h.periods) {
-    if (!p.open || !p.close) continue
-    const o = p.open.day * 1440 + hhmm(p.open.time)
-    let c = p.close.day * 1440 + hhmm(p.close.time)
-    if (c <= o) c += 7 * 1440
-    if ((cand >= o && cand < c) || (cand + 7 * 1440 >= o && cand + 7 * 1440 < c)) return true
-  }
-  return false
-}
-const weekdayOf = (date: string) => new Date(date + 'T00:00:00').getDay()
-const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+// 營業時間判斷已抽到 lib/explore/hours.ts（isOpenAt / weekdayOf / toMin / Hours），供地圖與詳情共用
 
 export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToDay, onReplaceAccommodation, onAiArrange, initialTab, targetDayIndex }: Props) {
   const { showToast } = useToast()
@@ -71,6 +56,9 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   const [cat, setCat] = useState<RecommendationCategory>('景點')
   const [loading, setLoading] = useState(cachedRecs == null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // 美食分類的清單／地圖檢視切換；地圖點店後的完整詳情
+  const [foodView, setFoodView] = useState<'list' | 'map'>('list')
+  const [detailRec, setDetailRec] = useState<Recommendation | null>(null)
 
   // 地區選擇：selectedRegion=null 表示「跟著目的地預設」；activeRegion 為伺服器實際生效地區
   const [regions, setRegions] = useState<string[]>(cachedRecs?.regions ?? [])
@@ -218,6 +206,34 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
     } finally { setBusyId(null) }
   }
 
+  // 地圖彈卡／詳情「排進某天」：先確保入願望清單（取既有或新建），再排入指定天
+  async function addRecToDay(rec: Recommendation, dayIndex: number, startTime: string) {
+    setBusyId(rec.id)
+    try {
+      let item = wishlist.find((w) => !!w.googlePlaceId && w.googlePlaceId === rec.googlePlaceId)
+      if (!item) {
+        const isLodgingSource = rec.id.startsWith('lodging:')
+        const res = await fetch(`/api/itinerary/${itineraryId}/wishlist`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source: isLodgingSource ? 'search' : 'recommendation',
+            recommendationId: isLodgingSource ? null : rec.id,
+            googlePlaceId: rec.googlePlaceId, name: rec.name, category: rec.category, lat: rec.lat, lng: rec.lng, photoRef: rec.photoRef,
+          }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (res.ok && data.item) { item = data.item as WishlistItem; setWishlist((prev) => [data.item, ...prev]) }
+      }
+      if (!item) { showToast('加入失敗', 'error'); return }
+      const target = item
+      const ok = await onAddToDay(target, dayIndex, startTime)
+      if (ok) {
+        setWishlist((prev) => prev.map((w) => (w.id === target.id ? { ...w, status: 'added' } : w)))
+        showToast(`已加入第 ${dayIndex + 1} 天：${rec.name}`, 'success')
+      }
+    } catch { showToast('網路錯誤', 'error') } finally { setBusyId(null) }
+  }
+
   async function replaceAccommodation(item: WishlistItem, dayIndex: number) {
     if (!onReplaceAccommodation) return
     setBusyId(item.id)
@@ -279,25 +295,46 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
               <p className="text-center text-gray-400 text-sm py-16 px-6">此地區目前還沒有精選推薦。</p>
             ) : (
               <>
-                <div className="sticky top-0 bg-white z-10 px-4 py-2 flex gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-50">
+                <div className="sticky top-0 bg-white z-10 px-4 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-50">
                   {cats.map((c) => (
                     <button key={c} onClick={() => setCat(c)} className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}>{c}</button>
                   ))}
-                </div>
-                <div className="px-4 py-3 space-y-3">
-                  {featured.map((r) => (
-                    <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
-                  ))}
-                  {longlist.length > 0 && (
-                    <LonglistSection
-                      items={longlist}
-                      inWishlist={inWishlist}
-                      titles={titles}
-                      busyId={busyId}
-                      onAdd={addToWishlist}
-                    />
+                  {cat === '美食' && (
+                    <div className="ml-auto flex-shrink-0 flex bg-gray-100 rounded-lg p-0.5">
+                      <button onClick={() => setFoodView('list')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', foodView === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>清單</button>
+                      <button onClick={() => setFoodView('map')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', foodView === 'map' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖</button>
+                    </div>
                   )}
                 </div>
+                {cat === '美食' && foodView === 'map' ? (
+                  <div className="h-[68dvh]">
+                    <FoodMap
+                      recs={(recs ?? []).filter((r) => r.category === '美食')}
+                      days={days}
+                      inWishlist={inWishlist}
+                      inItineraryNames={titles}
+                      busyId={busyId}
+                      onAddToWishlist={addToWishlist}
+                      onAddToDay={addRecToDay}
+                      onOpenDetail={setDetailRec}
+                    />
+                  </div>
+                ) : (
+                  <div className="px-4 py-3 space-y-3">
+                    {featured.map((r) => (
+                      <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
+                    ))}
+                    {longlist.length > 0 && (
+                      <LonglistSection
+                        items={longlist}
+                        inWishlist={inWishlist}
+                        titles={titles}
+                        busyId={busyId}
+                        onAdd={addToWishlist}
+                      />
+                    )}
+                  </div>
+                )}
               </>
             )
           ) : tab === 'search' ? (
@@ -381,6 +418,18 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
           )}
         </div>
       </div>
+
+      {detailRec && (
+        <RecDetailModal
+          rec={detailRec}
+          days={days}
+          added={(!!detailRec.googlePlaceId && inWishlist.has(detailRec.googlePlaceId)) || titles.has(detailRec.name)}
+          busy={busyId === detailRec.id}
+          onClose={() => setDetailRec(null)}
+          onAddWish={() => addToWishlist(detailRec)}
+          onAddDay={(di, t) => addRecToDay(detailRec, di, t)}
+        />
+      )}
     </>
   )
 }
