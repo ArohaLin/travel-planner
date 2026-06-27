@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Map, Marker, useMap } from '@vis.gl/react-google-maps'
+import { MyLocationButton } from '@/components/map/MyLocationButton'
 import type { ItineraryDay, GeoLocation } from '@/lib/types/itinerary'
 import type { Recommendation } from '@/lib/types/recommendation'
 import { foodIcon } from '@/lib/explore/foodIcons'
@@ -94,6 +95,7 @@ export function FoodMap({
           selectedId={selectedId}
           onSelect={(r) => setSelectedId(r.id)}
         />
+        <MyLocationButton />
       </Map>
 
       {/* 行程脈絡圖層開關 */}

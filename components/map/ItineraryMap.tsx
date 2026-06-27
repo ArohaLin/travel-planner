@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Map, Marker, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps'
+import { MyLocationButton } from './MyLocationButton'
 import type { TravelLeg } from '@/lib/types/itinerary'
 import {
   getOrComputeRoute,
@@ -207,6 +208,7 @@ export function ItineraryMap({ days, distanceMode, onRoute }: ItineraryMapProps)
       style={{ width: '100%', height: '100%' }}
     >
       <MapContent days={days} distanceMode={distanceMode} onRoute={onRoute} />
+      <MyLocationButton />
     </Map>
   )
 }
