@@ -20,10 +20,14 @@ interface ItineraryHeaderProps {
   todoCount?: number
   /** 開啟待辦抽屜 */
   onOpenTodos?: () => void
+  /** 採購未買數（顯示在採購鈕徽章）*/
+  shoppingCount?: number
+  /** 開啟採購清單抽屜 */
+  onOpenShopping?: () => void
 }
 
 export function ItineraryHeader({
-  itinerary, itineraryId, role, onlineUsers, currentUser, todoCount = 0, onOpenTodos,
+  itinerary, itineraryId, role, onlineUsers, currentUser, todoCount = 0, onOpenTodos, shoppingCount = 0, onOpenShopping,
 }: ItineraryHeaderProps) {
   const router = useRouter()
   const { metadata } = itinerary
@@ -119,6 +123,24 @@ export function ItineraryHeader({
             {todoCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
                 {todoCount > 99 ? '99+' : todoCount}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* 採購清單 */}
+        {onOpenShopping && (
+          <button
+            onClick={onOpenShopping}
+            className="tap-target text-gray-500 p-1 relative flex-shrink-0"
+            aria-label={`採購清單${shoppingCount > 0 ? `，${shoppingCount} 項未買` : ''}`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17M17 17a2 2 0 100 4 2 2 0 000-4zM9 19a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            {shoppingCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
+                {shoppingCount > 99 ? '99+' : shoppingCount}
               </span>
             )}
           </button>

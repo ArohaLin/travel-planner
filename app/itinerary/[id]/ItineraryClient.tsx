@@ -37,6 +37,8 @@ import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { DepartureEditModal } from '@/components/itinerary/DepartureEditModal'
 import { TodoSheet } from '@/components/itinerary/TodoSheet'
 import { useTodos } from '@/lib/hooks/useTodos'
+import { useShopping } from '@/lib/hooks/useShopping'
+import { ShoppingSheet, type ScheduleStore } from '@/components/shopping/ShoppingSheet'
 import { deriveAutoTodos } from '@/lib/todo/deriveTodos'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
@@ -95,6 +97,7 @@ export function ItineraryClient({
   const [dragMode, setDragMode] = useState(false)
   const [departureEditOpen, setDepartureEditOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
+  const [shoppingOpen, setShoppingOpen] = useState(false)
   const [dragHasChanges, setDragHasChanges] = useState(false)
   // 拖拉未套用時、切到哪個檢視的待確認目標（map / summary）
   const [dragSwitchConfirm, setDragSwitchConfirm] = useState<'map' | 'summary' | null>(null)
@@ -153,6 +156,10 @@ export function ItineraryClient({
   }, [displayItinerary, todayISO, todoState.todos])
   const manualTodos = useMemo(() => todoState.todos.filter((t) => t.kind === 'manual'), [todoState.todos])
   const todoBadge = autoTodosActive.length + manualTodos.filter((t) => !t.isDone).length
+
+  // ── 採購清單（手動清單，Realtime 協作）────────────────────────────────────
+  const shopping = useShopping(itineraryId)
+  const shoppingBadge = shopping.items.filter((s) => !s.isDone).length
 
   const currentDayData = displayItinerary.days[activeDay]
   const userCanEdit = canEdit(role)
@@ -450,6 +457,27 @@ export function ItineraryClient({
       }).catch(() => {})
     }
     return ok
+  }
+
+  // 採購：綁店整家排進某天 → 生成一張購物活動卡（要買清單放 notes）
+  async function handleScheduleShopping(store: ScheduleStore, dayIndex: number, startTime: string): Promise<boolean> {
+    const activity: Activity = {
+      id: nanoid(8),
+      type: 'shopping',
+      title: store.placeName,
+      startTime: startTime || '10:00',
+      bookingRequired: false,
+      placeLabel: store.placeName,
+      location: { lat: store.lat, lng: store.lng },
+      ...(store.itemNames.length ? { notes: `要買：${store.itemNames.join('、')}` } : {}),
+    }
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `採購排程：${store.placeName}（第 ${dayIndex + 1} 天 ${activity.startTime}）`,
+      proposedBy: 'user',
+      ops: [{ op: 'add_activity', dayIndex, payload: activity }],
+    }
+    return submitPatch(patch)
   }
 
   async function handleReplaceAccommodation(item: WishlistItem, dayIndex: number): Promise<boolean> {
@@ -812,6 +840,8 @@ export function ItineraryClient({
         currentUser={{ displayName: currentUser.displayName, avatarUrl: currentUser.avatarUrl, globalRole: currentUser.globalRole }}
         todoCount={todoBadge}
         onOpenTodos={() => setTodoOpen(true)}
+        shoppingCount={shoppingBadge}
+        onOpenShopping={() => setShoppingOpen(true)}
       />
 
       <TripInfoCard
@@ -1183,6 +1213,20 @@ export function ItineraryClient({
         onReserveActivity={handleTodoReserveActivity}
         onReserveLodging={handleTodoReserveLodging}
       />
+
+      {shoppingOpen && (
+        <ShoppingSheet
+          days={displayItinerary.days}
+          destination={[displayItinerary.metadata.destination, displayItinerary.metadata.title].filter(Boolean).join(' ')}
+          items={shopping.items}
+          canEdit={userCanEdit}
+          onAdd={shopping.addItem}
+          onToggle={shopping.toggleItem}
+          onDelete={shopping.deleteItem}
+          onSchedule={handleScheduleShopping}
+          onClose={() => setShoppingOpen(false)}
+        />
+      )}
 
       {currentDayData && (
         <DepartureEditModal
