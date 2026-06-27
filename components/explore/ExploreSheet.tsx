@@ -57,7 +57,7 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
   const [loading, setLoading] = useState(cachedRecs == null)
   const [busyId, setBusyId] = useState<string | null>(null)
   // 推薦的清單／地圖檢視切換（地圖跨所有類型）；地圖點店後的完整詳情
-  const [recView, setRecView] = useState<'list' | 'map'>('list')
+  const [recView, setRecView] = useState<'list' | 'map' | 'maplist'>('list')
   const [detailRec, setDetailRec] = useState<Recommendation | null>(null)
 
   // 地區選擇：selectedRegion=null 表示「跟著目的地預設」；activeRegion 為伺服器實際生效地區
@@ -295,29 +295,23 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
               <p className="text-center text-gray-400 text-sm py-16 px-6">此地區目前還沒有精選推薦。</p>
             ) : (
               <>
-                <div className="sticky top-0 bg-white z-10 px-4 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar border-b border-gray-50">
-                  {recView === 'list' && cats.map((c) => (
-                    <button key={c} onClick={() => setCat(c)} className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}>{c}</button>
-                  ))}
-                  <div className="ml-auto flex-shrink-0 flex bg-gray-100 rounded-lg p-0.5">
-                    <button onClick={() => setRecView('list')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>清單</button>
-                    <button onClick={() => setRecView('map')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'map' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖</button>
+                <div className="sticky top-0 bg-white z-10 border-b border-gray-50">
+                  <div className="px-4 py-2 flex justify-end">
+                    <div className="flex-shrink-0 flex bg-gray-100 rounded-lg p-0.5">
+                      <button onClick={() => setRecView('list')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'list' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>清單</button>
+                      <button onClick={() => setRecView('map')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'map' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖</button>
+                      <button onClick={() => setRecView('maplist')} className={clsx('px-2.5 py-1 rounded-md text-xs font-medium', recView === 'maplist' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500')}>地圖列表</button>
+                    </div>
                   </div>
+                  {recView === 'list' && (
+                    <div className="px-4 pb-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+                      {cats.map((c) => (
+                        <button key={c} onClick={() => setCat(c)} className={clsx('flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium', cat === c ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500')}>{c}</button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {recView === 'map' ? (
-                  <div className="h-[68dvh]">
-                    <ExploreMap
-                      recs={recs ?? []}
-                      days={days}
-                      inWishlist={inWishlist}
-                      inItineraryNames={titles}
-                      busyId={busyId}
-                      onAddToWishlist={addToWishlist}
-                      onAddToDay={addRecToDay}
-                      onOpenDetail={setDetailRec}
-                    />
-                  </div>
-                ) : (
+                {recView === 'list' ? (
                   <div className="px-4 py-3 space-y-3">
                     {featured.map((r) => (
                       <RecCard key={r.id} rec={r} added={(!!r.googlePlaceId && inWishlist.has(r.googlePlaceId)) || titles.has(r.name)} busy={busyId === r.id} onAdd={() => addToWishlist(r)} />
@@ -331,6 +325,20 @@ export function ExploreSheet({ itineraryId, destination, days, onClose, onAddToD
                         onAdd={addToWishlist}
                       />
                     )}
+                  </div>
+                ) : (
+                  <div className="h-[68dvh]">
+                    <ExploreMap
+                      recs={recs ?? []}
+                      days={days}
+                      showList={recView === 'maplist'}
+                      inWishlist={inWishlist}
+                      inItineraryNames={titles}
+                      busyId={busyId}
+                      onAddToWishlist={addToWishlist}
+                      onAddToDay={addRecToDay}
+                      onOpenDetail={setDetailRec}
+                    />
                   </div>
                 )}
               </>

@@ -60,6 +60,8 @@ interface ExploreMapProps {
   /** 全部推薦（所有類型、featured + longlist）；地圖讀即時資料，名單更新即反映 */
   recs: Recommendation[]
   days: ItineraryDay[]
+  /** 是否顯示右側列表（地圖列表模式）；切換時不重掛元件 → 地圖位置/縮放不變 */
+  showList: boolean
   inWishlist: Set<string>
   inItineraryNames: Set<string>
   busyId: string | null
@@ -69,7 +71,7 @@ interface ExploreMapProps {
 }
 
 export function ExploreMap({
-  recs, days, inWishlist, inItineraryNames, busyId, onAddToWishlist, onAddToDay, onOpenDetail,
+  recs, days, showList, inWishlist, inItineraryNames, busyId, onAddToWishlist, onAddToDay, onOpenDetail,
 }: ExploreMapProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showRoute, setShowRoute] = useState(true)
@@ -127,6 +129,24 @@ export function ExploreMap({
           <span>{showRoute ? '行程脈絡：開' : '行程脈絡：關'}</span>
         </button>
 
+        {/* 類型篩選（浮在地圖上；地圖與地圖列表模式都有，切換不改變 marker 集合與地圖位置） */}
+        <div className="absolute top-14 left-2 right-2 z-10 flex gap-1.5 overflow-x-auto no-scrollbar">
+          {FILTERS.map((f) => {
+            const active = filter === f
+            const color = f === '全部' ? '#374151' : catColor(f)
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className="flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium shadow-sm border"
+                style={active ? { background: color, color: '#fff', borderColor: color } : { background: 'rgba(255,255,255,0.95)', color: '#6b7280', borderColor: '#e5e7eb' }}
+              >
+                {f}
+              </button>
+            )
+          })}
+        </div>
+
         {/* 底部彈卡 */}
         {selected && (
           <PlaceCard
@@ -142,25 +162,9 @@ export function ExploreMap({
         )}
       </div>
 
-      {/* 右側列表欄 */}
-      <div className="w-[42%] max-w-[200px] flex flex-col border-l border-gray-100 bg-white">
-        <div className="flex-shrink-0 px-2 py-2 border-b border-gray-50 flex gap-1 overflow-x-auto no-scrollbar">
-          {FILTERS.map((f) => {
-            const active = filter === f
-            const color = f === '全部' ? '#6b7280' : catColor(f)
-            return (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className="flex-shrink-0 px-2 py-1 rounded-full text-[11px] font-medium border"
-                style={active ? { background: color, color: '#fff', borderColor: color } : { color: '#6b7280', borderColor: '#e5e7eb' }}
-              >
-                {f}
-              </button>
-            )
-          })}
-        </div>
-        <div className="flex-1 overflow-y-auto scroll-touch">
+      {/* 右側列表欄（僅地圖列表模式；切換不重掛地圖 → 位置/縮放不變） */}
+      {showList && (
+        <div className="w-[42%] max-w-[200px] overflow-y-auto scroll-touch border-l border-gray-100 bg-white">
           {list.length === 0 ? (
             <p className="text-center text-gray-400 text-xs py-8 px-3">此類型沒有可顯示的地點</p>
           ) : (
@@ -188,7 +192,7 @@ export function ExploreMap({
             })
           )}
         </div>
-      </div>
+      )}
     </div>
   )
 }
