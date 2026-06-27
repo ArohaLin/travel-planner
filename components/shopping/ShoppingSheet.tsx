@@ -29,6 +29,7 @@ interface Props {
   items: ShoppingItem[]
   canEdit: boolean
   onAdd: (f: ShoppingFields) => Promise<boolean>
+  onEdit: (id: string, f: ShoppingFields) => Promise<boolean>
   onToggle: (id: string, isDone: boolean) => Promise<boolean>
   onDelete: (id: string) => Promise<boolean>
   /** 綁店整家排進某天 → 生成購物活動卡 */
@@ -39,7 +40,7 @@ interface Props {
 const dayLabel = (idxs: number[]) =>
   idxs.length ? `第 ${[...idxs].sort((a, b) => a - b).map((i) => i + 1).join('、')} 天` : ''
 
-export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onToggle, onDelete, onSchedule, onClose }: Props) {
+export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit, onToggle, onDelete, onSchedule, onClose }: Props) {
   const { showToast } = useToast()
 
   // 新增表單
@@ -54,6 +55,7 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
   const [pickDays, setPickDays] = useState(false)
   const [selDays, setSelDays] = useState<number[]>([])
   const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   const [busyId, setBusyId] = useState<string | null>(null)
   const [schedulingKey, setSchedulingKey] = useState<string | null>(null)
@@ -78,12 +80,13 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
     setName(''); setQuantity(''); setNote('')
     setBindStore(false); setPlace(null); setStoreQ(''); setStoreRes([])
     setPickDays(false); setSelDays([])
+    setEditingId(null)
   }
 
-  async function submitAdd() {
+  async function submitForm() {
     if (!name.trim()) return
     setAdding(true)
-    const ok = await onAdd({
+    const f: ShoppingFields = {
       name: name.trim(),
       quantity: quantity.trim() || null,
       note: note.trim() || null,
@@ -92,10 +95,28 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
       lat: place?.lat ?? null,
       lng: place?.lng ?? null,
       dayIndexes: selDays,
-    })
+    }
+    const ok = editingId ? await onEdit(editingId, f) : await onAdd(f)
     setAdding(false)
-    if (ok) { resetForm(); showToast('已加入採購清單', 'success') }
-    else showToast('加入失敗', 'error')
+    if (ok) { resetForm(); showToast(editingId ? '已更新' : '已加入採購清單', 'success') }
+    else showToast(editingId ? '更新失敗' : '加入失敗', 'error')
+  }
+
+  function loadForEdit(it: ShoppingItem) {
+    setEditingId(it.id)
+    setName(it.name)
+    setQuantity(it.quantity ?? '')
+    setNote(it.note ?? '')
+    if (it.placeId) {
+      setBindStore(true)
+      setPlace({ placeId: it.placeId, name: it.placeName ?? '店家', lat: it.lat, lng: it.lng, address: null })
+      setStoreQ('')
+    } else {
+      setBindStore(false)
+      setPlace(null)
+    }
+    setSelDays(it.dayIndexes)
+    setPickDays(it.dayIndexes.length > 0)
   }
 
   // 分組
@@ -139,9 +160,14 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
           {it.note && <p className="text-[11px] text-gray-400 leading-snug">{it.note}</p>}
         </div>
         {canEdit && (
-          <button onClick={() => handleDelete(it)} disabled={busyId === it.id} className="flex-shrink-0 text-gray-300 hover:text-red-500 p-1" aria-label="刪除">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <>
+            <button onClick={() => loadForEdit(it)} className="flex-shrink-0 text-gray-300 hover:text-amber-600 p-1" aria-label="編輯">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" /></svg>
+            </button>
+            <button onClick={() => handleDelete(it)} disabled={busyId === it.id} className="flex-shrink-0 text-gray-300 hover:text-red-500 p-1" aria-label="刪除">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </>
         )}
       </div>
     )
@@ -163,6 +189,12 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
           {/* 新增 */}
           {canEdit && (
             <div className="bg-gray-50 rounded-2xl p-3 mb-4 space-y-2">
+              {editingId && (
+                <div className="flex items-center justify-between text-xs text-amber-700 bg-amber-100 rounded-lg px-2.5 py-1.5">
+                  <span>✏️ 編輯中</span>
+                  <button onClick={resetForm} className="text-gray-500 underline">取消</button>
+                </div>
+              )}
               <div className="flex gap-2">
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="買什麼…" className="flex-1 bg-white rounded-lg px-3 py-2 text-base text-gray-800 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200" style={{ fontSize: 16 }} />
                 <input value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="數量" className="w-16 bg-white rounded-lg px-2 py-2 text-base text-gray-800 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200" style={{ fontSize: 16 }} />
@@ -200,8 +232,8 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onTogg
                   })}
                 </div>
               )}
-              <button onClick={submitAdd} disabled={!name.trim() || adding} className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium disabled:opacity-40 active:bg-amber-600">
-                {adding ? '加入中…' : '＋ 加入採購清單'}
+              <button onClick={submitForm} disabled={!name.trim() || adding} className="w-full py-2.5 rounded-xl bg-amber-500 text-white text-sm font-medium disabled:opacity-40 active:bg-amber-600">
+                {adding ? (editingId ? '更新中…' : '加入中…') : editingId ? '儲存修改' : '＋ 加入採購清單'}
               </button>
             </div>
           )}

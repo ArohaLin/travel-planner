@@ -1221,6 +1221,7 @@ export function ItineraryClient({
           items={shopping.items}
           canEdit={userCanEdit}
           onAdd={shopping.addItem}
+          onEdit={shopping.editItem}
           onToggle={shopping.toggleItem}
           onDelete={shopping.deleteItem}
           onSchedule={handleScheduleShopping}
