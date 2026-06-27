@@ -96,10 +96,13 @@ export function ExploreMap({
   const shoppingStores = useMemo(() => {
     const m = new globalThis.Map<string, ScheduleStore & { placeId: string; items: ShoppingItem[] }>()
     for (const it of shoppingItems ?? []) {
-      if (it.isDone || !it.placeId || it.lat == null || it.lng == null) continue
-      const g = m.get(it.placeId) ?? { placeId: it.placeId, placeName: it.placeName ?? '店家', lat: it.lat, lng: it.lng, itemNames: [], items: [] }
-      g.items.push(it); g.itemNames.push(it.name)
-      m.set(it.placeId, g)
+      if (it.isDone) continue
+      for (const s of it.stores) {
+        if (s.lat == null || s.lng == null) continue
+        const g = m.get(s.placeId) ?? { placeId: s.placeId, placeName: s.name, lat: s.lat, lng: s.lng, itemNames: [], items: [] }
+        g.items.push(it); g.itemNames.push(it.name)
+        m.set(s.placeId, g)
+      }
     }
     return Array.from(m.values())
   }, [shoppingItems])

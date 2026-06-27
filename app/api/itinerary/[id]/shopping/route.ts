@@ -9,14 +9,23 @@ export const revalidate = 0
 /** 從 body 取出採購欄位（add/edit 共用）。 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function fields(body: any) {
+  const rawStores = Array.isArray(body.stores) ? body.stores : []
+  const stores = rawStores
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((s: any) => s && s.placeId && typeof s.lat === 'number' && typeof s.lng === 'number')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((s: any) => ({ placeId: String(s.placeId), name: String(s.name ?? '店家'), lat: s.lat, lng: s.lng }))
+  const first = stores[0] ?? null
   return {
     name: String(body.name ?? '').trim(),
     quantity: body.quantity ? String(body.quantity) : null,
     note: body.note ? String(body.note) : null,
-    place_id: body.placeId ?? null,
-    place_name: body.placeName ?? null,
-    lat: typeof body.lat === 'number' ? body.lat : null,
-    lng: typeof body.lng === 'number' ? body.lng : null,
+    stores,
+    // 同步寫第一家到舊單店欄位（相容查詢/排序），主資料以 stores 為準
+    place_id: first?.placeId ?? null,
+    place_name: first?.name ?? null,
+    lat: first?.lat ?? null,
+    lng: first?.lng ?? null,
     day_indexes: Array.isArray(body.dayIndexes)
       ? body.dayIndexes.filter((n: unknown) => typeof n === 'number')
       : [],

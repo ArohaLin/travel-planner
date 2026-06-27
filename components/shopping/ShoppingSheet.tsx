@@ -48,7 +48,7 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
   const [quantity, setQuantity] = useState('')
   const [note, setNote] = useState('')
   const [bindStore, setBindStore] = useState(false)
-  const [place, setPlace] = useState<PlaceResult | null>(null)
+  const [places, setPlaces] = useState<PlaceResult[]>([])
   const [storeQ, setStoreQ] = useState('')
   const [storeRes, setStoreRes] = useState<PlaceResult[]>([])
   const [searching, setSearching] = useState(false)
@@ -78,7 +78,7 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
 
   function resetForm() {
     setName(''); setQuantity(''); setNote('')
-    setBindStore(false); setPlace(null); setStoreQ(''); setStoreRes([])
+    setBindStore(false); setPlaces([]); setStoreQ(''); setStoreRes([])
     setPickDays(false); setSelDays([])
     setEditingId(null)
   }
@@ -90,10 +90,9 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
       name: name.trim(),
       quantity: quantity.trim() || null,
       note: note.trim() || null,
-      placeId: place?.placeId ?? null,
-      placeName: place?.name ?? null,
-      lat: place?.lat ?? null,
-      lng: place?.lng ?? null,
+      stores: places
+        .filter((p) => p.lat != null && p.lng != null)
+        .map((p) => ({ placeId: p.placeId, name: p.name, lat: p.lat as number, lng: p.lng as number })),
       dayIndexes: selDays,
     }
     const ok = editingId ? await onEdit(editingId, f) : await onAdd(f)
@@ -107,13 +106,13 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
     setName(it.name)
     setQuantity(it.quantity ?? '')
     setNote(it.note ?? '')
-    if (it.placeId) {
+    if (it.stores.length) {
       setBindStore(true)
-      setPlace({ placeId: it.placeId, name: it.placeName ?? '店家', lat: it.lat, lng: it.lng, address: null })
+      setPlaces(it.stores.map((s) => ({ placeId: s.placeId, name: s.name, address: null, lat: s.lat, lng: s.lng })))
       setStoreQ('')
     } else {
       setBindStore(false)
-      setPlace(null)
+      setPlaces([])
     }
     setSelDays(it.dayIndexes)
     setPickDays(it.dayIndexes.length > 0)
@@ -125,15 +124,16 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
   const storeGroups = useMemo(() => {
     const m = new globalThis.Map<string, { placeName: string; lat: number | null; lng: number | null; items: ShoppingItem[] }>()
     for (const it of open) {
-      if (!it.placeId) continue
-      const g = m.get(it.placeId) ?? { placeName: it.placeName ?? '店家', lat: it.lat, lng: it.lng, items: [] }
-      g.items.push(it)
-      m.set(it.placeId, g)
+      for (const s of it.stores) {
+        const g = m.get(s.placeId) ?? { placeName: s.name, lat: s.lat, lng: s.lng, items: [] }
+        g.items.push(it)
+        m.set(s.placeId, g)
+      }
     }
     return Array.from(m.entries())
   }, [open])
-  const dayItems = open.filter((i) => !i.placeId && i.dayIndexes.length > 0)
-  const anywhere = open.filter((i) => !i.placeId && i.dayIndexes.length === 0)
+  const dayItems = open.filter((i) => i.stores.length === 0 && i.dayIndexes.length > 0)
+  const anywhere = open.filter((i) => i.stores.length === 0 && i.dayIndexes.length === 0)
 
   async function handleToggle(it: ShoppingItem) {
     setBusyId(it.id)
@@ -201,19 +201,29 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
               </div>
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="備註（選填，如指定品牌）" className="w-full bg-white rounded-lg px-3 py-2 text-sm text-gray-700 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200" style={{ fontSize: 16 }} />
               <div className="flex gap-2">
-                <button onClick={() => { setBindStore((v) => !v); if (bindStore) { setPlace(null); setStoreQ('') } }} className={clsx('flex-1 text-xs rounded-lg py-2 border flex items-center justify-center gap-1', bindStore || place ? 'border-amber-300 text-amber-700 bg-amber-50' : 'border-gray-200 text-gray-500')}>
-                  📍 {place ? place.name : bindStore ? '搜尋店家…' : '在哪買：隨處'}
+                <button onClick={() => setBindStore((v) => !v)} className={clsx('flex-1 text-xs rounded-lg py-2 border flex items-center justify-center gap-1', places.length || bindStore ? 'border-amber-300 text-amber-700 bg-amber-50' : 'border-gray-200 text-gray-500')}>
+                  📍 {places.length ? `${places.length} 家店` : bindStore ? '搜尋店家…' : '在哪買：隨處'}
                 </button>
                 <button onClick={() => setPickDays((v) => !v)} className={clsx('flex-1 text-xs rounded-lg py-2 border flex items-center justify-center gap-1', selDays.length ? 'border-purple-300 text-purple-700 bg-purple-50' : 'border-gray-200 text-gray-500')}>
                   📅 {selDays.length ? dayLabel(selDays) : '哪天：隨時'}
                 </button>
               </div>
-              {bindStore && !place && (
+              {bindStore && (
                 <div>
-                  <input value={storeQ} onChange={(e) => setStoreQ(e.target.value)} placeholder={`搜尋店家（${destination} 附近）`} autoFocus className="w-full bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200" style={{ fontSize: 16 }} />
+                  {places.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {places.map((p) => (
+                        <span key={p.placeId} className="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 rounded-full pl-2.5 pr-1.5 py-1">
+                          {p.name}
+                          <button onClick={() => setPlaces((ps) => ps.filter((x) => x.placeId !== p.placeId))} className="text-amber-500" aria-label="移除">✕</button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <input value={storeQ} onChange={(e) => setStoreQ(e.target.value)} placeholder={`搜尋店家加入（可加多家，${destination} 附近）`} className="w-full bg-white rounded-lg px-3 py-2 text-sm border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-200" style={{ fontSize: 16 }} />
                   {searching && <p className="text-xs text-gray-400 py-2 text-center">搜尋中…</p>}
-                  {storeRes.map((p) => (
-                    <button key={p.placeId} onClick={() => { setPlace(p); setStoreRes([]); setBindStore(true) }} className="w-full text-left px-2 py-2 border-b border-gray-100 active:bg-gray-50">
+                  {storeRes.filter((p) => !places.some((x) => x.placeId === p.placeId)).map((p) => (
+                    <button key={p.placeId} onClick={() => { setPlaces((ps) => [...ps, p]); setStoreQ(''); setStoreRes([]) }} className="w-full text-left px-2 py-2 border-b border-gray-100 active:bg-gray-50">
                       <p className="text-sm text-gray-800">{p.name}</p>
                       {p.address && <p className="text-[11px] text-gray-400 line-clamp-1">{p.address}</p>}
                     </button>

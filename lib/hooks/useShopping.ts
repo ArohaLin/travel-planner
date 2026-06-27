@@ -2,16 +2,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { getSupabaseBrowserClient } from '@/lib/supabase/client'
-import type { ShoppingItem } from '@/lib/types/shopping'
+import type { ShoppingItem, StoreRef } from '@/lib/types/shopping'
 
 export interface ShoppingFields {
   name: string
   quantity?: string | null
   note?: string | null
-  placeId?: string | null
-  placeName?: string | null
-  lat?: number | null
-  lng?: number | null
+  stores?: StoreRef[]
   dayIndexes?: number[]
 }
 
