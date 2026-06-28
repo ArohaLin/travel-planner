@@ -99,5 +99,122 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return NextResponse.json({ ok: true })
   }
 
+  // ── 連結：standalone booking → 行程卡（刪 standalone，更新卡欄位）
+  if (action === 'link') {
+    const standaloneId = String(body.standaloneId ?? '')
+    const targetType = String(body.targetType ?? '') as 'activity' | 'accommodation'
+    const targetId = String(body.targetId ?? '')
+    const dayIndex = Number(body.dayIndex ?? 0)
+
+    const [{ data: bk }, { data: itin }] = await Promise.all([
+      db.from('bookings').select('*').eq('id', standaloneId).eq('itinerary_id', params.id).single(),
+      db.from('itineraries').select('data').eq('id', params.id).single(),
+    ])
+    if (!bk) return NextResponse.json({ error: '找不到預約' }, { status: 404 })
+    if (!itin) return NextResponse.json({ error: '找不到行程' }, { status: 404 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itinData = itin.data as any
+    const day = itinData?.days?.[dayIndex]
+    if (!day) return NextResponse.json({ error: '找不到指定天' }, { status: 400 })
+
+    const bookingFields = {
+      bookingPlatform: bk.booking_platform ?? undefined,
+      orderNumber: bk.order_number ?? undefined,
+      bookingUrl: bk.booking_url ?? undefined,
+      depositPaid: bk.deposit_paid ?? undefined,
+      freeCancelBy: bk.free_cancel_by ?? undefined,
+      contact: bk.contact ?? undefined,
+    }
+
+    if (targetType === 'activity') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const act = day.activities?.find((a: any) => a.id === targetId)
+      if (!act) return NextResponse.json({ error: '找不到活動' }, { status: 404 })
+      Object.assign(act, bookingFields)
+      act.reservationStatus = bk.status
+      if (bk.cost) act.cost = bk.cost
+    } else {
+      const acc = day.accommodation
+      if (!acc || acc.id !== targetId) return NextResponse.json({ error: '找不到住宿' }, { status: 404 })
+      Object.assign(acc, bookingFields)
+      acc.reservationStatus = bk.status
+      if (bk.cost) acc.cost = bk.cost
+    }
+
+    const { error: updErr } = await db.from('itineraries').update({ data: itinData, updated_at: now }).eq('id', params.id)
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+    await db.from('bookings').delete().eq('id', standaloneId)
+    return NextResponse.json({ ok: true })
+  }
+
+  // ── 解除：行程卡 → standalone booking（清卡欄位，建 standalone）
+  if (action === 'unlink') {
+    const targetType = String(body.targetType ?? '') as 'activity' | 'accommodation'
+    const targetId = String(body.targetId ?? '')
+    const dayIndex = Number(body.dayIndex ?? 0)
+
+    const { data: itin } = await db.from('itineraries').select('data').eq('id', params.id).single()
+    if (!itin) return NextResponse.json({ error: '找不到行程' }, { status: 404 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const itinData = itin.data as any
+    const day = itinData?.days?.[dayIndex]
+    if (!day) return NextResponse.json({ error: '找不到指定天' }, { status: 400 })
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let newBooking: Record<string, any>
+    if (targetType === 'activity') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const act = day.activities?.find((a: any) => a.id === targetId)
+      if (!act) return NextResponse.json({ error: '找不到活動' }, { status: 404 })
+      newBooking = {
+        itinerary_id: params.id, created_by: user.id,
+        title: act.title, type: 'activity',
+        status: act.reservationStatus ?? 'needed',
+        date: day.date ?? null,
+        cost: act.cost ?? null,
+        booking_platform: act.bookingPlatform ?? null,
+        order_number: act.orderNumber ?? null,
+        booking_url: act.bookingUrl ?? null,
+        deposit_paid: act.depositPaid ?? null,
+        free_cancel_by: act.freeCancelBy ?? null,
+        contact: act.contact ?? null,
+      }
+      delete act.bookingPlatform; delete act.orderNumber; delete act.bookingUrl
+      delete act.depositPaid; delete act.freeCancelBy; delete act.contact
+      act.reservationStatus = 'none'
+    } else {
+      const acc = day.accommodation
+      if (!acc || acc.id !== targetId) return NextResponse.json({ error: '找不到住宿' }, { status: 404 })
+      newBooking = {
+        itinerary_id: params.id, created_by: user.id,
+        title: acc.name, type: 'lodging',
+        status: acc.reservationStatus ?? 'needed',
+        date: day.date ?? null,
+        cost: acc.cost ?? null,
+        booking_platform: acc.bookingPlatform ?? null,
+        order_number: acc.orderNumber ?? null,
+        booking_url: acc.bookingUrl ?? null,
+        deposit_paid: acc.depositPaid ?? null,
+        free_cancel_by: acc.freeCancelBy ?? null,
+        contact: acc.contact ?? null,
+      }
+      delete acc.bookingPlatform; delete acc.orderNumber; delete acc.bookingUrl
+      delete acc.depositPaid; delete acc.freeCancelBy; delete acc.contact
+      acc.reservationStatus = 'none'
+    }
+
+    const [{ data: inserted, error: insErr }, { error: updErr }] = await Promise.all([
+      db.from('bookings').insert(newBooking).select('*').single(),
+      db.from('itineraries').update({ data: itinData, updated_at: now }).eq('id', params.id),
+    ])
+    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 })
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
+    return NextResponse.json({ booking: mapBooking(inserted!) })
+  }
+
   return NextResponse.json({ error: '未知操作' }, { status: 400 })
 }

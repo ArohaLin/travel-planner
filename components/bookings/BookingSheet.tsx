@@ -6,6 +6,7 @@ import type { Itinerary } from '@/lib/types/itinerary'
 import type { Booking, BookingType, BookingStatus } from '@/lib/types/booking'
 import { BOOKING_TYPE_LABELS, BOOKING_STATUS_LABELS } from '@/lib/types/booking'
 import { BookingEditModal } from './BookingEditModal'
+import { LinkPickerModal } from './LinkPickerModal'
 
 // ─── 彙整後的統一預約列表項目 ───────────────────────────────────────────────
 export type UnifiedBooking = {
@@ -26,6 +27,9 @@ export type UnifiedBooking = {
   freeCancelBy?: string
   contact?: string
   notes?: string
+  // for link/unlink
+  rawId?: string           // original activity.id or acc.id
+  dayIndex?: number        // index in itinerary.days
   // standalone only
   standaloneId?: string
 }
@@ -43,6 +47,8 @@ function extractFromItinerary(itinerary: Itinerary): UnifiedBooking[] {
       if (eff === 'none') return
       result.push({
         id: `act-${act.id}`,
+        rawId: act.id,
+        dayIndex: di,
         source: 'activity',
         type: actTypeToBookingType(act.type),
         status: eff as BookingStatus,
@@ -73,6 +79,8 @@ function extractFromItinerary(itinerary: Itinerary): UnifiedBooking[] {
         } else {
           result.push({
             id: `acc-${acc.id}`,
+            rawId: acc.id,
+            dayIndex: di,
             source: 'lodging',
             type: 'lodging',
             status: eff as BookingStatus,
@@ -162,16 +170,20 @@ const SOURCE_LABEL: Record<UnifiedBooking['source'], string> = {
 // ─── 單筆預約卡片 ────────────────────────────────────────────────────────────
 function BookingCard({
   b, currency, canEdit,
-  onEdit, onDelete,
+  onEdit, onDelete, onLink, onUnlink,
 }: {
   b: UnifiedBooking
   currency: string
   canEdit: boolean
   onEdit?: () => void
   onDelete?: () => void
+  onLink?: () => void      // standalone → 連結到景點
+  onUnlink?: () => void    // card → 抽出為獨立
 }) {
   const [busy, setBusy] = useState(false)
+  const [unlinkConfirm, setUnlinkConfirm] = useState(false)
   const isStandalone = b.source === 'standalone'
+  const hasBookingData = !!(b.bookingPlatform || b.orderNumber || b.bookingUrl || b.freeCancelBy)
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col gap-2">
@@ -251,9 +263,37 @@ function BookingCard({
             📋 複製訂單號
           </button>
         )}
+        {canEdit && isStandalone && onLink && (
+          <button
+            className="flex items-center gap-1 text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-lg active:bg-purple-100"
+            onClick={onLink}
+          >
+            🔗 連結到景點
+          </button>
+        )}
+        {canEdit && !isStandalone && hasBookingData && onUnlink && (
+          unlinkConfirm ? (
+            <div className="flex gap-1 ml-auto">
+              <button
+                className="text-xs text-gray-500 px-2 py-1 rounded-lg border border-gray-200 active:bg-gray-50"
+                onClick={() => setUnlinkConfirm(false)}
+              >取消</button>
+              <button
+                className="text-xs text-red-600 bg-red-50 px-2.5 py-1 rounded-lg active:bg-red-100 disabled:opacity-40"
+                disabled={busy}
+                onClick={async () => { setBusy(true); await onUnlink(); setBusy(false); setUnlinkConfirm(false) }}
+              >{busy ? '處理中…' : '確認抽出'}</button>
+            </div>
+          ) : (
+            <button
+              className="ml-auto text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-lg active:bg-gray-200"
+              onClick={() => setUnlinkConfirm(true)}
+            >✂️ 抽出獨立</button>
+          )
+        )}
         {canEdit && isStandalone && onDelete && (
           <button
-            className="ml-auto text-xs text-red-400 bg-red-50 px-2.5 py-1 rounded-lg active:bg-red-100 disabled:opacity-40"
+            className={`${onLink ? '' : 'ml-auto '}text-xs text-red-400 bg-red-50 px-2.5 py-1 rounded-lg active:bg-red-100 disabled:opacity-40`}
             disabled={busy}
             onClick={async () => { setBusy(true); await onDelete(); setBusy(false) }}
           >
@@ -312,6 +352,7 @@ function SummaryBar({ items, currency }: { items: UnifiedBooking[]; currency: st
 interface BookingSheetProps {
   open: boolean
   onClose: () => void
+  itineraryId: string
   itinerary: Itinerary
   bookings: Booking[]   // standalone bookings from useBookings
   canEdit: boolean
@@ -324,7 +365,7 @@ type FilterType = BookingType | 'all'
 type FilterStatus = BookingStatus | 'all'
 
 export function BookingSheet({
-  open, onClose, itinerary, bookings, canEdit,
+  open, onClose, itineraryId, itinerary, bookings, canEdit,
   onAddBooking, onEditBooking, onDeleteBooking,
 }: BookingSheetProps) {
   const currency = itinerary.metadata.currency
@@ -336,6 +377,29 @@ export function BookingSheet({
   // ─── 新增/編輯 modal ──────────────────────────────────────────────────────
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
   const [addOpen, setAddOpen] = useState(false)
+
+  // ─── 連結：standalone → 卡片 ─────────────────────────────────────────────
+  const [linkTarget, setLinkTarget] = useState<UnifiedBooking | null>(null)  // the standalone being linked
+
+  // ─── API 操作 ─────────────────────────────────────────────────────────────
+  async function apiPost(body: Record<string, unknown>) {
+    const res = await fetch(`/api/itinerary/${itineraryId}/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  }
+
+  async function handleLink(standaloneId: string, targetType: 'activity' | 'accommodation', targetId: string, dayIndex: number) {
+    await apiPost({ action: 'link', standaloneId, targetType, targetId, dayIndex })
+    setLinkTarget(null)
+  }
+
+  async function handleUnlink(targetType: 'activity' | 'accommodation', targetId: string, dayIndex: number) {
+    await apiPost({ action: 'unlink', targetType, targetId, dayIndex })
+  }
 
   // ─── 彙整 ─────────────────────────────────────────────────────────────────
   const unified = useMemo<UnifiedBooking[]>(() => {
@@ -470,6 +534,10 @@ export function BookingSheet({
                 if (orig) setEditTarget(orig)
               } : undefined}
               onDelete={b.standaloneId ? () => onDeleteBooking(b.standaloneId!) : undefined}
+              onLink={b.source === 'standalone' ? () => setLinkTarget(b) : undefined}
+              onUnlink={(b.source === 'activity' || b.source === 'lodging') && b.rawId !== undefined && b.dayIndex !== undefined
+                ? () => handleUnlink(b.source === 'activity' ? 'activity' : 'accommodation', b.rawId!, b.dayIndex!)
+                : undefined}
             />
           ))
         )}
@@ -494,6 +562,16 @@ export function BookingSheet({
           currency={currency}
           onClose={() => setEditTarget(null)}
           onSave={async (data) => { await onEditBooking(editTarget.id, data); setEditTarget(null) }}
+        />
+      )}
+
+      {/* 連結景點 picker */}
+      {linkTarget && linkTarget.standaloneId && (
+        <LinkPickerModal
+          itinerary={itinerary}
+          standaloneId={linkTarget.standaloneId}
+          onClose={() => setLinkTarget(null)}
+          onConfirm={handleLink}
         />
       )}
     </div>

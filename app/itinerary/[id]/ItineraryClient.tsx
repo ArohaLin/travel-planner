@@ -1260,6 +1260,7 @@ export function ItineraryClient({
         <BookingSheet
           open
           onClose={() => setBookingOpen(false)}
+          itineraryId={itineraryId}
           itinerary={displayItinerary}
           bookings={bookingState.bookings}
           canEdit={userCanEdit}
