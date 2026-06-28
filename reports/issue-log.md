@@ -250,6 +250,18 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 > 順帶（同日）：一次性清掉 D2 交通卡殘留舊地名「都歷沙灘」（下一站早已改成「野孩子衝浪社」）——3-G 的 DB 殘留，`scripts/_fix-stale-tolabel.mts` 把非複合交通卡 toLabel/title 對齊下一站，只改地名、不動座標時間。
 
+### 3-J 同一間飯店跨多晚，改一晚另一晚沒同步
+
+**發生時間**：2026-06-28
+
+**症狀**：第 3、4 天住同一間（綠島棲間民宿，**共用同一 accommodation id**）。使用者更新 D3（補房型/訂單號/設已預訂/精確地址），D4 沒跟著更新，兩天分歧（D4 還是無房型、模糊地址、退房時間還不一致）。
+
+**根本原因**：每天的住宿各存一份在 `day.accommodation`；`handleSaveAccommodation`（`ItineraryClient`）只對「當前天」送 `set_day_accommodation`，不會傳播到其它同 id 的天 → 多晚同間訂房一改就分歧。
+
+**修復方法**：`handleSaveAccommodation` 存檔時找出**所有 `accommodation.id` 相同的天**，一張 patch 含多個 `set_day_accommodation`（一筆歷程），把編輯後的同一份套用到整筆訂房的每一晚；找不到同 id 才只更新當前天。toast/描述標「同步 N 晚」。一次性資料修正：`scripts/_sync-acc-byid.mts` 把已分歧的同 id 住宿以「最完整版」回填到所有夜（D4 已同步成 D3）。
+
+**預防原則**：**同一筆訂房跨多晚＝同一份資料**，`accommodation.id` 是天然連結鍵；任何「設定/編輯住宿」都應以 id 同步整筆訂房，不要只動單一天的副本（與「同一資訊用同一來源」一致）。
+
 ---
 
 ## (預留) AI 調整後行程資料異常

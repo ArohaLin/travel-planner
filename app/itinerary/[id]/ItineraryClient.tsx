@@ -243,16 +243,23 @@ export function ItineraryClient({
 
   // ── 住宿編輯 ─────────────────────────────────────────────────────────────────
   async function handleSaveAccommodation(updated: Accommodation) {
+    // 同一筆訂房常跨多晚（各天的 accommodation 共用同一 id）→ 一併套用到所有「同 id」的天，
+    // 避免「改一天、其它晚沒跟上」的分歧（同間飯店應一致）。找不到同 id 時只更新當前天。
+    const sameIdDays = displayItinerary.days
+      .filter((d) => d.accommodation?.id === updated.id)
+      .map((d) => d.dayIndex)
+    const targetDays = sameIdDays.length > 0 ? sameIdDays : [activeDay]
+    const multi = targetDays.length > 1
     const patch: ItineraryPatch = {
       patchId: nanoid(8),
-      description: `手動編輯住宿：${updated.name}`,
+      description: multi ? `手動編輯住宿：${updated.name}（同步 ${targetDays.length} 晚）` : `手動編輯住宿：${updated.name}`,
       proposedBy: 'user',
-      ops: [{ op: 'set_day_accommodation', dayIndex: activeDay, payload: updated }],
+      ops: targetDays.map((dayIndex) => ({ op: 'set_day_accommodation', dayIndex, payload: updated })),
     }
     const ok = await submitPatch(patch)
     if (ok) {
       setEditAccommodation(null)
-      showToast(`住宿「${updated.name}」已更新`, 'success')
+      showToast(multi ? `住宿「${updated.name}」已更新（同步 ${targetDays.length} 晚）` : `住宿「${updated.name}」已更新`, 'success')
     }
   }
 
