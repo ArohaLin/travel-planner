@@ -79,6 +79,17 @@ export const ActivitySchema = z.object({
   hasPlace: z.boolean().optional(),
   /** 交通卡是否複合用途（還車/候船/報到…，title 保留完整描述不被改寫）：省略＝退回標題關鍵字 */
   isComposite: z.boolean().optional(),
+  // ─── 訂房資訊（比照住宿卡，選填；不餵 AI）───
+  /** 訂房/訂位平台 */
+  bookingPlatform: z.string().optional(),
+  /** 訂單/訂位編號 */
+  orderNumber: z.string().optional(),
+  /** 已付訂金 */
+  depositPaid: MoneySchema.optional(),
+  /** 最晚免費取消（文字，如「2026-06-20 23:59 前」）*/
+  freeCancelBy: z.string().optional(),
+  /** 聯絡資訊（電話 / Email）*/
+  contact: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

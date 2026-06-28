@@ -17,8 +17,8 @@ function forPrompt(itinerary: Itinerary): Itinerary {
       return {
         ...rest,
         activities: rest.activities.map((a) => {
-          const { photoRef, userPhotoUrl, ...act } = a
-          void photoRef; void userPhotoUrl
+          const { photoRef, userPhotoUrl, bookingPlatform, orderNumber, depositPaid, freeCancelBy, contact, ...act } = a
+          void photoRef; void userPhotoUrl; void bookingPlatform; void orderNumber; void depositPaid; void freeCancelBy; void contact
           return act
         }),
         accommodation: rest.accommodation
