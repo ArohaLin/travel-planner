@@ -317,23 +317,47 @@ function isFreeCancelSoon(s: string): boolean {
 }
 
 // ─── 摘要列 ────────────────────────────────────────────────────────────────
-function SummaryBar({ items, currency }: { items: UnifiedBooking[]; currency: string }) {
-  const needed = items.filter((b) => b.status === 'needed').length
-  const reserved = items.filter((b) => b.status === 'reserved').length
+function SummaryBar({
+  items, allItems, currency, filterStatus, onToggleStatus,
+}: {
+  items: UnifiedBooking[]       // 篩選後（用來算金額）
+  allItems: UnifiedBooking[]    // 全量（用來算 needed/reserved 總數）
+  currency: string
+  filterStatus: BookingStatus | 'all'
+  onToggleStatus: (s: BookingStatus) => void
+}) {
+  const needed = allItems.filter((b) => b.status === 'needed').length
+  const reserved = allItems.filter((b) => b.status === 'reserved').length
   const total = items.reduce((s, b) => s + (b.cost?.amount ?? 0), 0)
   const paid = items.reduce((s, b) => s + (b.depositPaid?.amount ?? 0), 0)
   const unpaid = total - paid
 
   return (
-    <div className="flex gap-3 overflow-x-auto px-4 py-2 text-xs bg-gray-50 border-b border-gray-100" style={{ scrollbarWidth: 'none' }}>
+    <div className="flex gap-2 overflow-x-auto px-4 py-2 text-xs bg-gray-50 border-b border-gray-100" style={{ scrollbarWidth: 'none' }}>
       {needed > 0 && (
-        <span className="flex-shrink-0 flex items-center gap-1 text-red-600 font-medium bg-red-50 px-2 py-1 rounded-lg">
+        <button
+          onClick={() => onToggleStatus('needed')}
+          className={clsx(
+            'flex-shrink-0 flex items-center gap-1 font-medium px-2 py-1 rounded-lg transition-colors active:opacity-80',
+            filterStatus === 'needed'
+              ? 'bg-red-500 text-white ring-2 ring-red-300'
+              : 'text-red-600 bg-red-50',
+          )}
+        >
           ⚠️ 待預訂 {needed}
-        </span>
+        </button>
       )}
-      <span className="flex-shrink-0 flex items-center gap-1 text-green-700 bg-green-50 px-2 py-1 rounded-lg">
+      <button
+        onClick={() => onToggleStatus('reserved')}
+        className={clsx(
+          'flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg transition-colors active:opacity-80',
+          filterStatus === 'reserved'
+            ? 'bg-green-600 text-white ring-2 ring-green-300'
+            : 'text-green-700 bg-green-50',
+        )}
+      >
         ✓ 已預訂 {reserved}
-      </span>
+      </button>
       {total > 0 && (
         <span className="flex-shrink-0 text-gray-600 bg-white border border-gray-100 px-2 py-1 rounded-lg">
           總計 {currency} {total.toLocaleString()}
@@ -373,6 +397,7 @@ export function BookingSheet({
   // ─── 篩選狀態 ─────────────────────────────────────────────────────────────
   const [filterDay, setFilterDay] = useState<string | 'all'>('all')   // 'all' | 'YYYY-MM-DD'
   const [filterType, setFilterType] = useState<FilterType>('all')
+  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
 
   // ─── 新增/編輯 modal ──────────────────────────────────────────────────────
   const [editTarget, setEditTarget] = useState<Booking | null>(null)
@@ -436,9 +461,10 @@ export function BookingSheet({
     return unified.filter((b) => {
       if (filterDay !== 'all' && b.date !== filterDay) return false
       if (filterType !== 'all' && b.type !== filterType) return false
+      if (filterStatus !== 'all' && b.status !== filterStatus) return false
       return true
     })
-  }, [unified, filterDay, filterType])
+  }, [unified, filterDay, filterType, filterStatus])
 
   // ─── 日期 chip 選項 ───────────────────────────────────────────────────────
   const dayOptions = useMemo(() => {
@@ -478,7 +504,13 @@ export function BookingSheet({
       </div>
 
       {/* 摘要列 */}
-      <SummaryBar items={filtered.length > 0 ? filtered : unified} currency={currency} />
+      <SummaryBar
+        items={filtered}
+        allItems={unified}
+        currency={currency}
+        filterStatus={filterStatus}
+        onToggleStatus={(s) => setFilterStatus((prev) => (prev === s ? 'all' : s))}
+      />
 
       {/* 篩選列 – 日期 */}
       <div className="border-b border-gray-100">
