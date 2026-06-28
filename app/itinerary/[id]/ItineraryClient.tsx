@@ -39,6 +39,8 @@ import { TodoSheet } from '@/components/itinerary/TodoSheet'
 import { useTodos } from '@/lib/hooks/useTodos'
 import { useShopping } from '@/lib/hooks/useShopping'
 import { ShoppingSheet, type ScheduleStore } from '@/components/shopping/ShoppingSheet'
+import { BookingSheet } from '@/components/bookings/BookingSheet'
+import { useBookings } from '@/lib/hooks/useBookings'
 import { deriveAutoTodos } from '@/lib/todo/deriveTodos'
 import { MapView } from '@/components/map/MapView'
 import { RoutePrefetcher } from '@/components/map/RoutePrefetcher'
@@ -161,6 +163,26 @@ export function ItineraryClient({
   // ── 採購清單（手動清單，Realtime 協作）────────────────────────────────────
   const shopping = useShopping(itineraryId)
   const shoppingBadge = shopping.items.filter((s) => !s.isDone).length
+
+  const bookingState = useBookings(itineraryId)
+  // 預約 badge = 行程卡需預訂未完成 + 獨立預約 needed 數
+  const bookingBadge = useMemo(() => {
+    const itin = displayItinerary
+    let n = 0
+    for (const day of itin.days) {
+      for (const act of day.activities) {
+        const eff = act.reservationStatus ?? (act.bookingRequired ? 'needed' : 'none')
+        if (eff === 'needed') n++
+      }
+      const acc = day.accommodation
+      if (acc) {
+        const eff = acc.reservationStatus ?? 'needed'
+        if (eff === 'needed') n++
+      }
+    }
+    n += bookingState.bookings.filter((b) => b.status === 'needed').length
+    return n
+  }, [displayItinerary, bookingState.bookings])
 
   const currentDayData = displayItinerary.days[activeDay]
   const userCanEdit = canEdit(role)
@@ -1234,6 +1256,19 @@ export function ItineraryClient({
         />
       )}
 
+      {bookingOpen && (
+        <BookingSheet
+          open
+          onClose={() => setBookingOpen(false)}
+          itinerary={displayItinerary}
+          bookings={bookingState.bookings}
+          canEdit={userCanEdit}
+          onAddBooking={bookingState.addBooking}
+          onEditBooking={bookingState.editBooking}
+          onDeleteBooking={bookingState.deleteBooking}
+        />
+      )}
+
       {currentDayData && (
         <DepartureEditModal
           open={departureEditOpen}
@@ -1526,14 +1561,21 @@ export function ItineraryClient({
           </button>
           <button
             onClick={() => setBookingOpen(true)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50"
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50 relative"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <rect x="3" y="4" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
-              <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" />
-              <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" />
-              <line x1="3" y1="10" x2="21" y2="10" strokeLinecap="round" />
-            </svg>
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <rect x="3" y="4" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+                <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" />
+                <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" />
+                <line x1="3" y1="10" x2="21" y2="10" strokeLinecap="round" />
+              </svg>
+              {bookingBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
+                  {bookingBadge > 99 ? '99+' : bookingBadge}
+                </span>
+              )}
+            </div>
             <span className="text-[11px]">預約</span>
           </button>
           {userCanEdit && viewMode === 'list' && (
