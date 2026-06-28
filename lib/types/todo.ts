@@ -13,7 +13,7 @@ export interface TodoItem {
   updatedAt: string
 }
 
-export type AutoTodoCategory = 'reserve' | 'lodging' | 'noLodging' | 'tight' | 'pretrip'
+export type AutoTodoCategory = 'reserve' | 'lodging' | 'noLodging' | 'tight' | 'pretrip' | 'freeCancelBy'
 
 /** 自動提醒（即時從行程算出，不存內容；以 key 為穩定識別）。 */
 export interface AutoTodo {

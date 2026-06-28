@@ -30,6 +30,7 @@ const CHIP: Record<AutoTodoCategory, string> = {
   noLodging: 'bg-teal-50 text-teal-600',
   tight: 'bg-amber-50 text-amber-600',
   pretrip: 'bg-blue-50 text-blue-600',
+  freeCancelBy: 'bg-red-50 text-red-600',
 }
 
 function Spinner({ className = 'w-4 h-4' }: { className?: string }) {

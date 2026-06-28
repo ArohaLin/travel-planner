@@ -22,6 +22,13 @@ function daysBetween(fromISO: string, toISO: string): number | null {
   return Math.round((b - a) / 86_400_000)
 }
 
+/** 從文字中抓 YYYY-MM-DD，回傳距今天數（今天=0，已過=-1，無法解析=null）。 */
+function parseDaysUntil(s: string, todayISO: string): number | null {
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/)
+  if (!m) return null
+  return daysBetween(todayISO, `${m[1]}-${m[2]}-${m[3]}`)
+}
+
 /** 住宿的有效預約狀態：未設定時預設「需要預訂」（住宿通常都要訂）。 */
 export function effectiveLodgingReservation(
   reservationStatus?: 'none' | 'needed' | 'reserved',
@@ -76,6 +83,49 @@ export function deriveAutoTodos(itin: Itinerary, todayISO?: string): AutoTodo[] 
         subtitle: '點「前往」去這天安排',
         dayIndex: day.dayIndex,
       })
+    }
+  }
+
+  // 3b. 免費取消截止提醒（freeCancelBy 含 YYYY-MM-DD、距今 ≤7 天）
+  if (todayISO) {
+    for (const day of days) {
+      const n = dayNum(day.dayIndex)
+      for (const a of day.activities) {
+        if (!a.freeCancelBy) continue
+        const d = parseDaysUntil(a.freeCancelBy, todayISO)
+        if (d !== null && d >= 0 && d <= 7) {
+          const icon = d <= 2 ? '🚨' : '⏰'
+          todos.push({
+            key: `freecancel-act:${a.id}`,
+            category: 'freeCancelBy',
+            icon,
+            title: `${icon === '🚨' ? '緊急！' : ''}免費取消截止：${a.placeLabel?.trim() || a.title}`,
+            subtitle: d === 0 ? '今天到期' : d === 1 ? '明天到期' : `${d} 天後到期 · 第 ${n} 天`,
+            dayIndex: day.dayIndex,
+            primary: a.bookingUrl
+              ? { label: '開訂房連結', kind: 'openUrl', url: a.bookingUrl }
+              : { label: '已確認', kind: 'done' },
+          })
+        }
+      }
+      const acc = day.accommodation
+      if (acc?.freeCancelBy) {
+        const d = parseDaysUntil(acc.freeCancelBy, todayISO)
+        if (d !== null && d >= 0 && d <= 7) {
+          const icon = d <= 2 ? '🚨' : '⏰'
+          todos.push({
+            key: `freecancel-lodging:${day.dayIndex}`,
+            category: 'freeCancelBy',
+            icon,
+            title: `${icon === '🚨' ? '緊急！' : ''}免費取消截止：${acc.name}`,
+            subtitle: d === 0 ? '今天到期' : d === 1 ? '明天到期' : `${d} 天後到期 · 第 ${n} 晚`,
+            dayIndex: day.dayIndex,
+            primary: acc.bookingUrl
+              ? { label: '開訂房連結', kind: 'openUrl', url: acc.bookingUrl }
+              : { label: '已確認', kind: 'done' },
+          })
+        }
+      }
     }
   }
 
