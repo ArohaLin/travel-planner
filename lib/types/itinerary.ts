@@ -44,7 +44,6 @@ export const ActivitySchema = z.object({
     if (!v) return undefined
     try { new URL(v); return v } catch { return undefined }
   }),
-  tags: z.array(z.string()).optional(),
   notes: z.string().optional(),
   // ─── 詳情欄位（選填，用於卡片點擊後的詳情視窗）───
   /** 景點介紹 / 為何這樣安排 */

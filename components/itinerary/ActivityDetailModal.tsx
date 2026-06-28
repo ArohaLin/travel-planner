@@ -172,13 +172,6 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
                   </div>
                 )
               })()}
-              {activity.tags && activity.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {activity.tags.map((t) => (
-                    <span key={t} className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full">{t}</span>
-                  ))}
-                </div>
-              )}
             </div>
           </Section>
 

@@ -102,12 +102,11 @@ function genericContent(type: Activity['type']): string {
 
 /**
  * 內容欄：盡量寫得出東西（多來源備援）、又不過長（取首句，版面再 line-clamp 2 行）。
- * 餐飲優先 foodItems；其它依 intro→recommendation→description→tags；都沒有才用類型通用簡述。
+ * 餐飲優先 foodItems；其它依 intro→recommendation→description；都沒有才用類型通用簡述。
  */
 function contentOf(a: Activity): string {
   if (a.type === 'food' && a.foodItems) return firstClause(a.foodItems)
-  const tagText = a.tags && a.tags.length ? a.tags.slice(0, 2).join('、') : ''
-  const main = firstClause(a.intro || a.recommendation || a.description || a.foodItems || tagText)
+  const main = firstClause(a.intro || a.recommendation || a.description || a.foodItems)
   return main || genericContent(a.type)
 }
 
