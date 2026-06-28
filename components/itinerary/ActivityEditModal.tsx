@@ -430,6 +430,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                 setAddress(p.address)
                 setPickedLocation({ lat: p.lat, lng: p.lng })
                 if (p.name) set('placeLabel', p.name)
+                if (p.placeId) set('googlePlaceId', p.placeId)
               }}
               placeholder="搜尋地點（選了自動帶座標）或輸入地址"
               initialValue={initialAddress}

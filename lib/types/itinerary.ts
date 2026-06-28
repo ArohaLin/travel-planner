@@ -74,6 +74,8 @@ export const ActivitySchema = z.object({
   photoRef: z.string().optional(),
   /** 使用者自行上傳的卡片照片（Supabase Storage 公開 URL）；顯示時優先於 photoRef */
   userPhotoUrl: z.string().optional(),
+  /** Google Place ID（地點單一真相地基：搜尋選取時存入，未來座標/地址由它衍生、根治同名誤抓） */
+  googlePlaceId: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

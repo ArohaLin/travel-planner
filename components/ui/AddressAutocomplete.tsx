@@ -10,8 +10,8 @@ interface AddressAutocompleteProps {
   className?: string
   /** 初始地址（用來判斷是否有改動） */
   initialValue?: string
-  /** 從 Google 預測清單「選取」一個地點時觸發，附帶精確座標＋名稱（手打不觸發） */
-  onPlaceSelect?: (p: { address: string; name: string; lat: number; lng: number }) => void
+  /** 從 Google 預測清單「選取」一個地點時觸發，附帶精確座標＋名稱＋place_id（手打不觸發） */
+  onPlaceSelect?: (p: { address: string; name: string; lat: number; lng: number; placeId?: string }) => void
 }
 
 /**
@@ -46,7 +46,7 @@ export function AddressAutocomplete({
     const autocomplete = new placesLib.Autocomplete(inputRef.current, {
       types: ['geocode', 'establishment'],
       componentRestrictions: { country: 'tw' }, // 台灣優先
-      fields: ['formatted_address', 'name', 'geometry'],
+      fields: ['formatted_address', 'name', 'geometry', 'place_id'],
     })
 
     autocomplete.addListener('place_changed', () => {
@@ -55,7 +55,7 @@ export function AddressAutocomplete({
       setInternalValue(addr)
       onChangeRef.current(addr)
       const loc = place.geometry?.location
-      if (loc) onPlaceSelectRef.current?.({ address: addr, name: place.name || '', lat: loc.lat(), lng: loc.lng() })
+      if (loc) onPlaceSelectRef.current?.({ address: addr, name: place.name || '', lat: loc.lat(), lng: loc.lng(), placeId: place.place_id })
     })
 
     autocompleteRef.current = autocomplete
