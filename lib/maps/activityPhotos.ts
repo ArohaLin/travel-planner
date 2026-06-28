@@ -1,4 +1,4 @@
-import { findPlace, mapPool, getServerMapsKey } from '@/lib/maps/places'
+import { findPlace, placeDetailsById, mapPool, getServerMapsKey, type PlaceLookup } from '@/lib/maps/places'
 import type { GeoLocation, Itinerary } from '@/lib/types/itinerary'
 
 function hasCoords(loc?: GeoLocation | null): boolean {
@@ -34,6 +34,8 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
     dayIndex: number
     kind: 'activity' | 'acc'
     activityId?: string
+    /** 綁定的 Google Place ID（有則用 Details 精確取，免同名誤抓） */
+    placeId?: string
     query: string
     needPhoto: boolean
     needCoords: boolean
@@ -52,6 +54,7 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
           dayIndex: day.dayIndex,
           kind: 'activity',
           activityId: a.id,
+          placeId: a.googlePlaceId,
           query: [a.title, a.placeLabel, day.city].filter(Boolean).join(' '),
           needPhoto,
           needCoords,
@@ -74,12 +77,20 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
   }
   if (targets.length === 0) return 0
 
-  // 同名地點（如同一飯店出現在多天）共用「一次搜尋」→ 省 Places 呼叫
-  const uniqueQueries = Array.from(new Set(targets.map((t) => t.query)))
+  // 有 googlePlaceId → 用 Places Details 精確取（無同名誤抓）；否則用名稱查（fallback）。
+  // 同名查詢/同 place_id（如同一飯店出現在多天）各自去重 → 省 Places 呼叫。
+  const uniquePlaceIds = Array.from(new Set(targets.map((t) => t.placeId).filter((x): x is string => !!x)))
+  const uniqueQueries = Array.from(new Set(targets.filter((t) => !t.placeId).map((t) => t.query)))
   // 並發 2 避免觸發 Places OVER_QUERY_LIMIT（預設 1 QPS 限制）
-  const looked = await mapPool(uniqueQueries, (q) => findPlace(q, key), 2)
-  const byQuery = new Map<string, (typeof looked)[number]>()
-  uniqueQueries.forEach((q, i) => byQuery.set(q, looked[i]))
+  const [byIdArr, byQueryArr] = await Promise.all([
+    mapPool(uniquePlaceIds, (id) => placeDetailsById(id, key), 2),
+    mapPool(uniqueQueries, (q) => findPlace(q, key), 2),
+  ])
+  const byPlaceId = new Map<string, PlaceLookup>()
+  uniquePlaceIds.forEach((id, i) => byPlaceId.set(id, byIdArr[i]))
+  const byQuery = new Map<string, PlaceLookup>()
+  uniqueQueries.forEach((q, i) => byQuery.set(q, byQueryArr[i]))
+  const EMPTY: PlaceLookup = { placeId: null, photoRef: null, lat: null, lng: null }
 
   // 對照表：activity → by id；accommodation → by dayIndex
   const actPhoto = new Map<string, string>()
@@ -87,7 +98,7 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
   const accPhoto = new Map<number, string>()
   const accCoord = new Map<number, { lat: number; lng: number }>()
   for (const t of targets) {
-    const r = byQuery.get(t.query)!
+    const r = (t.placeId ? byPlaceId.get(t.placeId) : byQuery.get(t.query)) ?? EMPTY
     if (t.kind === 'activity' && t.activityId) {
       if (t.needPhoto && r.photoRef) actPhoto.set(t.activityId, r.photoRef)
       if (t.needCoords && r.lat != null && r.lng != null) actCoord.set(t.activityId, { lat: r.lat, lng: r.lng })

@@ -63,6 +63,42 @@ export async function findPlace(query: string, key: string): Promise<PlaceLookup
   }
 }
 
+/**
+ * 用 place_id 直接取座標＋照片（Places Details）——精確、無同名誤抓。
+ * 活動綁了 googlePlaceId 時優先用這個（取代名稱查 findPlace）。
+ */
+export async function placeDetailsById(placeId: string, key: string): Promise<PlaceLookup> {
+  const empty: PlaceLookup = { placeId: null, photoRef: null, lat: null, lng: null }
+  const id = placeId.trim()
+  if (!id) return empty
+  const url =
+    'https://maps.googleapis.com/maps/api/place/details/json' +
+    `?place_id=${encodeURIComponent(id)}` +
+    '&fields=geometry,photos' +
+    '&language=zh-TW&region=tw' +
+    `&key=${key}`
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return empty
+    const json = (await res.json()) as {
+      result?: {
+        geometry?: { location?: { lat: number; lng: number } }
+        photos?: Array<{ photo_reference?: string }>
+      }
+    }
+    const r = json.result
+    if (!r) return empty
+    return {
+      placeId: id,
+      photoRef: r.photos?.[0]?.photo_reference ?? null,
+      lat: r.geometry?.location?.lat ?? null,
+      lng: r.geometry?.location?.lng ?? null,
+    }
+  } catch {
+    return empty
+  }
+}
+
 /** 限制併發的批次處理（避免 OVER_QUERY_LIMIT） */
 export async function mapPool<T, R>(
   items: T[],
