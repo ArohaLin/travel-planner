@@ -195,10 +195,10 @@ const PATCH_SCHEMA_DOCS = `
 
 ## Activity 精簡格式（patch 中只填必要欄位，減少 token 用量）
 
-**必填**：id（8字元英數字）、type、title、startTime、bookingRequired
-**選填**（只在有意義時才加）：endTime、cost（有具體費用）、bookingUrl、reservationStatus（"none"無需預訂／"needed"需要預訂／"reserved"已經預訂；省略＝依 bookingRequired，需預訂的請填 "needed"）
+**必填**：id（8字元英數字）、type、title、startTime
+**選填**（只在有意義時才加）：endTime、cost（有具體費用）、bookingUrl、reservationStatus（"none"無需預訂／"needed"需要預訂／"reserved"已經預訂；省略＝"none"，需預訂的請填 "needed"）
 
-**省略以下欄位**（除非使用者明確要求）：description、location、duration、tags、notes
+**省略以下欄位**（除非使用者明確要求）：description、location、duration、notes
 
 最簡範例：
 { "id": "aB3kP9xZ", "type": "sightseeing", "title": "清水寺參觀", "startTime": "14:00", "endTime": "16:00", "bookingRequired": false }
@@ -676,7 +676,7 @@ ${buildMemorySection(itinerary)}${lock}
 - remove_activity: { "op": "remove_activity", "dayIndex": N, "activityId": "id" }
 - set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } }
 
-Activity 必填 id(8字)/type/title/startTime/bookingRequired；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl
+Activity 必填 id(8字)/type/title/startTime；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl
 Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 roomType(房型) / cost(每晚價,Money) / breakfast(早餐:"included"含/"excluded"不含) / feeIncludes(費用包含項目,早餐以外的餐食/活動/票券) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingUrl(訂房連結) / depositPaid(訂金金額,已付或待匯都填,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知/匯款指示) / notes(無法歸類的其他補充)
 
 == 欄位與地址規則 ==

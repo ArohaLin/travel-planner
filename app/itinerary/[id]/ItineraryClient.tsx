@@ -437,7 +437,6 @@ export function ItineraryClient({
       type: typeMap[item.category ?? ''] ?? 'other',
       title: item.name,
       startTime: startTime || '10:00',
-      bookingRequired: false,
       placeLabel: item.name,
       ...(item.lat != null && item.lng != null ? { location: { lat: item.lat, lng: item.lng } } : {}),
       ...(item.photoRef ? { photoRef: item.photoRef } : {}),
@@ -466,7 +465,6 @@ export function ItineraryClient({
       type: 'shopping',
       title: store.placeName,
       startTime: startTime || '10:00',
-      bookingRequired: false,
       placeLabel: store.placeName,
       location: { lat: store.lat, lng: store.lng },
       ...(store.itemNames.length ? { notes: `要買：${store.itemNames.join('、')}` } : {}),
@@ -669,7 +667,7 @@ export function ItineraryClient({
     const day = displayItinerary.days.find((d) => d.dayIndex === dayIndex)
     const act = day?.activities.find((a) => a.id === activityId)
     if (!act) return
-    const updated: Activity = { ...act, reservationStatus: 'reserved', bookingRequired: true }
+    const updated: Activity = { ...act, reservationStatus: 'reserved' }
     await submitPatch({
       patchId: nanoid(8),
       description: `標記已預訂：${act.title}`,
@@ -995,7 +993,7 @@ export function ItineraryClient({
               onAddNote={userCanEdit ? setAddNoteFor : undefined}
               hasNoteFor={aiNotes.hasNoteFor}
               onEditAccommodation={userCanEdit ? setEditAccommodation : undefined}
-              onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+              onAddNoteAccommodation={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime }) : undefined}
               onOpenAccommodation={setDetailAccommodation}
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
@@ -1173,7 +1171,7 @@ export function ItineraryClient({
           onClose={() => setDetailAccommodation(null)}
           canEdit={userCanEdit}
           onEdit={userCanEdit ? setEditAccommodation : undefined}
-          onAddNote={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime, bookingRequired: false }) : undefined}
+          onAddNote={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime }) : undefined}
           onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdateAccommodation : undefined}
           hasNote={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
         />

@@ -1,4 +1,5 @@
 import type { ItineraryDay, Activity } from '@/lib/types/itinerary'
+import { effectiveReservation } from '@/lib/itinerary/reservation'
 
 /**
  * 簡表（唯讀）資料推導：把一天的行程資料整理成簡表所需的結構。
@@ -179,7 +180,7 @@ export function buildDaySummary(
       place: a.placeLabel?.trim() || a.title,
       content: contentOf(a),
       note: noteOf(a),
-      needBooking: !!a.bookingRequired,
+      needBooking: effectiveReservation(a) !== 'none',
     })
   }
 

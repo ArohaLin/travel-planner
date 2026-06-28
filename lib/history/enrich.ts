@@ -42,7 +42,7 @@ const timeOf = (a: Partial<Activity>): string =>
 const FIELD_LABELS: Record<string, string> = {
   title: '名稱', type: '類別', description: '說明', placeLabel: '地點',
   intro: '介紹', transport: '交通說明', recommendation: '推薦', tips: '提醒',
-  highlight: '注意事項', cost: '費用', location: '地址', bookingRequired: '預訂標記',
+  highlight: '注意事項', cost: '費用', location: '地址', bookingRequired: '預訂標記', reservationStatus: '預約狀態',
   fromLabel: '起點', toLabel: '終點', transportMode: '交通方式',
   mealType: '餐別', foodItems: '飲食項目', notes: '備註',
 }

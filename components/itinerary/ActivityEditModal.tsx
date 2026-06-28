@@ -35,7 +35,7 @@ function emptyActivity(): Activity {
     title: '',
     startTime: '09:00',
     endTime: '10:00',
-    bookingRequired: false,
+    reservationStatus: 'none',
   }
 }
 
@@ -450,7 +450,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             />
           </div>
 
-          {/* 預約狀態（3 態，同步 bookingRequired）*/}
+          {/* 預約狀態（3 態，單一真相 reservationStatus）*/}
           <div>
             <label className="text-xs font-semibold text-gray-500 mb-1.5 block">預約狀態</label>
             <div className="grid grid-cols-3 gap-1.5">
@@ -459,7 +459,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                 return (
                   <button
                     key={v}
-                    onClick={() => setForm((prev) => ({ ...prev, reservationStatus: v, bookingRequired: v !== 'none' }))}
+                    onClick={() => setForm((prev) => ({ ...prev, reservationStatus: v }))}
                     className={clsx(
                       'text-sm py-2 px-1 rounded-xl border text-center transition-all leading-snug',
                       cur === v ? 'bg-purple-600 text-white border-purple-600 font-medium' : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-purple-300',

@@ -55,6 +55,11 @@ function diffActivity(
   }
   if (before.bookingRequired !== after.bookingRequired)
     diffs.push(after.bookingRequired ? `標記需要預訂` : `移除預訂標記`)
+  if (before.reservationStatus !== after.reservationStatus) {
+    const RL: Record<string, string> = { none: '無需預訂', needed: '需要預訂', reserved: '已預訂' }
+    const k = String(after.reservationStatus ?? 'none')
+    diffs.push(`預約狀態改為${RL[k] ?? k}`)
+  }
 
   return diffs
 }

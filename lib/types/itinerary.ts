@@ -37,8 +37,9 @@ export const ActivitySchema = z.object({
   duration: z.number().positive().optional(),
   location: GeoLocationSchema.optional(),
   cost: MoneySchema.optional(),
-  bookingRequired: z.boolean(),
-  /** 預約狀態：無需預訂 / 需要預訂 / 已經預訂（缺省＝依 bookingRequired 推導）*/
+  /** @deprecated 改用 reservationStatus 三態；保留 optional 僅為相容舊資料（effectiveReservation 後備讀）*/
+  bookingRequired: z.boolean().optional(),
+  /** 預約狀態（單一真相）：無需預訂 / 需要預訂 / 已經預訂；缺省＝none（舊資料退回 bookingRequired）*/
   reservationStatus: z.enum(['none', 'needed', 'reserved']).optional(),
   bookingUrl: z.string().optional().transform(v => {
     if (!v) return undefined
