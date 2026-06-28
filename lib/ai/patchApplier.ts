@@ -26,6 +26,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
         day.activities = payload.activities
         const { activities: _a, ...rest } = payload
         Object.assign(day, rest)
+        day.travelSig = undefined // 序列變 → 路段過期：移動列退概估、背景重算
       } else {
         Object.assign(day, payload)
       }
@@ -36,6 +37,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       const day = draft.days[op.dayIndex]
       if (!day) throw new PatchError(`找不到第 ${op.dayIndex + 1} 天`)
       day.accommodation = op.payload ?? undefined
+      day.travelSig = undefined // 住宿是當天路線終點 → 過期
       break
     }
 
@@ -48,6 +50,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       day.activities.push(op.payload)
       // Sort by startTime after adding
       day.activities.sort((a, b) => a.startTime.localeCompare(b.startTime))
+      day.travelSig = undefined // 新增點 → 過期
       break
     }
 
@@ -58,6 +61,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       if (idx === -1) throw new PatchError(`找不到活動 ID "${op.activityId}"`)
       const target = day.activities[idx]
       const oldTitle = target.title
+      const p = op.payload as Partial<typeof target>
       Object.assign(target, op.payload)
       // #13：若活動換成不同地點（title 改變）但 payload 沒帶新的 location，
       // 清掉舊座標，避免「正氣路夜市卻顯示知本溫泉座標」這類錯誤；地圖會自動重新定位。
@@ -67,6 +71,10 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       }
       // Re-sort if time changed
       day.activities.sort((a, b) => a.startTime.localeCompare(b.startTime))
+      // 影響路線的欄位變動（座標/識別名/時間/類型）→ 路段過期
+      if (p.location !== undefined || p.title !== undefined || p.placeLabel !== undefined || p.startTime !== undefined || p.type !== undefined) {
+        day.travelSig = undefined
+      }
       break
     }
 
@@ -76,6 +84,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       const idx = day.activities.findIndex((a) => a.id === op.activityId)
       if (idx === -1) throw new PatchError(`找不到活動 ID "${op.activityId}"`)
       day.activities.splice(idx, 1)
+      day.travelSig = undefined // 移除點 → 過期
       break
     }
 
@@ -89,6 +98,7 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
         return a
       })
       day.activities = reordered
+      day.travelSig = undefined // 重排 → 過期
       break
     }
 

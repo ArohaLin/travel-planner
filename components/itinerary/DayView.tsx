@@ -8,6 +8,7 @@ import { WeatherChip } from '@/components/weather/WeatherChip'
 import { CostSummary } from './CostSummary'
 import { useLongPress } from '@/lib/hooks/useLongPress'
 import { fmtKm, toneFor, stayShort } from '@/lib/itinerary/cardTone'
+import { estimateLeg } from '@/lib/maps/estimateLeg'
 
 const toMin = (t?: string): number | null => {
   if (!t) return null
@@ -111,8 +112,10 @@ interface TravelRowProps {
   allottedSec?: number | null
   departTime?: string
   toName?: string
+  /** 路段過期/尚未算精確路線時的直線概估（顯示「概估」而非沿用錯數字） */
+  est?: { km: number; min: number } | null
 }
-function TravelRow({ transport, leg, allottedSec, departTime, toName }: TravelRowProps) {
+function TravelRow({ transport, leg, allottedSec, departTime, toName, est }: TravelRowProps) {
   const base = modeInfo(transport)
   const hasDriveLeg = !!leg && leg.meters >= 50 && base.driving
   const treatAsWalk = hasDriveLeg && !!leg && leg.seconds < 300 && leg.meters <= 1000
@@ -121,6 +124,9 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName }: TravelRo
   const label = treatAsWalk ? '步行' : base.label
   const effLegSec = treatAsWalk ? walkSec : (leg?.seconds ?? 0)
   const km = hasDriveLeg ? fmtKm(leg?.meters) : null
+  // 無精確路段但有相鄰座標 → 直線概估（路段過期/尚未算時，誠實顯示概估而非沿用錯數字）
+  const useEst = !hasDriveLeg && !!est
+  const estText = useEst ? `・約 ${est!.min} 分・${est!.km < 1 ? `${Math.round(est!.km * 1000)} m` : `${est!.km.toFixed(1)} km`}（概估）` : ''
 
   let timeText: string | null = null
   let main: string
@@ -138,13 +144,19 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName }: TravelRo
     // （景點改名後 toLabel 不會自動重算 → 用即時名才不殘留舊地名）
     const to = toName?.trim() || transport.toLabel?.trim()
     const composite = isCompositeTransport(transport.title)
-    main = `${!composite && to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}${km ? `・${km}` : ''}`
+    const head = !composite && to ? `${label}前往 ${to}` : transport.title
+    main = useEst
+      ? `${head}${estText}`
+      : `${head}${durSec ? `・約 ${fmtDur(durSec)}` : ''}${km ? `・${km}` : ''}`
     const budget = allottedSec ?? cardSec
     if (hasDriveLeg && leg && budget != null && budget > 0) status = bufferStatus(budget, effLegSec)
   } else if (hasDriveLeg && leg) {
     timeText = departTime ?? null
     main = `${toName ? `${label}前往 ${toName}` : label}・約 ${fmtDur(effLegSec)}${km ? `・${km}` : ''}`
     if (allottedSec != null && allottedSec > 0) status = bufferStatus(allottedSec, effLegSec)
+  } else if (useEst) {
+    timeText = departTime ?? null
+    main = `${toName ? `${label}前往 ${toName}` : label}${estText}`
   } else {
     return null
   }
@@ -302,11 +314,14 @@ function ActivityRow({ activity, isLast, onClick, onLongPress }: {
 export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, onOpenAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onLongPressActivity }: DayViewProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void (onEditActivity || onDeleteActivity || onAddNote || hasNoteFor) // 這些改由詳情視窗觸發；保留 props 相容
-  const legByTo = new Map<string, TravelLeg>((day.travelLegs ?? []).map((l) => [l.toId, l]))
+  // travelSig 為空＝路段過期（剛編輯/刪除/排序、尚未重算）→ 不用舊 travelLegs，移動列改直線概估
+  const routeStale = !day.travelSig
+  const legByTo = new Map<string, TravelLeg>(routeStale ? [] : (day.travelLegs ?? []).map((l) => [l.toId, l]))
   const acts = day.activities
   const lastActivity = acts[acts.length - 1]
   const accommodationLeg = legByTo.get('accommodation')
   const showAccommodationTravel = !!day.accommodation && lastActivity && lastActivity.type !== 'transport'
+  const accEst = day.accommodation && lastActivity ? estimateLeg(lastActivity.location, day.accommodation.location) : null
 
   return (
     <div className="px-4 pt-4">
@@ -388,13 +403,16 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
                   : s != null && e != null && e > s ? (e - s) * 60 : null
               return (
                 <div key={activity.id}>
-                  <TravelRow transport={activity} leg={leg} allottedSec={allottedSec} toName={next && next.type !== 'transport' ? (next.placeLabel?.trim() || next.title) : undefined} />
+                  <TravelRow transport={activity} leg={leg} allottedSec={allottedSec} toName={next && next.type !== 'transport' ? (next.placeLabel?.trim() || next.title) : undefined} est={estimateLeg(prev?.location, next?.location)} />
                   {addBtn}
                 </div>
               )
             }
 
-            const synthetic = idx > 0 && prev && prev.type !== 'transport' ? legByTo.get(activity.id) : undefined
+            // 前一張是活動（非交通卡）→ 需要一條「合成移動列」；leg 過期時用直線概估、不消失
+            const needSynthetic = idx > 0 && !!prev && prev.type !== 'transport'
+            const synthetic = needSynthetic ? legByTo.get(activity.id) : undefined
+            const syntheticEst = needSynthetic ? estimateLeg(prev?.location, activity.location) : null
             const prevEnd = toMin(prev?.endTime ?? prev?.startTime)
             const curStart = toMin(activity.startTime)
             const allottedSec = prevEnd != null && curStart != null && curStart > prevEnd ? (curStart - prevEnd) * 60 : null
@@ -402,8 +420,8 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
 
             return (
               <div key={activity.id}>
-                {synthetic && (
-                  <TravelRow leg={synthetic} allottedSec={allottedSec} departTime={prev?.endTime} toName={activity.placeLabel?.trim() || activity.title} />
+                {needSynthetic && (synthetic || syntheticEst) && (
+                  <TravelRow leg={synthetic} allottedSec={allottedSec} departTime={prev?.endTime} toName={activity.placeLabel?.trim() || activity.title} est={syntheticEst} />
                 )}
                 <ActivityRow
                   activity={activity}
@@ -421,9 +439,10 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
       {/* 住宿 */}
       {day.accommodation && (
         <>
-          {showAccommodationTravel && accommodationLeg && (
+          {showAccommodationTravel && (accommodationLeg || accEst) && (
             <TravelRow
               leg={accommodationLeg}
+              est={accEst}
               allottedSec={(() => {
                 const e = toMin(lastActivity?.endTime ?? lastActivity?.startTime)
                 const c = toMin(day.accommodation.checkInTime)
