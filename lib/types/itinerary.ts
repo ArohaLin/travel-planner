@@ -75,6 +75,10 @@ export const ActivitySchema = z.object({
   userPhotoUrl: z.string().optional(),
   /** Google Place ID（地點單一真相地基：搜尋選取時存入，未來座標/地址由它衍生、根治同名誤抓） */
   googlePlaceId: z.string().optional(),
+  /** 是否實體地點（取代「rest 猜要不要座標」）：true=真實停留點(納入路線/補座標)；false=純動作(check-in/盥洗,跳過)；省略＝退回 type==='rest' */
+  hasPlace: z.boolean().optional(),
+  /** 交通卡是否複合用途（還車/候船/報到…，title 保留完整描述不被改寫）：省略＝退回標題關鍵字 */
+  isComposite: z.boolean().optional(),
 })
 
 export const AccommodationSchema = z.object({

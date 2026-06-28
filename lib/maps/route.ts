@@ -1,4 +1,5 @@
 import type { Itinerary, GeoLocation, Activity } from '@/lib/types/itinerary'
+import { hasNoPlace } from '@/lib/itinerary/activityFlags'
 
 /**
  * 路線共用邏輯：組裝每天的有序點位、計算輸入指紋（signature）、呼叫 Directions 算路線。
@@ -150,8 +151,8 @@ export function buildDayPoints(
       points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
       continue
     }
-    if (a.type === 'rest') {
-      // rest 多為動作描述（盥洗/休息/Check-in），預設不進路線、也不 geocode（同名易誤抓，如
+    if (hasNoPlace(a)) {
+      // 無實體地點（rest 純動作，或明確 hasPlace=false）：預設不進路線、也不 geocode（同名易誤抓，如
       // 「X民宿 Check-in」抓到綠島同名）。但若它「已帶明確真實座標」（AI/手動給的真實地點，
       // 如「拿伴手禮給娘家」在花蓮娘家），它就是真實停留點 → 必須納入路線，否則前後移動段會
       // 跳過它、把距離算成「直接跨過該點」的錯誤值（曾發生宜蘭→台東直線取代宜蘭→花蓮→台東）。

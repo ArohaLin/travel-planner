@@ -1,5 +1,6 @@
 import { findPlace, placeDetailsById, mapPool, getServerMapsKey, type PlaceLookup } from '@/lib/maps/places'
 import type { GeoLocation, Itinerary } from '@/lib/types/itinerary'
+import { hasNoPlace } from '@/lib/itinerary/activityFlags'
 
 function hasCoords(loc?: GeoLocation | null): boolean {
   return !!loc && (loc.lat !== 0 || loc.lng !== 0)
@@ -46,7 +47,7 @@ export async function fetchAndStoreActivityPhotos(db: any, itineraryId: string):
       if (a.type === 'transport') continue
       // rest 型活動（Check-in、盥洗、休息等）是動作描述而非地點，即使有 placeLabel 也不需要獨立座標。
       // 「海明威民宿 Check-in」的 placeLabel="海明威民宿" 搜尋後可能回傳綠島的同名民宿，造成路線偏移。
-      if (a.type === 'rest') continue
+      if (hasNoPlace(a)) continue
       const needPhoto = !a.photoRef
       const needCoords = !hasCoords(a.location)
       if (needPhoto || needCoords) {

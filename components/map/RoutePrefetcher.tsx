@@ -11,6 +11,7 @@ import {
   toPersistLegs,
   type CoordResolver,
 } from '@/lib/maps/route'
+import { hasNoPlace } from '@/lib/itinerary/activityFlags'
 
 /**
  * 背景路線預抓：開行程時於背景檢查每天的距離/時間是否需要更新（比對簽章），
@@ -94,7 +95,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         }
         for (const a of day.activities) {
           if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
-          if (a.type === 'rest') continue // rest 是動作，不是目的地，placeLabel 不代表需要獨立座標
+          if (hasNoPlace(a)) continue // 無實體地點（rest 純動作/hasPlace=false）不需獨立座標
           enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }
         if (day.accommodation) {

@@ -5,6 +5,7 @@ import { useMapsLibrary } from '@vis.gl/react-google-maps'
 import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
 import { buildDayPoints } from '@/lib/maps/route'
+import { hasNoPlace } from '@/lib/itinerary/activityFlags'
 import {
   ItineraryMap,
   type MapDay,
@@ -156,7 +157,7 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
 
       for (const a of day.activities) {
         if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
-        if (a.type === 'rest') continue // rest 是動作（Check-in/盥洗/休息），不是目的地，placeLabel 不代表需要獨立座標
+        if (hasNoPlace(a)) continue // 無實體地點（rest 純動作/hasPlace=false）不需獨立座標
         enqueue(dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
       }
       if (day.accommodation) {

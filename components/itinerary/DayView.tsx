@@ -9,6 +9,7 @@ import { CostSummary } from './CostSummary'
 import { useLongPress } from '@/lib/hooks/useLongPress'
 import { fmtKm, toneFor, stayShort } from '@/lib/itinerary/cardTone'
 import { estimateLeg } from '@/lib/maps/estimateLeg'
+import { isCompositeTransport } from '@/lib/itinerary/activityFlags'
 
 const toMin = (t?: string): number | null => {
   if (!t) return null
@@ -37,10 +38,6 @@ function modeInfo(a?: Activity): { icon: string; label: string; driving: boolean
   if (/步行|走路|徒步|walk/i.test(s)) return { icon: '🚶', label: '步行', driving: false }
   if (/單車|腳踏車|自行車|bike/i.test(s)) return { icon: '🚲', label: '騎車', driving: false }
   return { icon: '🚗', label: '開車', driving: true }
-}
-
-function isCompositeTransport(title?: string): boolean {
-  return /還車|取車|候船|候機|報到|託運|安檢|轉乘|等候|排隊|寄放|手續/.test(title ?? '')
 }
 
 function bufferStatus(allottedSec: number, googleSec: number): { color: string; text: string } {
@@ -143,7 +140,7 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName, est }: Tra
     // 「前往 X」優先用時間軸即時下一站名（toName），而非可能過時的 toLabel
     // （景點改名後 toLabel 不會自動重算 → 用即時名才不殘留舊地名）
     const to = toName?.trim() || transport.toLabel?.trim()
-    const composite = isCompositeTransport(transport.title)
+    const composite = isCompositeTransport(transport)
     const head = !composite && to ? `${label}前往 ${to}` : transport.title
     main = useEst
       ? `${head}${estText}`
@@ -385,7 +382,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
             )
 
             if (activity.type === 'transport') {
-              if (isCompositeTransport(activity.title)) {
+              if (isCompositeTransport(activity)) {
                 return (
                   <div key={activity.id}>
                     <CompositeTransportRow transport={activity} onClick={onActivityClick} />

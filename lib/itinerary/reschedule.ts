@@ -1,5 +1,6 @@
 import type { Activity } from '@/lib/types/itinerary'
 import { haversineKm } from '@/lib/explore/placement'
+import { isCompositeTransport } from '@/lib/itinerary/activityFlags'
 
 /**
  * 拖拉重排的「規則自動重算時間」引擎（無 AI、純函式、可單元測試）。
@@ -29,11 +30,6 @@ const hasCoord = (a?: Activity): boolean =>
   !!a?.location && (a.location.lat !== 0 || a.location.lng !== 0)
 
 const isTransport = (a?: Activity): boolean => a?.type === 'transport'
-
-/** 複合用途交通（還車/候船/報到…）：title 有獨立意義、不可被正規化覆寫。
- *  關鍵字與 DayView 的 isCompositeTransport 一致（雙邊閉環）。 */
-const isCompositeTransportTitle = (t?: string): boolean =>
-  /還車|取車|候船|候機|報到|託運|安檢|轉乘|等候|排隊|寄放|手續/.test(t ?? '')
 
 /** 預設活動時長（分）：有 start/end 用差值，其次 duration 欄位，否則依類型給合理預設。 */
 export function inferDurationMin(a: Activity): number {
@@ -163,7 +159,7 @@ export function recomputeTimes(
         cur.toLabel = to
         // title 正規化：移動型 title 的「起點」在刪除/重排後會殘留舊地名（如已刪的「六十石山」）。
         // 非複合用途的交通卡 → title 重寫成不含起點的「前往 X」（起點＝時間軸上一張卡），永絕殘留。
-        if (to && !isCompositeTransportTitle(cur.title)) cur.title = `前往${to}`
+        if (to && !isCompositeTransport(cur)) cur.title = `前往${to}`
       }
     }
   }
