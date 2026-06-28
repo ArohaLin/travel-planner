@@ -10,6 +10,8 @@ interface AddressAutocompleteProps {
   className?: string
   /** 初始地址（用來判斷是否有改動） */
   initialValue?: string
+  /** 從 Google 預測清單「選取」一個地點時觸發，附帶精確座標＋名稱（手打不觸發） */
+  onPlaceSelect?: (p: { address: string; name: string; lat: number; lng: number }) => void
 }
 
 /**
@@ -19,6 +21,7 @@ interface AddressAutocompleteProps {
 export function AddressAutocomplete({
   value,
   onChange,
+  onPlaceSelect,
   placeholder = '搜尋地址或地點名稱...',
   className = '',
   initialValue,
@@ -27,6 +30,9 @@ export function AddressAutocomplete({
   const inputRef = useRef<HTMLInputElement>(null)
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null)
   const [internalValue, setInternalValue] = useState(value)
+  // 用 ref 保存最新回調，避免只綁一次的 listener 抓到過時 closure
+  const onChangeRef = useRef(onChange); onChangeRef.current = onChange
+  const onPlaceSelectRef = useRef(onPlaceSelect); onPlaceSelectRef.current = onPlaceSelect
 
   // Sync internal value when prop changes from outside (e.g. initial load)
   useEffect(() => {
@@ -47,7 +53,9 @@ export function AddressAutocomplete({
       const place = autocomplete.getPlace()
       const addr = place.formatted_address || place.name || ''
       setInternalValue(addr)
-      onChange(addr)
+      onChangeRef.current(addr)
+      const loc = place.geometry?.location
+      if (loc) onPlaceSelectRef.current?.({ address: addr, name: place.name || '', lat: loc.lat(), lng: loc.lng() })
     })
 
     autocompleteRef.current = autocomplete

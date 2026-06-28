@@ -73,6 +73,8 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
   const [address, setAddress] = useState<string>(initial?.location?.address ?? '')
   // 記住初始地址，用以判斷使用者是否真的改了地址 → 改了則清空座標以重新定位
   const initialAddress = initial?.location?.address ?? ''
+  // 從地點搜尋選到的精確座標（選了就直接帶入，免再 geocode；時間/距離會因座標改變自動重算）
+  const [pickedLocation, setPickedLocation] = useState<{ lat: number; lng: number } | null>(null)
 
   // Sync if initial changes (shouldn't in normal usage, but just in case)
   useEffect(() => {
@@ -137,9 +139,12 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
     const trimmedAddress = address.trim()
     const addressChanged = trimmedAddress !== initialAddress.trim()
     let location = form.location
-    if (addressChanged) {
+    if (pickedLocation) {
+      // 從搜尋選到精確座標 → 直接帶入（免 geocode），時間/距離會因座標改變自動重算
+      location = { lat: pickedLocation.lat, lng: pickedLocation.lng, address: trimmedAddress || undefined }
+    } else if (addressChanged) {
       location = trimmedAddress
-        ? { lat: 0, lng: 0, address: trimmedAddress } // 座標歸零 → 觸發重新定位
+        ? { lat: 0, lng: 0, address: trimmedAddress } // 手打地址 → 座標歸零觸發重新定位
         : undefined
     }
 
@@ -348,7 +353,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             </div>
           ) : (
             <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">地點簡稱（用於卡片顯示）</label>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">地點簡稱（只改顯示名；換地點請用下方「地點／地址」搜尋）</label>
               <input type="text" value={form.placeLabel ?? ''} onChange={(e) => set('placeLabel', e.target.value || undefined)}
                 placeholder="例：太魯閣、台東市" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
             </div>
@@ -420,10 +425,16 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             <label className="text-xs font-semibold text-gray-500 mb-1 block">地點 / 地址</label>
             <AddressAutocomplete
               value={address}
-              onChange={setAddress}
-              placeholder="搜尋地點或輸入地址（可省略）"
+              onChange={(v) => { setAddress(v); setPickedLocation(null) }}
+              onPlaceSelect={(p) => {
+                setAddress(p.address)
+                setPickedLocation({ lat: p.lat, lng: p.lng })
+                if (p.name) set('placeLabel', p.name)
+              }}
+              placeholder="搜尋地點（選了自動帶座標）或輸入地址"
               initialValue={initialAddress}
             />
+            <p className="text-[11px] text-gray-400 mt-1">換地點請在這裡搜尋選取：名稱與座標會一起更新，移動列的時間／距離才會跟著重算。</p>
           </div>
 
           {/* Notes */}
