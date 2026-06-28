@@ -21,6 +21,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next({ request })
   }
 
+  // /dev/* 僅限本機開發（NODE_ENV=development）；production 完全不通
+  if (pathname.startsWith('/dev')) {
+    if (process.env.NODE_ENV !== 'development') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+    return NextResponse.next({ request })
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
