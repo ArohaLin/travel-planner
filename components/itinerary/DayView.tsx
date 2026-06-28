@@ -18,6 +18,11 @@ const toMin = (t?: string): number | null => {
   return h * 60 + m
 }
 
+const fromMin = (m: number): string => {
+  const mm = ((m % 1440) + 1440) % 1440
+  return `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`
+}
+
 /** 秒 → 「35 分」/「1 時 5 分」 */
 function fmtDur(seconds: number): string {
   const min = Math.round(seconds / 60)
@@ -319,6 +324,18 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
   const accommodationLeg = legByTo.get('accommodation')
   const showAccommodationTravel = !!day.accommodation && lastActivity && lastActivity.type !== 'transport'
   const accEst = day.accommodation && lastActivity ? estimateLeg(lastActivity.location, day.accommodation.location) : null
+  // 住宿時間軸時間＝當晚實際抵達/入住（最後活動結束＋到飯店車程，且不早於飯店最早可入住），
+  // 不再用飯店政策 checkInTime 當時間軸位置（那常早於當晚行程結束 → 時序倒退、看起來像 bug）。
+  // 飯店「入住 15:00／退房 11:00」政策仍顯示在住宿卡內部。
+  const accTimelineTime = (() => {
+    if (!day.accommodation) return undefined
+    const endMin = toMin(lastActivity?.endTime ?? lastActivity?.startTime)
+    if (endMin == null) return day.accommodation.checkInTime
+    const legMin = accommodationLeg ? Math.round(accommodationLeg.seconds / 60) : (accEst?.min ?? 0)
+    const checkInMin = toMin(day.accommodation.checkInTime)
+    const eff = checkInMin != null ? Math.max(endMin + legMin, checkInMin) : endMin + legMin
+    return fromMin(eff)
+  })()
 
   return (
     <div className="px-4 pt-4">
@@ -449,7 +466,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               toName={day.accommodation.name}
             />
           )}
-          <RowFrame timeTop={day.accommodation.checkInTime} dotClass="bg-emerald-500" hideBottomLine={!arrival}>
+          <RowFrame timeTop={accTimelineTime} dotClass="bg-emerald-500" hideBottomLine={!arrival}>
             <AccommodationCard
               accommodation={day.accommodation}
               canEdit={canEdit}
