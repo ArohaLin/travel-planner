@@ -121,8 +121,8 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
     <>
       <div className="fixed inset-0 bg-black/30 z-40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '90dvh' }}
+        className="fixed inset-0 z-50 bg-white flex flex-col"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />

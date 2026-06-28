@@ -176,7 +176,7 @@ export function ShoppingSheet({ days, destination, items, canEdit, onAdd, onEdit
   return (
     <>
       <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl sheet-enter flex flex-col" style={{ height: 'calc(96dvh - env(safe-area-inset-top))' }}>
+      <div className="fixed inset-0 z-50 bg-white sheet-enter flex flex-col" style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0"><div className="w-10 h-1 bg-gray-300 rounded-full" /></div>
         <div className="flex items-center justify-between px-4 py-2 flex-shrink-0 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900 flex items-center gap-2">🛍 採購清單</h2>

@@ -22,7 +22,7 @@ export default function DevLoginPage() {
       setStatus('驗證 token...')
 
       const supabase = getSupabaseBrowserClient()
-      const { error } = await supabase.auth.verifyOtp({ token_hash: token, type: 'magiclink' })
+      const { error } = await supabase.auth.verifyOtp({ token_hash: token, type: 'email' })
       if (error) {
         setStatus(`驗證失敗：${error.message}`)
         return

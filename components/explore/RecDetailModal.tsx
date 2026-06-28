@@ -55,8 +55,8 @@ export function RecDetailModal({ rec, days, added, busy, onClose, onAddWish, onA
     <>
       <div className="fixed inset-0 bg-black/40 z-[60] backdrop-blur-sm" onClick={onClose} />
       <div
-        className="fixed left-0 right-0 bottom-0 z-[70] bg-white rounded-t-3xl shadow-2xl flex flex-col sheet-enter"
-        style={{ height: '86dvh', maxHeight: 'calc(100dvh - env(safe-area-inset-top) - 12px)' }}
+        className="fixed inset-0 z-[70] bg-white flex flex-col sheet-enter"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Hero 大圖 */}
         <div className="relative flex-shrink-0">

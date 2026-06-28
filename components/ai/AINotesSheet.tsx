@@ -45,8 +45,8 @@ export function AINotesSheet({
       <div className="fixed inset-0 bg-black/20 z-40 backdrop-blur-sm" onClick={onClose} />
 
       <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl sheet-enter flex flex-col"
-        style={{ height: '82vh', maxHeight: 'calc(100vh - env(safe-area-inset-top) - 20px)' }}
+        className="fixed inset-0 z-50 bg-white sheet-enter flex flex-col"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">

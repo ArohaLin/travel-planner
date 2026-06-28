@@ -585,11 +585,8 @@ function BugReportSheet({ globalRole, hideTrigger }, ref) {
 
           {/* Bottom sheet */}
           <div
-            className="fixed left-0 right-0 bottom-0 z-[210] bg-white rounded-t-3xl shadow-2xl flex flex-col"
-            style={{
-              height: 'calc(96dvh - env(safe-area-inset-top))',
-              maxHeight: 'calc(96dvh - env(safe-area-inset-top))',
-            }}
+            className="fixed inset-0 z-[210] bg-white flex flex-col"
+            style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
           >
             {/* Handle */}
             <div className="flex justify-center pt-3 pb-1 flex-shrink-0">

@@ -51,7 +51,12 @@ export function DepartureEditModal({
         style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom))' }}
         onClick={(ev) => ev.stopPropagation()}
       >
-        <h3 className="text-base font-bold text-gray-800 mb-1">編輯出發地時間</h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-base font-bold text-gray-800">編輯出發地時間</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:bg-gray-200 -mr-1">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
         <p className="text-xs text-gray-500 mb-4 leading-relaxed">
           「出發時間」就是當天第一個行程的開始；調整後當天行程會往後順移。
         </p>

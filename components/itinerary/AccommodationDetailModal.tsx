@@ -28,8 +28,8 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
     <>
       <div className="fixed inset-0 bg-black/40 z-40 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ maxHeight: 'calc(94dvh - env(safe-area-inset-top))' }}
+        className="fixed inset-0 z-50 bg-white flex flex-col"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* 明顯的關閉鈕（壓在頂部，照片上也清楚）*/}
         <button

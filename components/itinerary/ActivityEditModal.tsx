@@ -174,8 +174,8 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
 
       {/* Sheet */}
       <div
-        className="fixed left-0 right-0 bottom-0 z-50 bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ maxHeight: '90vh' }}
+        className="fixed inset-0 z-50 bg-white flex flex-col"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* Handle */}
         <div className="flex justify-center pt-3 pb-1 flex-shrink-0">

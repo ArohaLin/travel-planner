@@ -98,6 +98,7 @@ export function ItineraryClient({
   const [departureEditOpen, setDepartureEditOpen] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
   const [shoppingOpen, setShoppingOpen] = useState(false)
+  const [bookingOpen, setBookingOpen] = useState(false)
   const [dragHasChanges, setDragHasChanges] = useState(false)
   // 拖拉未套用時、切到哪個檢視的待確認目標（map / summary）
   const [dragSwitchConfirm, setDragSwitchConfirm] = useState<'map' | 'summary' | null>(null)
@@ -843,10 +844,6 @@ export function ItineraryClient({
         role={role}
         onlineUsers={onlineUsers}
         currentUser={{ displayName: currentUser.displayName, avatarUrl: currentUser.avatarUrl, globalRole: currentUser.globalRole }}
-        todoCount={todoBadge}
-        onOpenTodos={() => setTodoOpen(true)}
-        shoppingCount={shoppingBadge}
-        onOpenShopping={() => setShoppingOpen(true)}
       />
 
       <TripInfoCard
@@ -1470,8 +1467,8 @@ export function ItineraryClient({
         </>
       )}
 
-      {/* 底部操作列：探索 / 願望清單 / 新增（行程檢視，可編輯者）*/}
-      {viewMode === 'list' && !dragMode && userCanEdit && (
+      {/* 底部操作列：探索/願望/待辦/採購/預約（常駐各角色）；新增 僅可編輯＋list */}
+      {!dragMode && (
         <div
           className="fixed bottom-0 left-0 right-0 z-30 bg-white border-t border-black/5 flex items-stretch"
           style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
@@ -1493,17 +1490,63 @@ export function ItineraryClient({
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.5C6 16.5 3.5 13 3.5 9.5 3.5 7 5.5 5.2 7.8 5.2c1.6 0 3 .9 4.2 2.6 1.2-1.7 2.6-2.6 4.2-2.6 2.3 0 4.3 1.8 4.3 4.3 0 3.5-2.5 7-8.5 11Z" />
             </svg>
-            <span className="text-[11px]">願望清單</span>
+            <span className="text-[11px]">願望</span>
           </button>
           <button
-            onClick={() => handleAddActivity((currentDayData?.activities.length ?? 0) - 1)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-purple-600 active:bg-purple-50"
+            onClick={() => setTodoOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50 relative"
+          >
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              {todoBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
+                  {todoBadge > 99 ? '99+' : todoBadge}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px]">待辦</span>
+          </button>
+          <button
+            onClick={() => setShoppingOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50 relative"
+          >
+            <div className="relative">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.3 2.3c-.6.6-.2 1.7.7 1.7H17M17 17a2 2 0 100 4 2 2 0 000-4zM9 19a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+              {shoppingBadge > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-amber-500 text-white text-[10px] font-semibold rounded-full flex items-center justify-center ring-2 ring-white">
+                  {shoppingBadge > 99 ? '99+' : shoppingBadge}
+                </span>
+              )}
+            </div>
+            <span className="text-[11px]">採購</span>
+          </button>
+          <button
+            onClick={() => setBookingOpen(true)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-gray-500 active:bg-gray-50"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+              <rect x="3" y="4" width="18" height="18" rx="2" strokeLinecap="round" strokeLinejoin="round" />
+              <line x1="16" y1="2" x2="16" y2="6" strokeLinecap="round" />
+              <line x1="8" y1="2" x2="8" y2="6" strokeLinecap="round" />
+              <line x1="3" y1="10" x2="21" y2="10" strokeLinecap="round" />
             </svg>
-            <span className="text-[11px] font-medium">新增</span>
+            <span className="text-[11px]">預約</span>
           </button>
+          {userCanEdit && viewMode === 'list' && (
+            <button
+              onClick={() => handleAddActivity((currentDayData?.activities.length ?? 0) - 1)}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-purple-600 active:bg-purple-50"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
+              </svg>
+              <span className="text-[11px] font-medium">新增</span>
+            </button>
+          )}
         </div>
       )}
     </div>

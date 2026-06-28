@@ -170,8 +170,8 @@ export function TodoSheet({
     <>
       <div className="fixed inset-0 bg-black/30 z-[200] backdrop-blur-sm" onClick={onClose} />
       <div
-        className="fixed left-0 right-0 bottom-0 z-[210] bg-white rounded-t-3xl shadow-2xl flex flex-col"
-        style={{ height: 'calc(96dvh - env(safe-area-inset-top))', maxHeight: 'calc(96dvh - env(safe-area-inset-top))' }}
+        className="fixed inset-0 z-[210] bg-white flex flex-col"
+        style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
         {/* 抓握條 + 標題 */}
         <div className="flex-shrink-0 px-5 pt-3 pb-2 border-b border-gray-100">
