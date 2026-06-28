@@ -134,7 +134,9 @@ function TravelRow({ transport, leg, allottedSec, departTime, toName }: TravelRo
       return s != null && e != null && e > s ? (e - s) * 60 : null
     })()
     const durSec = hasDriveLeg && leg ? effLegSec : cardSec
-    const to = transport.toLabel?.trim()
+    // 「前往 X」優先用時間軸即時下一站名（toName），而非可能過時的 toLabel
+    // （景點改名後 toLabel 不會自動重算 → 用即時名才不殘留舊地名）
+    const to = toName?.trim() || transport.toLabel?.trim()
     const composite = isCompositeTransport(transport.title)
     main = `${!composite && to ? `${label}前往 ${to}` : transport.title}${durSec ? `・約 ${fmtDur(durSec)}` : ''}${km ? `・${km}` : ''}`
     const budget = allottedSec ?? cardSec
@@ -382,7 +384,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               const allottedSec = s != null && e != null && e > s ? (e - s) * 60 : null
               return (
                 <div key={activity.id}>
-                  <TravelRow transport={activity} leg={leg} allottedSec={allottedSec} />
+                  <TravelRow transport={activity} leg={leg} allottedSec={allottedSec} toName={next && next.type !== 'transport' ? (next.placeLabel?.trim() || next.title) : undefined} />
                   {addBtn}
                 </div>
               )
