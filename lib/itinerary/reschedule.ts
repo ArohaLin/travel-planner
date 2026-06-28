@@ -155,7 +155,7 @@ export function recomputeTimes(
     const dur = inferDurationMin(cur)
     cur.startTime = fromMin(start)
     cur.endTime = fromMin(start + dur)
-    // 交通卡校正：toLabel 對齊「下一張景點」、清掉常寫錯的 fromLabel（DayView 以上一張卡當起點）
+    // 交通卡校正：toLabel 對齊「下一張景點」（起點不存，DayView 以時間軸上一張卡當起點）
     if (isTransport(cur)) {
       const nextPlace = out.slice(i + 1).find((a) => !isTransport(a))
       if (nextPlace) {
@@ -165,7 +165,6 @@ export function recomputeTimes(
         // 非複合用途的交通卡 → title 重寫成不含起點的「前往 X」（起點＝時間軸上一張卡），永絕殘留。
         if (to && !isCompositeTransportTitle(cur.title)) cur.title = `前往${to}`
       }
-      cur.fromLabel = undefined
     }
   }
   return out

@@ -267,7 +267,7 @@ The <plans> block format (DO NOT deviate):
 - DO NOT skip the <plans> block — it is MANDATORY
 - Output ONLY 1 plan (planIndex: 1) — do NOT output 2 or 3 plans
 - 卡片資訊分層：title 只放簡短名稱、description 留空或極短；詳細介紹寫進 intro/transport/recommendation/tips，不要全塞進 description
-- 卡片精簡欄位（依類型填）：景點填 placeLabel（地點）；交通 transport 填 fromLabel/toLabel/transportMode；餐飲 food 填 mealType/placeLabel/foodItems；特別注意處填 highlight
+- 卡片精簡欄位（依類型填）：景點填 placeLabel（地點）；交通 transport 填 toLabel/transportMode；餐飲 food 填 mealType/placeLabel/foodItems；特別注意處填 highlight
 - 交通卡 title 規則：純移動用「出發：A前往B」格式；時段若含移動以外的事，title 必須使用對應關鍵字標明（還車/取車/候船/候機/報到/託運/安檢/轉乘/等候/排隊/寄放/手續，例：「還車與南寮漁港候船」），App 依此顯示時間用途
 - 每日簡介 theme 同步更新：動到某天活動就必須一併更新該天 theme；局部修改時額外加 { "op":"update_day", "dayIndex":N, "payload":{"theme":"更新後簡介"} }
 - 地址正確性：更換活動成不同地點時，絕對不要保留舊 location 座標，省略 location 讓系統重新定位。若填 location.address，**縣市/鄉鎮必須正確**——跨縣市行程的外地點尤其重要（例：台東行程裡的嘉義景點，地址要寫「嘉義」而非「台東」）；不確定確切門牌時，寧可給「縣市+鄉鎮+地標名」也不要硬湊門牌號
@@ -384,7 +384,7 @@ ${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
 
 **⚠️ 卡片精簡欄位（必須依類型填好）**：
 - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱，如「太魯閣」）
-- 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（如「自駕」「船」）
+- 交通 transport：填 toLabel（終點）、transportMode（如「自駕」「船」）
 - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
 - 任何活動有特別需注意處：填 highlight（簡短幾字）
 - title 保持簡短純名稱，地點/項目放對應欄位，不要全擠進 title
@@ -519,7 +519,7 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 
 == 卡片精簡欄位（依類型填好）==
 - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）
-- 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（交通方式）
+- 交通 transport：填 toLabel（終點）、transportMode（交通方式）
 - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
 - 任何活動有特別需注意處：填 highlight（簡短幾字）
 - title 保持簡短純名稱，地點/項目放對應欄位
@@ -785,7 +785,6 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "tips": "貼心提醒：注意事項、最佳時段或省錢小撇步（1句，選填）",
           "placeLabel": "地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它填，交通免）",
           "location": { "lat": 0, "lng": 0, "address": "盡量填完整地址，如「972花蓮縣秀林鄉富世村」（非交通類都要填，lat/lng 留 0 由系統定位）" },
-          "fromLabel": "交通起點簡稱（僅 type=transport 填，如「台東市」）",
           "toLabel": "交通終點簡稱（僅 type=transport 填，如「富岡漁港」）",
           "transportMode": "交通方式（僅 type=transport 填，如「自駕」「步行」「船」）",
           "mealType": "餐別（僅 type=food 填，如「早餐」「午餐」「晚餐」「下午茶」）",
@@ -827,7 +826,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 2-3. **行程連貫性**：相鄰活動之間扣除合理交通時間後，閒置不得超過約 15 分鐘；15 分鐘以內的小縫隙直接併入前後活動時間（提早出發或延後結束），不要為它建卡片；若刻意留白（等日落、回住宿休息、Check-in），必須排成明確的 type:"rest" 活動並在 title 說明用途，嚴禁留下無說明的空白時段
 2-3. **卡片精簡欄位（重要，用於行程表卡片精簡顯示）**：每個活動依類型填好對應欄位：
    - 景點/體驗/自然/購物/休息：填 placeLabel（地點簡稱）
-   - 交通 transport：填 fromLabel（起點）、toLabel（終點）、transportMode（交通方式）
+   - 交通 transport：填 toLabel（終點）、transportMode（交通方式）
    - 餐飲 food：填 mealType（餐別）、placeLabel（地點）、foodItems（飲食項目）
    - 任何活動若有特別需注意處，填 highlight（簡短幾字）
    title 保持簡短（純名稱／店名），地點與項目放對應欄位，不要全擠進 title

@@ -59,7 +59,6 @@ export const ActivitySchema = z.object({
   /** 地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它用） */
   placeLabel: z.string().optional(),
   /** 交通起點簡稱（type=transport 用） */
-  fromLabel: z.string().optional(),
   /** 交通終點簡稱（type=transport 用） */
   toLabel: z.string().optional(),
   /** 交通方式，如「自駕」「步行」「船」（type=transport 用） */

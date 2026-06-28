@@ -75,7 +75,7 @@ function analyze(it: Itinerary) {
       // 結構化欄位完整度（依類型）
       structuredTotal++
       if (a.type === 'transport') {
-        if (a.fromLabel && a.toLabel && a.transportMode) structuredOk++
+        if (a.toLabel && a.transportMode) structuredOk++
       } else if (a.type === 'food') {
         if (a.mealType && a.placeLabel) structuredOk++
       } else {

@@ -23,9 +23,8 @@ export function formatCardMain(activity: Activity): string {
   const t = activity.type
   const paren = (s?: string) => (s && s.trim() ? `（${s.trim()}）` : '')
   if (t === 'transport') {
-    const from = activity.fromLabel?.trim()
     const to = activity.toLabel?.trim()
-    if (from && to) return `${from} → ${to}${paren(activity.transportMode)}`
+    if (to) return `前往 ${to}${paren(activity.transportMode)}`
     return `${activity.title}${paren(activity.transportMode)}`
   }
   if (t === 'food') {
