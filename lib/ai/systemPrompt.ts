@@ -84,9 +84,10 @@ function buildTravelTimeSection(itinerary: Itinerary): string {
         toName = acts[idx].title
         const prev = idx > 0 ? acts[idx - 1] : undefined
         if (prev?.type === 'transport') {
+          // 可用時間算到「目的地開始」（涵蓋交通卡結束後的空閒），而非只看交通卡時段
           const s = toMinutes(prev.startTime)
-          const e = toMinutes(prev.endTime)
-          if (s != null && e != null && e > s) allottedMin = e - s
+          const ns = toMinutes(acts[idx].startTime)
+          if (s != null && ns != null && ns > s) allottedMin = ns - s
         } else if (prev) {
           const e = toMinutes(prev.endTime ?? prev.startTime)
           const s = toMinutes(acts[idx].startTime)

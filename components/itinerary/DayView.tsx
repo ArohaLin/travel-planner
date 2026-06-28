@@ -381,7 +381,11 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               const leg = next && next.type !== 'transport' ? legByTo.get(next.id) : undefined
               const s = toMin(activity.startTime)
               const e = toMin(activity.endTime)
-              const allottedSec = s != null && e != null && e > s ? (e - s) * 60 : null
+              // 可用時間算到「下一站活動開始」（涵蓋交通卡結束後的空閒），而非只看交通卡自己時段 → 避免後面很空卻誤判偏緊
+              const nextStart = next && next.type !== 'transport' ? toMin(next.startTime) : null
+              const allottedSec =
+                s != null && nextStart != null && nextStart > s ? (nextStart - s) * 60
+                  : s != null && e != null && e > s ? (e - s) * 60 : null
               return (
                 <div key={activity.id}>
                   <TravelRow transport={activity} leg={leg} allottedSec={allottedSec} toName={next && next.type !== 'transport' ? (next.placeLabel?.trim() || next.title) : undefined} />
