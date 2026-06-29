@@ -964,34 +964,52 @@ export function ItineraryClient({
             </div>
           )}
 
-          {/* 一鍵自動修正路程時間（有偏緊/超時路段才出現）：放天數列下方、行程內容最上方，明顯可見 */}
-          {bufferWarnings.total > 0 && userCanEdit && canChat(role) && (
-            <div className="px-4 pt-3">
-              <button
-                onClick={handleFixTravelTimes}
-                disabled={fixingTravel}
-                className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm text-left transition-colors min-h-[44px] ${
-                  bufferWarnings.red > 0
-                    ? 'bg-red-50 border-red-100 text-red-700 active:bg-red-100'
-                    : 'bg-amber-50 border-amber-100 text-amber-700 active:bg-amber-100'
-                } disabled:opacity-50`}
-              >
-                <span className="flex-shrink-0">
-                  {fixingTravel ? (
-                    <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-[-2px]" />
-                  ) : bufferWarnings.red > 0 ? '⚠️' : '🟡'}
-                </span>
-                <span className="flex-1">
-                  {bufferWarnings.red > 0 && `${bufferWarnings.red} 段移動時間不足`}
-                  {bufferWarnings.red > 0 && bufferWarnings.amber > 0 && '、'}
-                  {bufferWarnings.amber > 0 && `${bufferWarnings.amber} 段偏緊`}
-                </span>
-                <span className="flex-shrink-0 font-semibold">
-                  {fixingTravel ? 'AI 自動修正中…' : '一鍵自動修正 →'}
-                </span>
-              </button>
-            </div>
-          )}
+          {/* 移動緩衝警示橫幅：有偏緊/超時路段才出現；鎖定衝突不顯示一鍵修正 */}
+          {bufferWarnings.total > 0 && (() => {
+            const lockedDaySet = new Set(bufferWarnings.lockedConflictDays)
+            const hasFixable = bufferWarnings.redDays.some((d) => !lockedDaySet.has(d)) || bufferWarnings.amber > 0
+            const hasLocked = bufferWarnings.lockedConflictDays.length > 0
+            return (
+              <div className="px-4 pt-3 space-y-1.5">
+                {/* 鎖定衝突：靜態提示（無一鍵修正）*/}
+                {hasLocked && (
+                  <div className="w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border bg-gray-50 border-gray-200 text-sm text-gray-600">
+                    <span className="flex-shrink-0">⛔</span>
+                    <span className="flex-1">
+                      固定時間造成移動時間不足（第 {bufferWarnings.lockedConflictDays.map((d) => d + 1).join('、')} 天）
+                    </span>
+                    <span className="flex-shrink-0 text-xs text-gray-400">時間已鎖定</span>
+                  </div>
+                )}
+                {/* 一般衝突：可自動修正 */}
+                {hasFixable && userCanEdit && canChat(role) && (
+                  <button
+                    onClick={handleFixTravelTimes}
+                    disabled={fixingTravel}
+                    className={`w-full flex items-center gap-2 px-4 py-2.5 rounded-2xl border text-sm text-left transition-colors min-h-[44px] ${
+                      bufferWarnings.red > 0
+                        ? 'bg-red-50 border-red-100 text-red-700 active:bg-red-100'
+                        : 'bg-amber-50 border-amber-100 text-amber-700 active:bg-amber-100'
+                    } disabled:opacity-50`}
+                  >
+                    <span className="flex-shrink-0">
+                      {fixingTravel ? (
+                        <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin align-[-2px]" />
+                      ) : bufferWarnings.red > 0 ? '⚠️' : '🟡'}
+                    </span>
+                    <span className="flex-1">
+                      {bufferWarnings.red > 0 && `${bufferWarnings.red} 段移動時間不足`}
+                      {bufferWarnings.red > 0 && bufferWarnings.amber > 0 && '、'}
+                      {bufferWarnings.amber > 0 && `${bufferWarnings.amber} 段偏緊`}
+                    </span>
+                    <span className="flex-shrink-0 font-semibold">
+                      {fixingTravel ? 'AI 自動修正中…' : '一鍵自動修正 →'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            )
+          })()}
 
           {currentDayData && (
             <DayView

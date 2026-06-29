@@ -13,6 +13,8 @@ export interface BufferScanResult {
   total: number
   /** 有至少一段「紅色（路程 > 預留，恐遲到）」的天的 dayIndex（供待辦連結）*/
   redDays: number[]
+  /** 紅色衝突中，涉及 timeLocked 活動的天 dayIndex（時間鎖定→無法自動修正）*/
+  lockedConflictDays: number[]
 }
 
 const toMinutes = (t?: string): number | null => {
@@ -38,6 +40,7 @@ export function scanBufferWarnings(itinerary: Itinerary): BufferScanResult {
   let red = 0
   let amber = 0
   const redDaySet = new Set<number>()
+  const lockedConflictDaySet = new Set<number>()
 
   for (const day of itinerary.days) {
     const legs = day.travelLegs ?? []
@@ -78,10 +81,24 @@ export function scanBufferWarnings(itinerary: Itinerary): BufferScanResult {
 
       if (allottedMin == null || allottedMin <= 0) continue
       const comfortable = googleMin + Math.min(Math.max(googleMin * 0.5, 5), 15)
-      if (allottedMin < googleMin) { red++; redDaySet.add(day.dayIndex) }
+      if (allottedMin < googleMin) {
+        red++
+        redDaySet.add(day.dayIndex)
+        // 涉及鎖定活動（前項或目的項）的紅色衝突→無法自動修正，歸入 lockedConflictDays
+        const toAct = leg.toId !== 'accommodation' ? acts.find((a) => a.id === leg.toId) : undefined
+        const prevIdx = toAct ? acts.findIndex((a) => a.id === leg.toId) - 1 : acts.length - 1
+        const prevAct = prevIdx >= 0 ? acts[prevIdx] : undefined
+        if (toAct?.timeLocked || prevAct?.timeLocked) {
+          lockedConflictDaySet.add(day.dayIndex)
+        }
+      }
       else if (allottedMin < comfortable) amber++
     }
   }
 
-  return { red, amber, total: red + amber, redDays: Array.from(redDaySet).sort((a, b) => a - b) }
+  return {
+    red, amber, total: red + amber,
+    redDays: Array.from(redDaySet).sort((a, b) => a - b),
+    lockedConflictDays: Array.from(lockedConflictDaySet).sort((a, b) => a - b),
+  }
 }
