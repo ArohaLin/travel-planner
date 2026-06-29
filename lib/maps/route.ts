@@ -141,23 +141,34 @@ export function buildDayPoints(
   // - 景點（非交通、非 rest）：連續編號 ①②③…
   // - 港口型交通卡（有座標）：插入為 ⚓ 點，讓路線「景點→港口→(跨海)→港口→景點」正確
   // - rest（動作描述）：預設跳過；但若「已有明確真實座標」則納入（見下方說明）
+  // - 班次型交通卡（火車/高鐵/飛機）：到站後重置路線——清掉前面所有點（含出發城市），
+  //   改以到站地點為新起點，讓地圖只顯示下車後的本地段，不出現跨縣市開車路線
   // - 其餘交通卡 / 無座標者：跳過
   let placeNum = 0
+  // 最後一張班次型交通卡的到站錨點；等到有下一個實體點（或住宿）時插入為路線起點
+  let lastTransitDest: RoutePoint | null = null
+
+  function flushTransit() {
+    if (lastTransitDest) { points.push(lastTransitDest); lastTransitDest = null }
+  }
+
   for (const a of day.activities) {
     if (a.type === 'transport') {
       const port = portInfo(a)
       if (!port) {
-        // 班次型交通卡（火車/高鐵/飛機）：若已 geocode 到站座標（toLabel），插入為路線錨點，
-        // 讓後續到住宿的 leg 從正確到站城市出發，而非從行程出發地跨縣市計算。
         if (a.boardingPairId) {
           const geo = resolve(dayIndex, a.id, a.location)
           if (geo) {
-            points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: '🚉', title: a.toLabel || a.title })
+            // 清掉前面所有點（含出發城市），路線從此地重新起算
+            points.length = 0
+            placeNum = 0
+            lastTransitDest = { id: a.id, kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: a.toLabel || a.title }
           }
         }
         continue
       }
       // 港口用內建固定座標（零歧義、免 geocode）
+      flushTransit()
       points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
       continue
     }
@@ -168,6 +179,7 @@ export function buildDayPoints(
       // 跳過它、把距離算成「直接跨過該點」的錯誤值（曾發生宜蘭→台東直線取代宜蘭→花蓮→台東）。
       const loc = a.location
       if (!loc || (loc.lat === 0 && loc.lng === 0) || !isFinite(loc.lat) || !isFinite(loc.lng)) continue
+      flushTransit()
       placeNum++
       const restTime = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
       points.push({ id: a.id, kind: 'activity', lat: loc.lat, lng: loc.lng, label: String(placeNum), title: a.title, time: restTime })
@@ -175,12 +187,14 @@ export function buildDayPoints(
     }
     const geo = resolve(dayIndex, a.id, a.location)
     if (!geo) continue
+    flushTransit()
     placeNum++
     const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
     points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: String(placeNum), title: a.title, time })
   }
 
-  // 當晚住宿
+  // 當晚住宿（若最後活動是班次型交通，在住宿前插入到站錨點）
+  flushTransit()
   if (day.accommodation) {
     const geo = resolve(dayIndex, 'accommodation', day.accommodation.location)
     if (geo) {
