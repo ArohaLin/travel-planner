@@ -245,8 +245,9 @@ function SortableRow({ activity: a, changed }: { activity: Activity; changed: bo
       {DragHandle}
       <span className="text-lg flex-shrink-0">{TYPE_ICONS[a.type] ?? '📌'}</span>
       <div className="flex-1 min-w-0">
-        <div className={clsx('text-xs tabular-nums', changed ? 'text-purple-600 font-semibold' : 'text-gray-500')}>
+        <div className={clsx('text-xs tabular-nums flex items-center gap-1', changed ? 'text-purple-600 font-semibold' : 'text-gray-500')}>
           {a.startTime}{a.endTime ? `–${a.endTime}` : ''}{changed && ' ·已調整'}
+          {a.timeLocked && <span className="text-[10px] bg-amber-100 text-amber-600 px-1 rounded">🔒</span>}
         </div>
         <div className="font-medium text-sm text-gray-900 truncate">{a.placeLabel || a.title}</div>
       </div>

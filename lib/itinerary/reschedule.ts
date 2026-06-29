@@ -149,8 +149,11 @@ export function recomputeTimes(
       start = prevEnd + bufferMin(prev, cur, gapHint)
     }
     const dur = inferDurationMin(cur)
-    cur.startTime = fromMin(start)
-    cur.endTime = fromMin(start + dur)
+    if (!cur.timeLocked) {
+      // 鎖定卡保留原本 startTime/endTime，直接作為後續項目的錨點
+      cur.startTime = fromMin(start)
+      cur.endTime = fromMin(start + dur)
+    }
     // 交通卡校正：toLabel 對齊「下一張景點」（起點不存，DayView 以時間軸上一張卡當起點）
     if (isTransport(cur)) {
       const nextPlace = out.slice(i + 1).find((a) => !isTransport(a))

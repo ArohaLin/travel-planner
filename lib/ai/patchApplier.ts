@@ -61,8 +61,13 @@ function applyOp(draft: Itinerary, op: PatchOp): void {
       if (idx === -1) throw new PatchError(`找不到活動 ID "${op.activityId}"`)
       const target = day.activities[idx]
       const oldTitle = target.title
-      const p = op.payload as Partial<typeof target>
-      Object.assign(target, op.payload)
+      // 時間鎖定防護：鎖定卡的 startTime/endTime/duration 不可被 AI/自動修正覆蓋。
+      // 唯一例外：payload 同時帶 timeLocked:false（使用者在編輯視窗手動解鎖），視為本人有意解鎖並修改。
+      const payload = (target.timeLocked && (op.payload as { timeLocked?: boolean }).timeLocked !== false)
+        ? (({ startTime: _s, endTime: _e, duration: _d, ...rest }) => rest)(op.payload as Record<string, unknown>) as typeof op.payload
+        : op.payload
+      const p = payload as Partial<typeof target>
+      Object.assign(target, payload)
       // #13：若活動換成不同地點（title 改變）但 payload 沒帶新的 location，
       // 清掉舊座標，避免「正氣路夜市卻顯示知本溫泉座標」這類錯誤；地圖會自動重新定位。
       const payloadHasLocation = (op.payload as { location?: unknown }).location !== undefined
