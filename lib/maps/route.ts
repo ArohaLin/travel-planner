@@ -6,6 +6,11 @@ import { hasNoPlace } from '@/lib/itinerary/activityFlags'
  * 地圖與背景 prefetch 共用此模組，確保兩邊產生「相同的點位與簽章」→ 可正確判斷重用。
  */
 
+export interface TransitSegment {
+  from: { lat: number; lng: number }
+  to: { lat: number; lng: number }
+}
+
 export interface RoutePoint {
   /** activity.id / 'accommodation' / 'origin' / 'return'（旅程終點）；港口用其交通卡 id */
   id: string
@@ -105,17 +110,21 @@ export function buildDayPoints(
   itinerary: Itinerary,
   dayIndex: number,
   resolve: CoordResolver,
-): RoutePoint[] {
+): { points: RoutePoint[]; transitSegments: TransitSegment[] } {
   const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
-  if (!day) return []
+  if (!day) return { points: [], transitSegments: [] }
   const originCity = itinerary.metadata?.originCity
   const points: RoutePoint[] = []
+  const transitSegments: TransitSegment[] = []
+  // 追蹤「實際所在位置」（不因 points 被清除而重置），供建立轉乘虛直線的起點
+  let lastKnownPos: { lat: number; lng: number } | null = null
 
   // 起點：第一天用出發城市；後續天用「前一晚住宿」
   if (dayIndex === 0) {
     if (originCity) {
       const geo = resolve(0, 'origin', undefined)
       if (geo) {
+        lastKnownPos = { lat: geo.lat, lng: geo.lng }
         points.push({ id: 'origin', kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: `出發：${originCity}` })
       }
     }
@@ -125,6 +134,7 @@ export function buildDayPoints(
     if (prevAcc) {
       const geo = resolve(dayIndex - 1, 'accommodation', prevAcc.location)
       if (geo) {
+        lastKnownPos = { lat: geo.lat, lng: geo.lng }
         points.push({
           id: 'origin',
           kind: 'origin',
@@ -159,9 +169,14 @@ export function buildDayPoints(
         if (a.boardingPairId) {
           const geo = resolve(dayIndex, a.id, a.location)
           if (geo) {
-            // 清掉前面所有點（含出發城市），路線從此地重新起算
+            // 記錄轉乘虛直線（出發→到站）
+            if (lastKnownPos) {
+              transitSegments.push({ from: lastKnownPos, to: { lat: geo.lat, lng: geo.lng } })
+            }
+            // 清掉前面所有點（含出發城市），路線從到站地點重新起算
             points.length = 0
             placeNum = 0
+            lastKnownPos = { lat: geo.lat, lng: geo.lng }
             lastTransitDest = { id: a.id, kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: a.toLabel || a.title }
           }
         }
@@ -182,6 +197,7 @@ export function buildDayPoints(
       flushTransit()
       placeNum++
       const restTime = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
+      lastKnownPos = { lat: loc.lat, lng: loc.lng }
       points.push({ id: a.id, kind: 'activity', lat: loc.lat, lng: loc.lng, label: String(placeNum), title: a.title, time: restTime })
       continue
     }
@@ -190,6 +206,7 @@ export function buildDayPoints(
     flushTransit()
     placeNum++
     const time = a.endTime ? `${a.startTime}–${a.endTime}` : a.startTime
+    lastKnownPos = { lat: geo.lat, lng: geo.lng }
     points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: String(placeNum), title: a.title, time })
   }
 
@@ -228,7 +245,7 @@ export function buildDayPoints(
     }
   }
 
-  return points
+  return { points, transitSegments }
 }
 
 /** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變。

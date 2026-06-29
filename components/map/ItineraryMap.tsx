@@ -10,6 +10,7 @@ import {
   legText,
   toPersistLegs,
   type PersistLeg,
+  type TransitSegment,
 } from '@/lib/maps/route'
 
 export interface MapPoint {
@@ -36,6 +37,8 @@ export interface MapDay {
   dayIndex: number
   color: string
   points: MapPoint[]
+  /** 班次型交通（火車/高鐵/飛機/船）的虛直線段（出發座標→到站座標） */
+  transitSegments?: TransitSegment[]
   /** DB 已存的路線資料（sig 相符即可直接重用，免打 Directions） */
   stored?: { sig?: string; legs?: TravelLeg[] }
 }
@@ -444,6 +447,29 @@ function DayRoute({
     }
     return segs
   }, [legs, geometryLib, rawDay])
+
+  // 轉乘虛直線（火車/高鐵/飛機/船）：出發→到站，比 ferry 更長的虛線，不含距離標籤
+  useEffect(() => {
+    if (!map) return
+    const segs = rawDay.transitSegments ?? []
+    if (segs.length === 0) return
+    const polylines = segs.map((s) =>
+      new google.maps.Polyline({
+        path: [{ lat: s.from.lat, lng: s.from.lng }, { lat: s.to.lat, lng: s.to.lng }],
+        strokeOpacity: 0,
+        icons: [
+          {
+            icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.55, strokeColor: day.color, scale: 3 },
+            offset: '0',
+            repeat: '20px',
+          },
+        ],
+        map,
+        zIndex: 0,
+      })
+    )
+    return () => polylines.forEach((p) => p.setMap(null))
+  }, [map, rawDay.transitSegments, day.color])
 
   // 折線：逐段畫。開車段＝實線＋方向箭頭；跨海段（ferry）＝虛線（船程，與陸路區隔）
   useEffect(() => {

@@ -145,7 +145,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
       let anySaved = false
       for (const day of itinerary.days) {
         if (cancelled) return
-        const points = buildDayPoints(itinerary, day.dayIndex, resolve)
+        const { points } = buildDayPoints(itinerary, day.dayIndex, resolve)
         if (points.length < 2) continue
         const sig = signatureFor(points)
         // DB 已新鮮 → 跳過

@@ -215,12 +215,13 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
     sortedSelected.forEach((dayIndex, colorIdx) => {
       const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
       if (!day) return
-      const points = buildDayPoints(itinerary, dayIndex, getGeo)
-      if (points.length === 0) return
+      const { points, transitSegments } = buildDayPoints(itinerary, dayIndex, getGeo)
+      if (points.length === 0 && transitSegments.length === 0) return
       out.push({
         dayIndex,
         color: DAY_COLORS[colorIdx % DAY_COLORS.length],
         points,
+        transitSegments,
         stored: { sig: day.travelSig, legs: day.travelLegs },
       })
     })
