@@ -26,8 +26,7 @@ function ScheduledTransportRow({ transport, onClick }: { transport: Activity; on
     >
       <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 relative">
         <span className="absolute top-2 right-2 text-[11px] text-indigo-400 select-none">🔒</span>
-        <p className="font-semibold text-indigo-800 leading-snug text-sm pr-6">{transport.title}</p>
-        {transport.tips && <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">{transport.tips}</p>}
+        <p className="font-semibold text-indigo-800 leading-snug text-sm pr-6">{fmtSchedTitle(transport.title)}</p>
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
           {durSec && <span className="text-[11px] text-gray-400">行程 {fmtDur(durSec)}</span>}
           {transport.cost && (
@@ -57,6 +56,22 @@ const toMin = (t?: string): number | null => {
 const fromMin = (m: number): string => {
   const mm = ((m % 1440) + 1440) % 1440
   return `${String(Math.floor(mm / 60)).padStart(2, '0')}:${String(mm % 60).padStart(2, '0')}`
+}
+
+/** 班次標題顯示時補括號：「高鐵670 新竹→台北」→「高鐵(670) 新竹→台北」（不改 DB） */
+function fmtSchedTitle(title: string): string {
+  const TYPES = ['高鐵', '台鐵', '飛機', '渡輪', '客運']
+  const m = title.match(/^(.+?)\s+(.+?→.+)$/)
+  if (!m) return title
+  const rawPart = m[1].trim()
+  let matched = ''
+  for (const t of TYPES) {
+    if (rawPart.startsWith(t) && t.length > matched.length) matched = t
+  }
+  if (!matched) return title
+  const no = rawPart.slice(matched.length).trim()
+  if (!no || no.startsWith('(')) return title // 已有括號
+  return `${matched}(${no}) ${m[2].trim()}`
 }
 
 /** 秒 → 「35 分」/「1 時 5 分」 */
