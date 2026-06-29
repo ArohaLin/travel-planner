@@ -117,6 +117,7 @@ export function buildDayPoints(
   const day = itinerary.days.find((d) => d.dayIndex === dayIndex)
   if (!day) return { points: [], transitSegments: [] }
   const originCity = itinerary.metadata?.originCity
+  const originAddress = itinerary.metadata?.originAddress
   const points: RoutePoint[] = []
   const transitSegments: TransitSegment[] = []
   // 追蹤「實際所在位置」（不因 points 被清除而重置），供建立轉乘虛直線的起點
@@ -128,7 +129,7 @@ export function buildDayPoints(
       const geo = resolve(0, 'origin', undefined)
       if (geo) {
         lastKnownPos = { lat: geo.lat, lng: geo.lng }
-        points.push({ id: 'origin', kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: `出發：${originCity}` })
+        points.push({ id: 'origin', kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: `出發：${originAddress ?? originCity}` })
       }
     }
   } else {
@@ -244,7 +245,8 @@ export function buildDayPoints(
   const lastIndex = Math.max(...itinerary.days.map((d) => d.dayIndex))
   if (dayIndex === lastIndex && !day.accommodation) {
     const returnCity = itinerary.metadata?.returnCity ?? originCity
-    if (returnCity) {
+    const returnAddress = itinerary.metadata?.returnAddress || originAddress
+    if (returnCity || returnAddress) {
       const geo = resolve(dayIndex, 'return', undefined)
       if (geo) {
         points.push({
@@ -253,7 +255,7 @@ export function buildDayPoints(
           lat: geo.lat,
           lng: geo.lng,
           label: '終',
-          title: `終點：${returnCity}`,
+          title: `終點：${returnAddress ?? returnCity}`,
         })
       }
     }

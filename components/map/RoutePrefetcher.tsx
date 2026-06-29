@@ -91,8 +91,9 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
 
       for (const day of itinerary.days) {
         if (day.dayIndex === 0 && originCity) {
-          // 出發城市本身即縣市：允許行政區結果（否則被防呆誤擋）
-          enqueue(0, 'origin', undefined, originCity, originCity, undefined, true)
+          const originAddr = itinerary.metadata?.originAddress
+          // 有精確地址 → 不需 allowArea；只有城市 → 允許行政區結果（否則被防呆誤擋）
+          enqueue(0, 'origin', undefined, originAddr, originAddr || originCity, undefined, !originAddr)
         }
         for (const a of day.activities) {
           if (a.type === 'transport') {
@@ -126,7 +127,9 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         // 旅程終點（#41）：最後一天且無住宿 → geocode 返回城市（城市查詢需允許行政區結果）
         if (day.dayIndex === Math.max(...itinerary.days.map((d) => d.dayIndex)) && !day.accommodation) {
           const returnCity = itinerary.metadata?.returnCity ?? originCity
-          if (returnCity) enqueue(day.dayIndex, 'return', undefined, returnCity, returnCity, undefined, true)
+          const returnAddr = itinerary.metadata?.returnAddress || itinerary.metadata?.originAddress
+          const returnQuery = returnAddr || returnCity
+          if (returnQuery) enqueue(day.dayIndex, 'return', undefined, returnAddr, returnQuery, undefined, !returnAddr)
         }
       }
 

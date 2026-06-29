@@ -219,7 +219,9 @@ export const TripMetadataSchema = z.object({
   title: z.string().min(1),
   destination: z.string().min(1),
   originCity: z.string().min(1),
+  originAddress: z.string().optional(),        // 起點精確地址（選填，地圖優先於 originCity）
   returnCity: z.string().optional(),           // 返回城市（預設同出發城市）
+  returnAddress: z.string().optional(),        // 終點精確地址（選填，地圖優先於 returnCity）
   transitCities: z.array(z.string()).optional(), // 中途城市
   preferredTransport: z.array(z.string()).optional(), // 偏好交通方式
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

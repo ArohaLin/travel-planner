@@ -38,7 +38,9 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
     startDate: metadata.startDate,
     endDate: metadata.endDate,
     originCity: metadata.originCity,
+    originAddress: metadata.originAddress ?? '',
     returnCity: metadata.returnCity ?? metadata.originCity,
+    returnAddress: metadata.returnAddress ?? '',
     transitCities: metadata.transitCities ?? [],
     preferredTransport: metadata.preferredTransport ?? [],
     memberProfiles: metadata.memberProfiles ?? ([] as MemberProfile[]),
@@ -51,7 +53,9 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
       startDate: metadata.startDate,
       endDate: metadata.endDate,
       originCity: metadata.originCity,
+      originAddress: metadata.originAddress ?? '',
       returnCity: metadata.returnCity ?? metadata.originCity,
+      returnAddress: metadata.returnAddress ?? '',
       transitCities: metadata.transitCities ?? [],
       preferredTransport: metadata.preferredTransport ?? [],
       memberProfiles: metadata.memberProfiles ?? [],
@@ -96,7 +100,9 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
       const patchedMetadata: Partial<TripMetadata> = {
         title: form.title.trim() || metadata.title,
         originCity: form.originCity.trim() || metadata.originCity,
+        originAddress: form.originAddress.trim() || undefined,
         returnCity: form.returnCity.trim() || form.originCity.trim() || metadata.originCity,
+        returnAddress: form.returnAddress.trim() || undefined,
         transitCities: form.transitCities.length > 0 ? form.transitCities : undefined,
         preferredTransport: form.preferredTransport.length > 0 ? form.preferredTransport : undefined,
         memberProfiles: form.memberProfiles.some((m) => m.age || m.gender) ? form.memberProfiles : undefined,
@@ -185,6 +191,20 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
               )}
             </span>
           </InfoRow>
+
+          {/* 精確地址（若有設定）*/}
+          {(metadata.originAddress || metadata.returnAddress) && (
+            <InfoRow label="地址">
+              <div className="space-y-0.5">
+                {metadata.originAddress && (
+                  <div className="text-xs text-gray-600">起：{metadata.originAddress}</div>
+                )}
+                {metadata.returnAddress && (
+                  <div className="text-xs text-gray-600">終：{metadata.returnAddress}</div>
+                )}
+              </div>
+            </InfoRow>
+          )}
 
           {/* Transport */}
           {metadata.preferredTransport && metadata.preferredTransport.length > 0 && (
@@ -315,6 +335,36 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
               type="text"
               value={form.returnCity}
               onChange={(e) => setForm((p) => ({ ...p, returnCity: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+        </div>
+
+        {/* 起點／終點精確地址（地圖用）*/}
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">
+              起點地址
+              <span className="text-[10px] text-gray-400 font-normal ml-1">（選填，地圖第一段路線更精確）</span>
+            </label>
+            <input
+              type="text"
+              value={form.originAddress}
+              onChange={(e) => setForm((p) => ({ ...p, originAddress: e.target.value }))}
+              placeholder="例：新竹縣竹北市光明六路東二段..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500 block mb-1">
+              終點地址
+              <span className="text-[10px] text-gray-400 font-normal ml-1">（選填，空白沿用起點地址）</span>
+            </label>
+            <input
+              type="text"
+              value={form.returnAddress}
+              onChange={(e) => setForm((p) => ({ ...p, returnAddress: e.target.value }))}
+              placeholder="同起點可留空"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
