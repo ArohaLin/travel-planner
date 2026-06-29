@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { TripMetadata, MemberProfile } from '@/lib/types/itinerary'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
+import { AddressAutocompleteInput } from '@/components/map/AddressAutocompleteInput'
 
 const TRANSPORT_OPTIONS = [
   { value: '飛機', emoji: '✈️' },
@@ -347,10 +348,9 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
               起點地址
               <span className="text-[10px] text-gray-400 font-normal ml-1">（選填，地圖第一段路線更精確）</span>
             </label>
-            <input
-              type="text"
+            <AddressAutocompleteInput
               value={form.originAddress}
-              onChange={(e) => setForm((p) => ({ ...p, originAddress: e.target.value }))}
+              onChange={(v) => setForm((p) => ({ ...p, originAddress: v }))}
               placeholder="例：新竹縣竹北市光明六路東二段..."
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
@@ -360,10 +360,9 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
               終點地址
               <span className="text-[10px] text-gray-400 font-normal ml-1">（選填，空白沿用起點地址）</span>
             </label>
-            <input
-              type="text"
+            <AddressAutocompleteInput
               value={form.returnAddress}
-              onChange={(e) => setForm((p) => ({ ...p, returnAddress: e.target.value }))}
+              onChange={(v) => setForm((p) => ({ ...p, returnAddress: v }))}
               placeholder="同起點可留空"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
