@@ -36,6 +36,7 @@ import { AccommodationEditModal } from '@/components/itinerary/AccommodationEdit
 import { AccommodationDetailModal } from '@/components/itinerary/AccommodationDetailModal'
 import { ThemeEditModal } from '@/components/itinerary/ThemeEditModal'
 import { DepartureEditModal } from '@/components/itinerary/DepartureEditModal'
+import { AddressEditModal } from '@/components/itinerary/AddressEditModal'
 import { TodoSheet } from '@/components/itinerary/TodoSheet'
 import { useTodos } from '@/lib/hooks/useTodos'
 import { useShopping } from '@/lib/hooks/useShopping'
@@ -99,6 +100,9 @@ export function ItineraryClient({
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
   const [departureEditOpen, setDepartureEditOpen] = useState(false)
+  const [editOriginAddrOpen, setEditOriginAddrOpen] = useState(false)
+  const [editReturnAddrOpen, setEditReturnAddrOpen] = useState(false)
+  const [savingAddr, setSavingAddr] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
   const [shoppingOpen, setShoppingOpen] = useState(false)
   const [bookingOpen, setBookingOpen] = useState(false)
@@ -704,6 +708,30 @@ export function ItineraryClient({
     if (ok) { setDepartureEditOpen(false); showToast('已更新出發地時間', 'success') }
   }
 
+  // ── 起點／終點地址編輯（行程卡 & 行程資訊卡 共用）────────────────────────────
+  async function handleSaveAddress(field: 'originAddress' | 'returnAddress', value: string) {
+    setSavingAddr(true)
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata: { [field]: value.trim() || undefined } }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        handleMetadataUpdated({ ...displayItinerary.metadata, [field]: value.trim() || undefined, ...data.metadata })
+        setEditOriginAddrOpen(false)
+        setEditReturnAddrOpen(false)
+        showToast('地址已更新', 'success')
+      } else {
+        const d = await res.json().catch(() => ({}))
+        showToast(d.error ?? '更新失敗', 'error')
+      }
+    } finally {
+      setSavingAddr(false)
+    }
+  }
+
   // ── 待辦動作：前往那天 / 一鍵標已預訂（活動、住宿）──────────────────────────
   function handleTodoGoDay(dayIndex: number) {
     setViewMode('list')
@@ -1076,14 +1104,15 @@ export function ItineraryClient({
                 const prevAcc = displayItinerary.days.find((d) => d.dayIndex === activeDay - 1)?.accommodation
                 if (prevAcc) return { name: prevAcc.name, location: prevAcc.location }
                 const origin = displayItinerary.metadata.originCity
-                if (activeDay === 0 && origin) return { name: origin, isHome: true }
+                if (activeDay === 0 && origin) return { name: origin, isHome: true, address: displayItinerary.metadata.originAddress }
                 return undefined
               })()}
               arrival={(() => {
                 // 旅程終點（#41）：最後一天顯示返回城市（沒填則用出發城市）
                 if (activeDay !== displayItinerary.days.length - 1) return undefined
                 const name = displayItinerary.metadata.returnCity ?? displayItinerary.metadata.originCity
-                return name ? { name } : undefined
+                const address = displayItinerary.metadata.returnAddress || displayItinerary.metadata.originAddress
+                return name ? { name, address } : undefined
               })()}
               currency={displayItinerary.metadata.currency}
               canEdit={userCanEdit}
@@ -1099,6 +1128,8 @@ export function ItineraryClient({
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
               onEditDeparture={userCanEdit ? () => setDepartureEditOpen(true) : undefined}
+              onEditOriginAddress={userCanEdit && activeDay === 0 ? () => setEditOriginAddrOpen(true) : undefined}
+              onEditReturnAddress={userCanEdit && activeDay === displayItinerary.days.length - 1 ? () => setEditReturnAddrOpen(true) : undefined}
               onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
           )}
@@ -1352,6 +1383,25 @@ export function ItineraryClient({
           onDeleteBooking={bookingState.deleteBooking}
         />
       )}
+
+      <AddressEditModal
+        open={editOriginAddrOpen}
+        title="設定起點地址"
+        description="填入精確住家地址後，地圖第一段路線會從實際位置出發（而非僅從城市中心）。"
+        value={displayItinerary.metadata.originAddress ?? ''}
+        onClose={() => setEditOriginAddrOpen(false)}
+        onSave={(v) => handleSaveAddress('originAddress', v)}
+        saving={savingAddr}
+      />
+      <AddressEditModal
+        open={editReturnAddrOpen}
+        title="設定終點地址"
+        description="填入精確地址（留空則沿用起點地址）。"
+        value={displayItinerary.metadata.returnAddress ?? ''}
+        onClose={() => setEditReturnAddrOpen(false)}
+        onSave={(v) => handleSaveAddress('returnAddress', v)}
+        saving={savingAddr}
+      />
 
       {currentDayData && (
         <DepartureEditModal
