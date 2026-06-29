@@ -6,6 +6,7 @@ import type { Itinerary, GeoLocation } from '@/lib/types/itinerary'
 import { geocodeBatch, type GeocodeInput } from '@/lib/maps/geocode'
 import {
   buildDayPoints,
+  splitDrivingSegments,
   signatureFor,
   getOrComputeRoute,
   toPersistLegs,
@@ -95,10 +96,17 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         }
         for (const a of day.activities) {
           if (a.type === 'transport') {
-            // 班次型交通卡（火車/高鐵/飛機）：geocode toLabel（到站地點），
-            // 存入 activity.location，讓路線從正確到站城市算到住宿（而非從出發地跨縣市計算）
+            // 班次型交通卡（火車/高鐵/飛機）：geocode toLabel（到站地點）
             if (a.boardingPairId && a.toLabel) {
               enqueue(day.dayIndex, a.id, a.location, undefined, a.toLabel, day.city || destination)
+            }
+            continue
+          }
+          // 候車卡（rest + boardingPairId）：geocode 出發車站，讓「家→出發站」開車路線正確出現
+          if (a.type === 'rest' && a.boardingPairId) {
+            const stationName = a.title.replace(/[候等]車$|轉乘候車$/, '').trim()
+            if (stationName) {
+              enqueue(day.dayIndex, a.id, a.location, undefined, stationName, day.city || destination)
             }
             continue
           }
@@ -142,6 +150,7 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
       }
 
       // 2) 每天比對簽章，過期才算路線並寫回
+      // 路線在 transit-arrival 處切斷分段，各段獨立呼叫 Directions（防止跨縣市錯誤開車路線）
       let anySaved = false
       for (const day of itinerary.days) {
         if (cancelled) return
@@ -154,15 +163,21 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         if (doneRef.current.has(`${day.dayIndex}:${sig}`)) continue
 
         try {
-          const route = await getOrComputeRoute(routesLib, points)
+          const drivingSegs = splitDrivingSegments(points)
+          const allLegs: ReturnType<typeof toPersistLegs> = []
+          for (const seg of drivingSegs) {
+            if (cancelled) return
+            const route = await getOrComputeRoute(routesLib, seg)
+            if (route) allLegs.push(...toPersistLegs(route))
+          }
           if (cancelled) return
-          if (!route) continue
+          if (allLegs.length === 0) continue
           doneRef.current.add(`${day.dayIndex}:${sig}`)
           const res = await fetch(`/api/itinerary/${itineraryId}/legs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              days: [{ dayIndex: day.dayIndex, legs: toPersistLegs(route), sig: route.sig }],
+              days: [{ dayIndex: day.dayIndex, legs: allLegs, sig }],
             }),
           })
           if (res.ok) anySaved = true

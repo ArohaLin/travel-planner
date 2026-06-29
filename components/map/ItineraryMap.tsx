@@ -6,6 +6,7 @@ import { MyLocationButton } from './MyLocationButton'
 import type { TravelLeg } from '@/lib/types/itinerary'
 import {
   getOrComputeRoute,
+  splitDrivingSegments,
   signatureFor,
   legText,
   toPersistLegs,
@@ -20,8 +21,9 @@ export interface MapPoint {
   label: string
   title: string
   time?: string
-  /** activity=圓形景點；accommodation=當晚住宿方形；origin=路線起點菱形；port=港口（⚓，跨海轉乘點） */
-  kind: 'activity' | 'accommodation' | 'origin' | 'return' | 'port'
+  /** activity=圓形景點；accommodation=當晚住宿方形；origin=路線起點菱形；port=港口（⚓，跨海轉乘點）；
+   *  transit-arrival=班次型交通抵達站（不計算前一段→此點的開車路線，改畫虛直線） */
+  kind: 'activity' | 'accommodation' | 'origin' | 'return' | 'port' | 'transit-arrival'
   /** 對應的識別碼：activity.id、'accommodation'、'origin'、'return'（旅程終點）或港口交通卡 id */
   id: string
 }
@@ -289,7 +291,9 @@ function MapContent({ days: rawDays, distanceMode, onRoute }: ItineraryMapProps)
                       ? '旅程終點'
                       : selected.point.kind === 'port'
                         ? '港口（搭船轉乘）'
-                        : selected.point.time}
+                        : selected.point.kind === 'transit-arrival'
+                          ? '轉乘抵達站'
+                          : selected.point.time}
               </div>
             )}
           </div>
@@ -340,7 +344,7 @@ function DayRoute({
   // 已解析的開車路段（以 toId 對應）；null=載入中，[]=已算但無任何開車段（全走直線）
   const [legs, setLegs] = useState<RenderLeg[] | null>(null)
 
-  // 取得開車路段：優先重用 DB（sig 相符），否則呼叫 Directions（逐段，跨海段會缺）。
+  // 取得開車路段：優先重用 DB（sig 相符），否則呼叫 Directions（分段，transit-arrival 處切斷）。
   // 以原始座標為基準，zoom in/out 不會觸發重抓。
   useEffect(() => {
     if (rawDay.points.length < 2) {
@@ -368,26 +372,30 @@ function DayRoute({
     }
 
     // 2) 否則算（需 geometry 才能把每段道路編碼存起來）
+    // 在 transit-arrival 處切斷，各段獨立呼叫 Directions，避免跨縣市錯誤開車路線
     if (!routesLib || !geometryLib) return
     let cancelled = false
     setLegs(null)
-    getOrComputeRoute(routesLib, rawDay.points)
-      .then((computed) => {
+
+    const segs = splitDrivingSegments(rawDay.points)
+    Promise.all(segs.map((seg) => getOrComputeRoute(routesLib, seg).catch(() => null)))
+      .then((results) => {
         if (cancelled) return
-        if (!computed) {
-          setLegs([]) // 全部無法開車 → 全走直線
-          return
+        const allLegs: RenderLeg[] = []
+        const allPersist: PersistLeg[] = []
+        for (const computed of results) {
+          if (!computed) continue
+          for (const l of computed.legs) {
+            allLegs.push({ toId: l.toId, meters: l.meters, text: l.text, pos: l.pos, polyline: l.polyline })
+          }
+          allPersist.push(...toPersistLegs(computed))
         }
-        setLegs(
-          computed.legs.map((l) => ({
-            toId: l.toId,
-            meters: l.meters,
-            text: l.text,
-            pos: l.pos,
-            polyline: l.polyline,
-          })),
-        )
-        onRoute?.({ dayIndex: rawDay.dayIndex, legs: toPersistLegs(computed), sig: computed.sig })
+        setLegs(allLegs)
+        if (allPersist.length > 0) {
+          onRoute?.({ dayIndex: rawDay.dayIndex, legs: allPersist, sig: currentSig })
+        } else {
+          setLegs([]) // 全部無法開車 → 全走直線
+        }
       })
       .catch(() => {
         if (!cancelled) setLegs([])
@@ -410,6 +418,8 @@ function DayRoute({
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]
       const b = pts[i + 1]
+      // transit-arrival：前一點→此點是班次型交通（虛直線），不計算也不顯示開車路線
+      if (b.kind === 'transit-arrival') continue
       const mid = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 }
       const straight = [
         { lat: a.lat, lng: a.lng },

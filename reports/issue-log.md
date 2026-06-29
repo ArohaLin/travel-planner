@@ -280,6 +280,25 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **預防原則**：使用者上傳結構化憑證（車票/機票/訂房單）時，提示詞要明確要求「逐項拆進對應欄位、用票面原值、不可合併或估算」——同住宿訂房單那段（逐項拆 bookingPlatform/orderNumber/depositPaid…）的精神一致。
 
+### A-2 班次型交通缺少候車卡、時間未鎖定（功能實作）
+
+**發生時間**：2026-06-29
+
+**症狀**：火車/高鐵/飛機/船/客運等有固定班次的交通，只有一張 transport 卡，沒有配對的「候車」等待卡；時間可被 AI 自動重算而移位，違反票面出發時刻不可動的原則。
+
+**根本原因**：舊設計對所有交通卡一視同仁，既沒有「候車等待」的語意，也沒有時間鎖定機制給班次型交通。
+
+**修復方法**：新增「候車卡＋班次交通卡」成對系統（`boardingPairId`）：
+- **型別**：`Activity.boardingPairId`（候車卡與班次交通卡共用同一 8 字元 ID）+ `timeLocked: true`（兩張皆鎖定）
+- **旗標**：`lib/itinerary/activityFlags.ts` — `isScheduledTransport()`、`getBoardingLeadMin()`（飛機 180 分/其他 30 分）
+- **Block 模型**：`reschedule.ts` `buildBlocks/flatten` 加 `trailingPair`，配對卡拖拉/跨日移動同進退
+- **刪除**：`deletePlace` 偵測 `boardingPairId` → 同時刪掉配對另一張
+- **渲染**：`DayView` 加 `ScheduledTransportRow`（靛藍卡片＋🔒），配對間隱藏 InsertRow 與移動列
+- **手動新增**：`ItineraryClient.handleSaveAdd` 偵測班次型交通 → 自動生成候車卡並填 `boardingPairId`
+- **AI 提示詞**：三個 prompt 函式（generate/adjust/assistant）注入 `BOARDING_PAIR_RULES`，強制 AI 輸出成對卡片
+
+**預防原則**：班次型交通（火車/飛機/船/客運）的「出發時刻」是外部硬約束（票面），一律 `timeLocked: true`；AI 生成時必須同時輸出候車卡＋班次交通卡成對（`boardingPairId` 相同），兩張視為一個不可分割單位。
+
 ---
 
 ## 4. 座標 / 地理編碼問題

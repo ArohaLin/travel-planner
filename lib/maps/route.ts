@@ -14,7 +14,10 @@ export interface TransitSegment {
 export interface RoutePoint {
   /** activity.id / 'accommodation' / 'origin' / 'return'（旅程終點）；港口用其交通卡 id */
   id: string
-  kind: 'origin' | 'activity' | 'accommodation' | 'return' | 'port'
+  /** transit-arrival：班次型交通抵達站，是下一段開車的起點；
+   *  Directions API 不計算「前一點→此點」的開車（由 splitDrivingSegments 切斷），
+   *  地圖改畫虛線（transitSegments）。 */
+  kind: 'origin' | 'activity' | 'accommodation' | 'return' | 'port' | 'transit-arrival'
   lat: number
   lng: number
   /** marker 顯示文字（① 出 宿 ⚓…）；不影響簽章 */
@@ -155,7 +158,8 @@ export function buildDayPoints(
   //   改以到站地點為新起點，讓地圖只顯示下車後的本地段，不出現跨縣市開車路線
   // - 其餘交通卡 / 無座標者：跳過
   let placeNum = 0
-  // 最後一張班次型交通卡的到站錨點；等到有下一個實體點（或住宿）時插入為路線起點
+  // 最後一張班次型交通卡的到站錨點（transit-arrival）；
+  // 等到有下一個實體點（或住宿）時用 flushTransit 插入為路線中的分割點。
   let lastTransitDest: RoutePoint | null = null
 
   function flushTransit() {
@@ -169,15 +173,14 @@ export function buildDayPoints(
         if (a.boardingPairId) {
           const geo = resolve(dayIndex, a.id, a.location)
           if (geo) {
-            // 記錄轉乘虛直線（出發→到站）
+            // 記錄轉乘虛直線：從目前已知位置→到站
             if (lastKnownPos) {
               transitSegments.push({ from: lastKnownPos, to: { lat: geo.lat, lng: geo.lng } })
             }
-            // 清掉前面所有點（含出發城市），路線從到站地點重新起算
-            points.length = 0
-            placeNum = 0
+            // 不清掉前面的點！到站以 transit-arrival 插入，讓 splitDrivingSegments 分段：
+            // [出發前行程] | transit-arrival | [到站後行程] → 各自獨立算 Directions
             lastKnownPos = { lat: geo.lat, lng: geo.lng }
-            lastTransitDest = { id: a.id, kind: 'origin', lat: geo.lat, lng: geo.lng, label: '出', title: a.toLabel || a.title }
+            lastTransitDest = { id: a.id, kind: 'transit-arrival', lat: geo.lat, lng: geo.lng, label: '出', title: a.toLabel || a.title }
           }
         }
         continue
@@ -185,6 +188,17 @@ export function buildDayPoints(
       // 港口用內建固定座標（零歧義、免 geocode）
       flushTransit()
       points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
+      continue
+    }
+    // 候車卡（type=rest 且有 boardingPairId）：代表出發車站，若已 geocode 加入路線，
+    // 讓「家→出發站」這段開車路線正確出現；不累計景點編號（用 '車' 標示）。
+    if (a.type === 'rest' && a.boardingPairId) {
+      const geo = resolve(dayIndex, a.id, a.location)
+      if (geo) {
+        flushTransit()
+        lastKnownPos = { lat: geo.lat, lng: geo.lng }
+        points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: '車', title: a.title })
+      }
       continue
     }
     if (hasNoPlace(a)) {
@@ -246,6 +260,29 @@ export function buildDayPoints(
   }
 
   return { points, transitSegments }
+}
+
+/**
+ * 把含 transit-arrival 的點位陣列切成多段「純開車段」。
+ * transit-arrival 代表轉乘抵達站：前一段在此結束，新段從此開始；
+ * Directions API 只計算各段內部的開車路線，不跨段（防止出現跨縣市錯誤開車路線）。
+ *
+ * 例：[新竹, 竹北高鐵站, 高鐵台北(TA), 台北車站, 花蓮(TA), 景點1, 花蓮家]
+ * → [[新竹, 竹北高鐵站], [高鐵台北, 台北車站], [花蓮, 景點1, 花蓮家]]
+ */
+export function splitDrivingSegments(points: RoutePoint[]): RoutePoint[][] {
+  const segments: RoutePoint[][] = []
+  let current: RoutePoint[] = []
+  for (const p of points) {
+    if (p.kind === 'transit-arrival' && current.length > 0) {
+      segments.push(current)
+      current = [p]
+    } else {
+      current.push(p)
+    }
+  }
+  if (current.length > 0) segments.push(current)
+  return segments.filter((s) => s.length >= 2)
 }
 
 /** 輸入指紋：只取 id + 座標（小數 5 位），與 label/title 無關 → 改順序/座標才會變。
