@@ -254,9 +254,9 @@ const TICKET_TRANSPORT_RULES = `
  */
 const BOARDING_PAIR_RULES = `
 == 班次型交通：候車卡＋班次交通卡必須成對（最高優先）==
-火車/高鐵/飛機/船/客運一律輸出「候車卡 ＋ 班次交通卡」兩張，共用同一 boardingPairId（8 字元英數字），兩張皆 timeLocked:true，禁止只輸出單張。
+火車/高鐵/飛機/船/客運一律輸出「候車卡 ＋ 班次交通卡」兩張，共用同一 boardingPairId（8 字元英數字），禁止只輸出單張。
 
-① 候車卡（先出現）：type "rest"/"shopping"/"food"；hasPlace:false；title "{出發站}候車/候機/候船"；startTime=出發時刻−候車時長（飛機 180分，其餘 30分），endTime=出發時刻。
+① 候車卡（先出現）：type "rest"/"shopping"/"food"；hasPlace:false；title "{出發站}候車/候機/候船"；startTime=出發時刻−候車時長（飛機 180分，其餘 30分），endTime=出發時刻。**不設 timeLocked**（使用者可自行微調出發時間）。
 ② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: reserved/needed；tips 填車次/座位/訂位代號。
 
 接駁（住宿→車站、抵達站→景點）用普通 transport，不加 boardingPairId。行程已有無 boardingPairId 的班次型交通卡，調整時補上候車卡並加 boardingPairId。
@@ -851,7 +851,7 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "mealType": "餐別（僅 type=food 填，如「早餐」「午餐」「晚餐」「下午茶」）",
           "foodItems": "飲食項目（僅 type=food 填，如「臭豆腐、米苔目」）",
           "highlight": "特別需強調注意的簡短幾字（選填，如「山路18:30前下山」）",
-          "timeLocked": "時間鎖定（班次型交通的候車卡＋班次交通卡必須設 true；其他勿填）",
+          "timeLocked": "時間鎖定（班次型交通的**班次交通卡**設 true；候車卡不設；其他勿填）",
           "boardingPairId": "候車卡＋班次交通卡配對 ID（兩張共用同一 8 字元英數字；見 BOARDING_PAIR_RULES）"
         }
       ],

@@ -801,7 +801,6 @@ export function ItineraryClient({
         startTime: `${hh(waitStart)}:${mm(waitStart)}`,
         endTime: newActivity.startTime,
         boardingPairId: pairId,
-        timeLocked: true,
         hasPlace: false,
       }
       finalActivity = { ...newActivity, boardingPairId: pairId, timeLocked: true }
