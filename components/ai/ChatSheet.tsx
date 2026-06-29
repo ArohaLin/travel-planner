@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { clsx } from 'clsx'
-import type { useChat, AssistantLock } from '@/lib/hooks/useChat'
+import type { useChat, AssistantLock, ChatAttachment } from '@/lib/hooks/useChat'
 import type { AIPlan } from '@/lib/types/patch'
 import { ChatMessage } from './ChatMessage'
 import { PlanSelector } from './PlanSelector'
@@ -144,14 +144,19 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
 
   async function handleSend() {
     const text = input.trim()
-    if (!text || isStreaming) return
+    const hasAttach = pendingImages.length > 0 || pendingPdfs.length > 0
+    if ((!text && !hasAttach) || isStreaming || isPdfUploading) return
     lastSentTextRef.current = text
     setInput('')
-    // Reset textarea height
     if (inputRef.current) inputRef.current.style.height = 'auto'
-    // Scroll to bottom when user sends
     isAtBottomRef.current = true
-    await sendMessage(text, itineraryId, modelProvider)
+    const attachment: ChatAttachment = {
+      images: pendingImages,
+      pdfPaths: pendingPdfs.map((p) => p.path),
+    }
+    setPendingImages([])
+    setPendingPdfs([])
+    await sendMessage(text, itineraryId, modelProvider, attachment)
   }
 
   // ── 小幫手：加照片/PDF / 送出 / 點候選 ──────────────────────────────
@@ -607,10 +612,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
           className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3"
           style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
         >
-          {/* 小幫手：待送照片縮圖列 + 隱藏的檔案選擇 */}
-          {chatMode === 'assistant' && (
-            <>
-              {assistantLock && (
+          {/* 附件：待送照片/PDF 縮圖列 + 隱藏的檔案選擇（三個模式都支援） */}
+          <>
+              {chatMode === 'assistant' && assistantLock && (
                 <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
                   <span className="flex-1 truncate">🔒 只更新這張卡：<span className="font-medium">{assistantLock.title}</span></span>
                   <button onClick={() => onClearAssistantLock?.()} className="flex-shrink-0 text-amber-600 underline">解除</button>
@@ -653,15 +657,14 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
                   )}
                 </div>
               )}
-            </>
-          )}
+          </>
           <div className="flex gap-2 items-end">
-            {chatMode === 'assistant' && !isStreaming && (
+            {!isStreaming && (
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="tap-target w-11 h-11 bg-gray-100 text-gray-500 rounded-2xl flex items-center justify-center active:scale-95 transition-transform flex-shrink-0 hover:bg-gray-200"
-                title="加照片"
-                aria-label="加照片"
+                title="加照片／PDF"
+                aria-label="加照片／PDF"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} viewBox="0 0 24 24">
                   <rect x="3" y="5" width="18" height="14" rx="2.5" /><circle cx="9" cy="11" r="2" /><path strokeLinecap="round" strokeLinejoin="round" d="M3 17l5-4 4 3 3-2 6 4" />
@@ -675,9 +678,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
               onKeyDown={handleKeyDown}
               placeholder={
                 chatMode === 'adjust'
-                  ? '輸入調整需求，AI 將提供最佳方案...'
+                  ? '輸入調整需求，或貼網址／加照片／PDF...'
                   : chatMode === 'consult'
-                    ? '輸入旅遊問題，AI 提供建議...'
+                    ? '輸入旅遊問題，或貼網址／加照片／PDF...'
                     : '貼網址、或補充說明（可不填，直接加照片送出）...'
               }
               rows={1}
@@ -714,7 +717,9 @@ export function ChatSheet({ itineraryId, chat, onClose, onPatchApplied, assistan
             ) : (
               <button
                 onClick={chatMode === 'assistant' ? handleAssistantSend : handleSend}
-                disabled={chatMode === 'assistant' ? (!input.trim() && pendingImages.length === 0 && pendingPdfs.length === 0) || isPdfUploading : !input.trim()}
+                disabled={isPdfUploading || (chatMode === 'assistant'
+                  ? (!input.trim() && pendingImages.length === 0 && pendingPdfs.length === 0)
+                  : (!input.trim() && pendingImages.length === 0 && pendingPdfs.length === 0))}
                 className="tap-target w-11 h-11 bg-purple-600 text-white rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40 flex-shrink-0"
               >
                 <svg className="w-5 h-5 -rotate-45 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">

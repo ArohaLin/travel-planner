@@ -4,6 +4,7 @@ import { buildAdjustPrompt, buildAdjustPromptMinimax, buildAdjustPromptGemini, b
 import { extractPlans, stripPlansTag, stripLeakedPlanJson, extractMemory, stripMemoryTag, parseAdjustJson } from '@/lib/ai/patchParser'
 import { logAIConversation } from '@/lib/ai/logger'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
+import { fetchUrlText, extractUrls } from '@/lib/ai/fetchUrl'
 import { sendPushToUser } from '@/lib/push/send'
 import { runAfterResponse } from '@/lib/push/waitUntil'
 import { getItineraryAccess } from '@/lib/auth/access'
@@ -11,6 +12,9 @@ import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, t
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
+
+const TEMP_BUCKET = 'temp-uploads'
+type AttachImage = { mimeType: string; data: string }
 
 // 行程調整（Gemini Pro）複雜請求可能跑 2–3 分鐘，明確放寬函式逾時上限，避免被中途砍掉
 export const maxDuration = 300
@@ -43,15 +47,24 @@ export async function POST(request: Request) {
     itineraryId, threadId, userMessage,
     mode = 'adjust',
     modelProvider = 'claude',
+    images: rawImages = [],
+    pdfPaths: rawPdfPaths = [],
   } = body as {
     itineraryId: string
     threadId: string
     userMessage: string
     mode?: 'adjust' | 'consult'
     modelProvider?: ModelProvider
+    images?: AttachImage[]
+    pdfPaths?: string[]
   }
 
-  if (!itineraryId || !threadId || !userMessage?.trim()) {
+  const imgs = (rawImages ?? []).filter((i) => i?.data && i?.mimeType).slice(0, 6)
+  const pdfPaths = (rawPdfPaths ?? []).filter(Boolean).slice(0, 3)
+  const hasText = !!userMessage?.trim()
+  const hasAttach = imgs.length > 0 || pdfPaths.length > 0
+
+  if (!itineraryId || !threadId || (!hasText && !hasAttach)) {
     return new Response('缺少必要欄位', { status: 400 })
   }
 
@@ -86,14 +99,45 @@ export async function POST(request: Request) {
     .limit(HISTORY_LIMIT)
     .then((r: { data: { role: string; content: string }[] | null; error: unknown }) => ({ ...r, data: r.data?.reverse() }))
 
-  // Save the user message immediately
+  // ── 附件處理（PDF 下載 + URL 抓取）─────────────────────────────────────────
+  // PDF：從 Supabase Storage 下載，轉 base64 inline data 供 Gemini 讀取
+  const pdfInlineData: AttachImage[] = []
+  if (pdfPaths.length) {
+    const results = await Promise.all(
+      pdfPaths.map(async (path) => {
+        const { data, error } = await db.storage.from(TEMP_BUCKET).download(path)
+        if (error || !data) { console.warn('[chat] PDF 下載失敗:', path, error); return null }
+        const buf = Buffer.from(await data.arrayBuffer())
+        return { mimeType: 'application/pdf', data: buf.toString('base64') }
+      }),
+    )
+    pdfInlineData.push(...results.filter((r): r is AttachImage => r !== null))
+  }
+
+  // URL：從 userMessage 偵測 → 抓取純文字，作為上下文補充
+  const detectedUrls = extractUrls(userMessage ?? '')
+  const fetchedUrls = detectedUrls.length
+    ? await Promise.all(detectedUrls.slice(0, 3).map((u) => fetchUrlText(u)))
+    : []
+  const urlBlock = fetchedUrls.length
+    ? '\n\n[附帶網頁內容]\n' + fetchedUrls.map((f) => `【${f.url}】\n${f.text ?? `（抓取失敗：${f.error}）`}`).join('\n\n')
+    : ''
+
+  // Save the user message（記錄文字＋附件標記，不存圖檔本體）
+  const attachMarks: string[] = []
+  if (imgs.length) attachMarks.push(`${imgs.length} 張照片`)
+  if (pdfPaths.length) attachMarks.push(`${pdfPaths.length} 份 PDF`)
+  if (detectedUrls.length) attachMarks.push(`${detectedUrls.length} 個連結`)
+  const userRecord = (userMessage ?? '').trim()
+    + (attachMarks.length ? `\n［附 ${attachMarks.join('、')}］` : '')
+
   await db
     .from('chat_messages')
     .insert({
       thread_id: threadId,
       user_id: user.id,
       role: 'user',
-      content: userMessage,
+      content: userRecord || '（附檔）',
     })
 
   // Build system prompt based on mode and model (always 1 plan for adjust mode)
@@ -157,7 +201,7 @@ export async function POST(request: Request) {
             messages: [
               { role: 'system', content: systemPrompt },
               ...historyMessages,
-              { role: 'user', content: userMessage },
+              { role: 'user', content: (userMessage ?? '') + urlBlock },
             ],
             stream: true,
             stream_options: { include_usage: true },
@@ -182,7 +226,7 @@ export async function POST(request: Request) {
           const text = await runLocalClaude({
             systemPrompt,
             history: [],
-            userMessage,
+            userMessage: (userMessage ?? '') + urlBlock,
           })
           fullResponse = text
           // jsonAdjust（gemini prompt 但本機 claude -p 執行）：輸出是 JSON，不即時顯示
@@ -271,7 +315,15 @@ export async function POST(request: Request) {
                   : { maxOutputTokens: 32768 },
               })
 
-              const result = await chat.sendMessageStream(userMessage)
+              // 有附件（照片/PDF）時用 multimodal parts；純文字時直接傳字串（效能略佳）
+              const userText = (userMessage ?? '').trim() + urlBlock
+              const allInline = [...imgs, ...pdfInlineData]
+              type Part = { text: string } | { inlineData: { mimeType: string; data: string } }
+              const userParts: Part[] = allInline.length
+                ? [{ text: userText || '請分析附件內容，協助調整行程' }, ...allInline.map((a) => ({ inlineData: { mimeType: a.mimeType, data: a.data } }))]
+                : [{ text: userText }]
+
+              const result = await chat.sendMessageStream(userParts.length === 1 && 'text' in userParts[0] ? (userParts[0] as { text: string }).text : userParts)
               for await (const chunk of result.stream) {
                 const delta = chunk.text()
                 if (delta) {
@@ -312,7 +364,7 @@ export async function POST(request: Request) {
             system: systemPrompt,
             messages: [
               ...historyMessages,
-              { role: 'user', content: userMessage },
+              { role: 'user', content: (userMessage ?? '') + urlBlock },
             ],
           })
 

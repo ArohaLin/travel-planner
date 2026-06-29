@@ -26,6 +26,12 @@ export interface AssistantPayload {
   lockedAccommodationDayIndex?: number
 }
 
+/** 調整/咨詢模式的附件（照片＋PDF） */
+export interface ChatAttachment {
+  images?: { mimeType: string; data: string }[]
+  pdfPaths?: string[]
+}
+
 interface UseChatReturn {
   messages: ChatMessage[]
   threadId: string | null
@@ -39,7 +45,7 @@ interface UseChatReturn {
   clearLastPlans: () => void
   markPlanApplied: (messageId: string, planIndex: number, planTitle: string) => void
   markPlanCancelled: (messageId: string) => void
-  sendMessage: (text: string, itineraryId: string, modelProvider?: ModelProvider) => Promise<void>
+  sendMessage: (text: string, itineraryId: string, modelProvider?: ModelProvider, attachment?: ChatAttachment) => Promise<void>
   /** 小幫手模式：送出照片/網址/文字 → /api/ai/assistant（非串流）→ 完成後重載訊息與方案 */
   sendAssistant: (payload: AssistantPayload) => Promise<{ ok: boolean; error?: string }>
   queueMessage: (text: string, modelProvider?: ModelProvider) => void
@@ -275,7 +281,7 @@ export function useChat(itineraryId: string): UseChatReturn {
   }, []) // 空 deps：只裝一次，透過 ref 拿最新的 reloadFromDb，消滅空窗期
 
   const sendMessage = useCallback(
-    async (text: string, iId: string, modelProvider: ModelProvider = 'claude') => {
+    async (text: string, iId: string, modelProvider: ModelProvider = 'claude', attachment?: ChatAttachment) => {
       if (!threadId || isStreaming) return
 
       setIsStreaming(true)
@@ -284,9 +290,12 @@ export function useChat(itineraryId: string): UseChatReturn {
       setLastPlans(null)
       setLastPlansMessageId(null)
 
-      // 樂觀顯示自己送出的訊息：原本要等 Realtime 回傳才看得到，
-      // 行動裝置一送完就切背景時會漏接 → 畫面看起來「訊息不見了」。
-      // 先以暫時 id 顯示，真實訊息（同內容）由 Realtime 送達時再替換。
+      // 樂觀顯示：在訊息後方加上附件標記，讓使用者知道有帶附件
+      const attachMarks: string[] = []
+      if (attachment?.images?.length) attachMarks.push(`${attachment.images.length} 張照片`)
+      if (attachment?.pdfPaths?.length) attachMarks.push(`${attachment.pdfPaths.length} 份 PDF`)
+      const displayText = text + (attachMarks.length ? `\n［附 ${attachMarks.join('、')}］` : '')
+
       const optimisticId = `optimistic-${Date.now()}`
       setMessages((prev) => [
         ...prev,
@@ -295,7 +304,7 @@ export function useChat(itineraryId: string): UseChatReturn {
           thread_id: threadId,
           user_id: null,
           role: 'user',
-          content: text,
+          content: displayText,
           patch: null,
           patch_status: 'none',
           created_at: new Date().toISOString(),
@@ -315,6 +324,8 @@ export function useChat(itineraryId: string): UseChatReturn {
             userMessage: text,
             mode: chatMode,
             modelProvider,
+            images: attachment?.images ?? [],
+            pdfPaths: attachment?.pdfPaths ?? [],
           }),
           signal: abortRef.current.signal,
         })
