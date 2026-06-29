@@ -55,7 +55,7 @@ export function AccommodationDetailModal({
   async function handleConfirmCopy() {
     if (!onCopyToDays || selectedDays.size === 0) return
     setCopying(true)
-    await onCopyToDays([...selectedDays])
+    await onCopyToDays(Array.from(selectedDays))
     setCopying(false)
     setCopyMode(false)
   }
