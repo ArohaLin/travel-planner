@@ -1,10 +1,18 @@
 'use client'
 
+import { useState } from 'react'
 import type { Accommodation } from '@/lib/types/itinerary'
 import { formatMoney } from '@/lib/utils/currency'
 import { mapsNavUrl } from './ActivityCard'
 import { RESERVATION } from '@/lib/itinerary/reservation'
 import { effectiveLodgingReservation } from '@/lib/todo/deriveTodos'
+
+export interface DayOption {
+  dayIndex: number
+  dayNumber: number
+  dateLabel: string
+  accName?: string
+}
 
 interface AccommodationDetailModalProps {
   accommodation: Accommodation
@@ -14,15 +22,43 @@ interface AccommodationDetailModalProps {
   onEdit?: (acc: Accommodation) => void
   onAddNote?: (acc: Accommodation) => void
   hasNote?: boolean
-  /** 用資料（照片/網址/文字）更新住宿 → 開「AI 小幫手」並鎖定此住宿 */
   onAssistantUpdate?: (acc: Accommodation) => void
+  allDays?: DayOption[]
+  currentDayIndex?: number
+  onCopyToDays?: (dayIndices: number[]) => Promise<void>
 }
 
-export function AccommodationDetailModal({ accommodation, dayNumber, onClose, canEdit, onEdit, onAddNote, hasNote, onAssistantUpdate }: AccommodationDetailModalProps) {
+export function AccommodationDetailModal({
+  accommodation, dayNumber, onClose, canEdit, onEdit, onAddNote, hasNote, onAssistantUpdate,
+  allDays, currentDayIndex, onCopyToDays,
+}: AccommodationDetailModalProps) {
   const acc = accommodation
   const resv = effectiveLodgingReservation(acc.reservationStatus)
   const photoSrc = acc.userPhotoUrl ?? (acc.photoRef ? `/api/photo?ref=${encodeURIComponent(acc.photoRef)}` : null)
   const hasBookingInfo = acc.bookingPlatform || acc.orderNumber || acc.bookingUrl || acc.depositPaid || acc.freeCancelBy
+
+  const [copyMode, setCopyMode] = useState(false)
+  const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set())
+  const [copying, setCopying] = useState(false)
+
+  const otherDays = allDays?.filter(d => d.dayIndex !== currentDayIndex) ?? []
+  const canCopy = canEdit && !!onCopyToDays && otherDays.length > 0
+
+  function toggleDay(idx: number) {
+    setSelectedDays(prev => {
+      const next = new Set(prev)
+      next.has(idx) ? next.delete(idx) : next.add(idx)
+      return next
+    })
+  }
+
+  async function handleConfirmCopy() {
+    if (!onCopyToDays || selectedDays.size === 0) return
+    setCopying(true)
+    await onCopyToDays([...selectedDays])
+    setCopying(false)
+    setCopyMode(false)
+  }
 
   return (
     <>
@@ -31,7 +67,7 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
         className="fixed inset-0 z-50 bg-white flex flex-col"
         style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top)' }}
       >
-        {/* 明顯的關閉鈕（壓在頂部，照片上也清楚）*/}
+        {/* 關閉鈕 */}
         <button
           onClick={onClose}
           aria-label="關閉"
@@ -42,7 +78,7 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
           </svg>
         </button>
 
-        {/* Hero / handle */}
+        {/* Hero */}
         {photoSrc ? (
           <div className="relative h-44 flex-shrink-0 rounded-t-3xl overflow-hidden bg-gray-100">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -121,9 +157,74 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
           {acc.tips && <Section title="重要事項" text={acc.tips} accent />}
           {acc.contact && <Section title="聯絡資訊" text={acc.contact} />}
           {acc.notes && <Section title="備註" text={acc.notes} />}
+
+          {/* 複製到其他天（展開區） */}
+          {canCopy && copyMode && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+              <p className="text-sm font-semibold text-emerald-800">選擇要套用的天數</p>
+              <p className="text-xs text-gray-500">已有其他住宿的天數仍可選取（會覆蓋）</p>
+              <div className="space-y-1">
+                {otherDays.map(d => {
+                  const checked = selectedDays.has(d.dayIndex)
+                  const isSame = d.accName === acc.name
+                  return (
+                    <button
+                      key={d.dayIndex}
+                      onClick={() => toggleDay(d.dayIndex)}
+                      disabled={isSame}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition active:scale-[0.98] ${
+                        isSame ? 'opacity-50 cursor-not-allowed bg-white/60' :
+                        checked ? 'bg-emerald-100 border border-emerald-300' : 'bg-white border border-gray-200'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border flex items-center justify-center flex-shrink-0 ${
+                        checked ? 'bg-emerald-600 border-emerald-600' : 'border-gray-300'
+                      }`}>
+                        {checked && (
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium text-gray-800">第 {d.dayNumber} 天</span>
+                        {d.dateLabel && <span className="text-xs text-gray-500 ml-1.5">{d.dateLabel}</span>}
+                        {d.accName && (
+                          <p className={`text-xs mt-0.5 truncate ${isSame ? 'text-emerald-600' : 'text-gray-400'}`}>
+                            {isSame ? '✓ 已是此住宿' : `現有：${d.accName}`}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => { setCopyMode(false); setSelectedDays(new Set()) }}
+                  className="flex-1 h-10 rounded-xl border border-gray-200 text-sm text-gray-600 active:scale-[0.98] transition"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmCopy}
+                  disabled={selectedDays.size === 0 || copying}
+                  className="flex-1 h-10 rounded-xl bg-emerald-600 text-white text-sm font-medium disabled:opacity-40 active:scale-[0.98] transition flex items-center justify-center gap-1.5"
+                >
+                  {copying ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : '確認複製'}
+                  {!copying && selectedDays.size > 0 && `（${selectedDays.size} 天）`}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 用資料更新這筆住宿：開 AI 小幫手並鎖定 */}
+        {/* AI 小幫手更新 */}
         {canEdit && onAssistantUpdate && (
           <button
             onClick={() => { onAssistantUpdate(acc); onClose() }}
@@ -134,7 +235,7 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
         )}
 
         {/* Footer */}
-        {canEdit && (onEdit || onAddNote) && (
+        {canEdit && (onEdit || onAddNote || canCopy) && (
           <div className="flex-shrink-0 flex items-center gap-2 px-5 py-3 border-t border-gray-100 bg-white"
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
             {onAddNote && (
@@ -145,6 +246,17 @@ export function AccommodationDetailModal({ accommodation, dayNumber, onClose, ca
                 </svg>
                 備註
                 {hasNote && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-500 rounded-full border border-white" />}
+              </button>
+            )}
+            {canCopy && !copyMode && (
+              <button
+                onClick={() => setCopyMode(true)}
+                className="flex items-center justify-center gap-1.5 h-11 px-4 rounded-2xl border border-emerald-200 bg-emerald-50 text-sm text-emerald-700 font-medium active:scale-[0.98] transition"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                複製到其他天
               </button>
             )}
             {onEdit && (

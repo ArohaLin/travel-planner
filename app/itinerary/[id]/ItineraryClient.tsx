@@ -53,7 +53,7 @@ import { APIProvider } from '@vis.gl/react-google-maps'
 const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
 import { useAINotes, composeNotesMessage } from '@/lib/hooks/useAINotes'
 import { useModelPreference } from '@/lib/hooks/useModelPreference'
-import { daysBetweenInclusive, getDaysInRange } from '@/lib/utils/date'
+import { daysBetweenInclusive, getDaysInRange, formatDateShort, formatWeekday } from '@/lib/utils/date'
 import { fileToCompressedBase64 } from '@/lib/utils/image'
 
 type ViewMode = 'list' | 'map' | 'summary'
@@ -284,6 +284,21 @@ export function ItineraryClient({
     if (ok) {
       setEditAccommodation(null)
       showToast(multi ? `住宿「${updated.name}」已更新（同步 ${targetDays.length} 晚）` : `住宿「${updated.name}」已更新`, 'success')
+    }
+  }
+
+  // ── 住宿複製到其他天 ─────────────────────────────────────────────────────────
+  async function handleCopyAccommodation(acc: Accommodation, targetDayIndices: number[]) {
+    const patch: ItineraryPatch = {
+      patchId: nanoid(8),
+      description: `複製住宿「${acc.name}」到第 ${targetDayIndices.map(i => i + 1).join('、')} 天`,
+      proposedBy: 'user',
+      ops: targetDayIndices.map(dayIndex => ({ op: 'set_day_accommodation', dayIndex, payload: acc })),
+    }
+    const ok = await submitPatch(patch)
+    if (ok) {
+      setDetailAccommodation(null)
+      showToast(`已將「${acc.name}」複製到 ${targetDayIndices.length} 天`, 'success')
     }
   }
 
@@ -1260,6 +1275,14 @@ export function ItineraryClient({
           onAddNote={userCanEdit ? (acc) => setAddNoteFor({ id: `acc-${activeDay}`, title: acc.name, type: 'other', startTime: acc.checkInTime }) : undefined}
           onAssistantUpdate={userCanEdit && canChat(role) ? handleAssistantUpdateAccommodation : undefined}
           hasNote={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
+          currentDayIndex={activeDay}
+          allDays={displayItinerary.days.map(d => ({
+            dayIndex: d.dayIndex,
+            dayNumber: d.dayIndex + 1,
+            dateLabel: d.date ? `${formatDateShort(d.date)}（${formatWeekday(d.date)}）` : '',
+            accName: d.accommodation?.name,
+          }))}
+          onCopyToDays={userCanEdit ? (indices) => handleCopyAccommodation(detailAccommodation, indices) : undefined}
         />
       )}
 
