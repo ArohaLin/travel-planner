@@ -66,19 +66,25 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
   function parseSchedTitle(title: string) {
     const m = title.match(/^(.+?)\s+(.+?)→(.+)$/)
     if (!m) return { transType: '', vehicleNo: '', fromStation: '' }
-    const vNum = m[1].trim()
+    // 支援新格式 "高鐵(670)" 和舊格式 "高鐵670"
+    const vNum = m[1].trim().replace(/\((.+?)\)$/, (_, n) => n)  // strip parens for parsing
+    const rawPart = m[1].trim()
     let matched = ''
     for (const opt of SCHED_TYPES) {
-      if (vNum.startsWith(opt.label) && opt.label.length > matched.length) matched = opt.label
+      if (rawPart.startsWith(opt.label) && opt.label.length > matched.length) matched = opt.label
     }
-    return { transType: matched, vehicleNo: matched ? vNum.slice(matched.length).trim() : vNum, fromStation: m[2].trim() }
+    const noRaw = matched ? rawPart.slice(matched.length).trim() : vNum
+    // remove surrounding parens if present: "(670)" → "670"
+    const no = noRaw.replace(/^\((.+)\)$/, '$1')
+    return { transType: matched, vehicleNo: no, fromStation: m[2].trim() }
   }
   const initParsed = isSchedTransCard ? parseSchedTitle(initial?.title ?? '') : { transType: '', vehicleNo: '', fromStation: '' }
   const [transType, setTransType] = useState(initParsed.transType)
   const [vehicleNo, setVehicleNo] = useState(initParsed.vehicleNo)
   const [fromStation, setFromStation] = useState(initParsed.fromStation)
   function rebuildTitle(type: string, no: string, from: string, to: string | undefined) {
-    const vNum = [type.trim(), no.trim()].filter(Boolean).join('')
+    const t = type.trim(); const n = no.trim()
+    const vNum = t && n ? `${t}(${n})` : t || n
     const toStr = (to ?? '').trim()
     const route = from.trim() && toStr ? `${from.trim()}→${toStr}` : from.trim() || toStr
     const next = [vNum, route].filter(Boolean).join(' ')
@@ -308,60 +314,86 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             </div>
           </div>
 
-          {/* Title：班次交通卡由欄位組合自動生成，其餘手動輸入 */}
+          {/* Title：班次交通卡用統一藍卡，其餘手動輸入名稱 */}
           {isSchedTransCard ? (
-            <div className="space-y-3">
-              {/* 類別選擇 */}
+            <div className="space-y-3 bg-indigo-50 border border-indigo-100 rounded-xl p-3">
+              <p className="text-xs font-semibold text-indigo-700">班次資訊</p>
+
+              {/* 類別 */}
               <div>
-                <label className="text-xs font-semibold text-gray-500 mb-1.5 block">類別 *</label>
+                <label className="text-xs text-indigo-600 mb-1.5 block">類別</label>
                 <div className="flex gap-1.5 flex-wrap">
                   {SCHED_TYPES.map((opt) => (
-                    <button
-                      key={opt.label}
-                      type="button"
-                      onClick={() => {
-                        setTransType(opt.label)
-                        set('transportMode', opt.mode)
-                        rebuildTitle(opt.label, vehicleNo, fromStation, form.toLabel)
-                      }}
+                    <button key={opt.label} type="button"
+                      onClick={() => { setTransType(opt.label); set('transportMode', opt.mode); rebuildTitle(opt.label, vehicleNo, fromStation, form.toLabel) }}
                       className={clsx(
-                        'px-3 py-1.5 rounded-xl border text-sm font-medium transition-all',
-                        transType === opt.label
-                          ? 'bg-indigo-600 text-white border-indigo-600'
-                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-300',
+                        'px-3 py-1.5 rounded-full border text-sm font-medium transition-all',
+                        transType === opt.label ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300',
                       )}
-                    >
-                      {opt.label}
-                    </button>
+                    >{opt.label}</button>
                   ))}
                 </div>
               </div>
-              {/* 車次號 + 起點站 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 mb-1 block">車次 / 航班號 *</label>
-                  <input
-                    type="text"
-                    value={vehicleNo}
-                    onChange={(e) => { setVehicleNo(e.target.value); rebuildTitle(transType, e.target.value, fromStation, form.toLabel) }}
-                    placeholder={SCHED_TYPES.find(o => o.label === transType)?.placeholder ?? '如：638'}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 mb-1 block">起點站 *</label>
-                  <input
-                    type="text"
-                    value={fromStation}
+
+              {/* 車次號 */}
+              <div>
+                <label className="text-xs text-indigo-600 mb-1 block">車次 / 航班號</label>
+                <input type="text" value={vehicleNo}
+                  onChange={(e) => { setVehicleNo(e.target.value); rebuildTitle(transType, e.target.value, fromStation, form.toLabel) }}
+                  placeholder={SCHED_TYPES.find(o => o.label === transType)?.placeholder ?? '如：638'}
+                  className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              </div>
+
+              {/* 路線：起點 → 終點 並排 */}
+              <div>
+                <label className="text-xs text-indigo-600 mb-1 block">路線</label>
+                <div className="grid gap-2 items-center" style={{gridTemplateColumns:'1fr auto 1fr'}}>
+                  <input type="text" value={fromStation}
                     onChange={(e) => { setFromStation(e.target.value); rebuildTitle(transType, vehicleNo, e.target.value, form.toLabel) }}
-                    placeholder="如：台北、桃園機場"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  />
+                    placeholder="起點站"
+                    className="border border-indigo-200 bg-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center" />
+                  <span className="text-indigo-400 font-medium text-sm">→</span>
+                  <input type="text" value={form.toLabel ?? ''}
+                    onChange={(e) => { set('toLabel', e.target.value || undefined); rebuildTitle(transType, vehicleNo, fromStation, e.target.value) }}
+                    placeholder="終點站"
+                    className="border border-indigo-200 bg-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 text-center" />
                 </div>
               </div>
+
               {/* 完整名稱預覽 */}
-              <p className="text-[11px] text-indigo-500 px-1">完整名稱：{form.title || '（請選類別並填車次與起點站）'}</p>
-              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
+              <p className="text-[11px] bg-white/70 rounded-lg px-2.5 py-1.5 text-indigo-500">
+                {form.title || '（請選類別並填車次與路線）'}
+              </p>
+              {errors.title && <p className="text-xs text-red-500">{errors.title}</p>}
+
+              <div className="border-t border-indigo-100 pt-3 space-y-3">
+                {/* 訂位 + 平台 */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-indigo-600 mb-1 block">訂位代號 / PNR</label>
+                    <input type="text" value={form.orderNumber ?? ''} onChange={(e) => set('orderNumber', e.target.value || undefined)}
+                      placeholder="如：ABCD1234" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-indigo-600 mb-1 block">訂票平台</label>
+                    <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
+                      placeholder="如：高鐵官網" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                </div>
+                {/* 票價 + 幣別 */}
+                <div className="grid gap-2" style={{gridTemplateColumns:'2fr 1fr'}}>
+                  <div>
+                    <label className="text-xs text-indigo-600 mb-1 block">票價</label>
+                    <input type="number" min="0" value={costAmount} onChange={(e) => setCostAmount(e.target.value)}
+                      placeholder="0" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-indigo-600 mb-1 block">幣別</label>
+                    <input type="text" value={costCurrency} onChange={(e) => setCostCurrency(e.target.value)}
+                      placeholder="TWD" maxLength={3} className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 uppercase" />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             <div>
@@ -446,53 +478,22 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
           {/* 卡片精簡欄位（依類型顯示）*/}
           {form.type === 'transport' ? (
             <div className="space-y-3">
-              {/* 班次型交通專區（有 boardingPairId）*/}
-              {form.boardingPairId && (
-                <div className="space-y-3 bg-indigo-50 rounded-xl p-3 border border-indigo-100">
-                  <p className="text-xs font-semibold text-indigo-700">班次資訊</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-xs text-indigo-600 mb-1 block">訂位代號 / PNR</label>
-                      <input type="text" value={form.orderNumber ?? ''} onChange={(e) => set('orderNumber', e.target.value || undefined)}
-                        placeholder="如：ABCD1234" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-indigo-600 mb-1 block">訂票平台</label>
-                      <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
-                        placeholder="如：高鐵官網" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
-                    </div>
+              {/* 非班次交通：終點 + 交通方式 */}
+              {!isSchedTransCard && (
+                <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-gray-500">交通資訊</p>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">終點</label>
+                    <input type="text" value={form.toLabel ?? ''} onChange={(e) => set('toLabel', e.target.value || undefined)}
+                      placeholder="例：富岡漁港" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div className="col-span-2">
-                      <label className="text-xs text-indigo-600 mb-1 block">票價</label>
-                      <input type="number" min="0" value={costAmount} onChange={(e) => setCostAmount(e.target.value)}
-                        placeholder="0" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
-                    </div>
-                    <div>
-                      <label className="text-xs text-indigo-600 mb-1 block">幣別</label>
-                      <input type="text" value={costCurrency} onChange={(e) => setCostCurrency(e.target.value)}
-                        placeholder="TWD" maxLength={3} className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white uppercase" />
-                    </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">交通方式</label>
+                    <input type="text" value={form.transportMode ?? ''} onChange={(e) => set('transportMode', e.target.value || undefined)}
+                      placeholder="例：train、flight、ferry、bus 或自駕" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                   </div>
                 </div>
               )}
-              {/* 通用交通欄位 */}
-              <div className="space-y-3 bg-gray-50 rounded-xl p-3">
-                <p className="text-xs font-semibold text-gray-500">交通資訊</p>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">{form.boardingPairId ? '抵達站' : '終點'}</label>
-                  <input type="text" value={form.toLabel ?? ''} onChange={(e) => {
-                    set('toLabel', e.target.value || undefined)
-                    if (isSchedTransCard) rebuildTitle(transType, vehicleNo, fromStation, e.target.value)
-                  }}
-                    placeholder={form.boardingPairId ? '例：台南、關西機場' : '例：富岡漁港'} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 mb-1 block">交通方式</label>
-                  <input type="text" value={form.transportMode ?? ''} onChange={(e) => set('transportMode', e.target.value || undefined)}
-                    placeholder="例：train、flight、ferry、bus 或自駕" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-                </div>
-              </div>
             </div>
           ) : form.type === 'food' ? (
             <div className="space-y-3 bg-gray-50 rounded-xl p-3">
