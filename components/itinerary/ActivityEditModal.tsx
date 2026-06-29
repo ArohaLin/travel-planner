@@ -54,22 +54,34 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
   const [costCurrency, setCostCurrency] = useState<string>(
     initial?.cost?.currency ?? 'TWD'
   )
-  // 班次型交通卡：從 title 解析 "高鐵638 台北→台南" → vehicleNum="高鐵638", fromStation="台北"
+  // 班次型交通卡：類別 + 車次號 + 起點站，三欄組合成 title
   const isSchedTransCard = !!(initial?.boardingPairId && initial?.type === 'transport')
+  const SCHED_TYPES = [
+    { label: '高鐵', mode: 'train', placeholder: '如：638' },
+    { label: '台鐵', mode: 'train', placeholder: '如：普悠瑪448' },
+    { label: '飛機', mode: 'flight', placeholder: '如：CI288' },
+    { label: '渡輪', mode: 'ferry', placeholder: '如：綠島航線' },
+    { label: '客運', mode: 'bus', placeholder: '如：國光1831' },
+  ] as const
   function parseSchedTitle(title: string) {
     const m = title.match(/^(.+?)\s+(.+?)→(.+)$/)
-    return m ? { vehicleNum: m[1].trim(), fromStation: m[2].trim() } : { vehicleNum: '', fromStation: '' }
+    if (!m) return { transType: '', vehicleNo: '', fromStation: '' }
+    const vNum = m[1].trim()
+    let matched = ''
+    for (const opt of SCHED_TYPES) {
+      if (vNum.startsWith(opt.label) && opt.label.length > matched.length) matched = opt.label
+    }
+    return { transType: matched, vehicleNo: matched ? vNum.slice(matched.length).trim() : vNum, fromStation: m[2].trim() }
   }
-  const [vehicleNum, setVehicleNum] = useState(() =>
-    isSchedTransCard ? parseSchedTitle(initial?.title ?? '').vehicleNum : ''
-  )
-  const [fromStation, setFromStation] = useState(() =>
-    isSchedTransCard ? parseSchedTitle(initial?.title ?? '').fromStation : ''
-  )
-  function rebuildTitle(vNum: string, from: string, to: string | undefined) {
+  const initParsed = isSchedTransCard ? parseSchedTitle(initial?.title ?? '') : { transType: '', vehicleNo: '', fromStation: '' }
+  const [transType, setTransType] = useState(initParsed.transType)
+  const [vehicleNo, setVehicleNo] = useState(initParsed.vehicleNo)
+  const [fromStation, setFromStation] = useState(initParsed.fromStation)
+  function rebuildTitle(type: string, no: string, from: string, to: string | undefined) {
+    const vNum = [type.trim(), no.trim()].filter(Boolean).join('')
     const toStr = (to ?? '').trim()
     const route = from.trim() && toStr ? `${from.trim()}→${toStr}` : from.trim() || toStr
-    const next = [vNum.trim(), route].filter(Boolean).join(' ')
+    const next = [vNum, route].filter(Boolean).join(' ')
     if (next) set('title', next)
   }
   // 卡片照片上傳狀態
@@ -298,15 +310,41 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
 
           {/* Title：班次交通卡由欄位組合自動生成，其餘手動輸入 */}
           {isSchedTransCard ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              {/* 類別選擇 */}
+              <div>
+                <label className="text-xs font-semibold text-gray-500 mb-1.5 block">類別 *</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {SCHED_TYPES.map((opt) => (
+                    <button
+                      key={opt.label}
+                      type="button"
+                      onClick={() => {
+                        setTransType(opt.label)
+                        set('transportMode', opt.mode)
+                        rebuildTitle(opt.label, vehicleNo, fromStation, form.toLabel)
+                      }}
+                      className={clsx(
+                        'px-3 py-1.5 rounded-xl border text-sm font-medium transition-all',
+                        transType === opt.label
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-gray-50 text-gray-600 border-gray-200 hover:border-indigo-300',
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* 車次號 + 起點站 */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 mb-1 block">班次 *</label>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">車次 / 航班號 *</label>
                   <input
                     type="text"
-                    value={vehicleNum}
-                    onChange={(e) => { setVehicleNum(e.target.value); rebuildTitle(e.target.value, fromStation, form.toLabel) }}
-                    placeholder="如：高鐵638、飛機CI288"
+                    value={vehicleNo}
+                    onChange={(e) => { setVehicleNo(e.target.value); rebuildTitle(transType, e.target.value, fromStation, form.toLabel) }}
+                    placeholder={SCHED_TYPES.find(o => o.label === transType)?.placeholder ?? '如：638'}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
@@ -315,14 +353,14 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                   <input
                     type="text"
                     value={fromStation}
-                    onChange={(e) => { setFromStation(e.target.value); rebuildTitle(vehicleNum, e.target.value, form.toLabel) }}
+                    onChange={(e) => { setFromStation(e.target.value); rebuildTitle(transType, vehicleNo, e.target.value, form.toLabel) }}
                     placeholder="如：台北、桃園機場"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
               </div>
-              {/* 自動組合後的完整名稱預覽 */}
-              <p className="text-[11px] text-indigo-500 px-1">完整名稱：{form.title || '（請填班次與起點站）'}</p>
+              {/* 完整名稱預覽 */}
+              <p className="text-[11px] text-indigo-500 px-1">完整名稱：{form.title || '（請選類別並填車次與起點站）'}</p>
               {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
             </div>
           ) : (
@@ -445,7 +483,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                   <label className="text-xs text-gray-500 mb-1 block">{form.boardingPairId ? '抵達站' : '終點'}</label>
                   <input type="text" value={form.toLabel ?? ''} onChange={(e) => {
                     set('toLabel', e.target.value || undefined)
-                    if (isSchedTransCard) rebuildTitle(vehicleNum, fromStation, e.target.value)
+                    if (isSchedTransCard) rebuildTitle(transType, vehicleNo, fromStation, e.target.value)
                   }}
                     placeholder={form.boardingPairId ? '例：台南、關西機場' : '例：富岡漁港'} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                 </div>
