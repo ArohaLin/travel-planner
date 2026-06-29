@@ -146,7 +146,17 @@ export function buildDayPoints(
   for (const a of day.activities) {
     if (a.type === 'transport') {
       const port = portInfo(a)
-      if (!port) continue
+      if (!port) {
+        // 班次型交通卡（火車/高鐵/飛機）：若已 geocode 到站座標（toLabel），插入為路線錨點，
+        // 讓後續到住宿的 leg 從正確到站城市出發，而非從行程出發地跨縣市計算。
+        if (a.boardingPairId) {
+          const geo = resolve(dayIndex, a.id, a.location)
+          if (geo) {
+            points.push({ id: a.id, kind: 'activity', lat: geo.lat, lng: geo.lng, label: '🚉', title: a.toLabel || a.title })
+          }
+        }
+        continue
+      }
       // 港口用內建固定座標（零歧義、免 geocode）
       points.push({ id: a.id, kind: 'port', lat: port.coord.lat, lng: port.coord.lng, label: '⚓', title: port.name })
       continue

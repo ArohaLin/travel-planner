@@ -382,7 +382,11 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
     if (!day.accommodation) return undefined
     const endMin = toMin(lastActivity?.endTime ?? lastActivity?.startTime)
     if (endMin == null) return day.accommodation.checkInTime
-    const legMin = accommodationLeg ? Math.round(accommodationLeg.seconds / 60) : (accEst?.min ?? 0)
+    // 最後活動已是交通卡（班次型/計程車等），endTime 即為到達住宿時刻，不再疊加 legMin
+    // （accommodationLeg 可能因路線點只有出發城市→住宿而算出跨縣市駕車距離，屬假值）
+    const legMin = lastActivity?.type === 'transport'
+      ? 0
+      : (accommodationLeg ? Math.round(accommodationLeg.seconds / 60) : (accEst?.min ?? 0))
     const checkInMin = toMin(day.accommodation.checkInTime)
     const eff = checkInMin != null ? Math.max(endMin + legMin, checkInMin) : endMin + legMin
     return fromMin(eff)

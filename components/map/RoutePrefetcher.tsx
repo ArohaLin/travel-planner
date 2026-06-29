@@ -94,7 +94,14 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
           enqueue(0, 'origin', undefined, originCity, originCity, undefined, true)
         }
         for (const a of day.activities) {
-          if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
+          if (a.type === 'transport') {
+            // 班次型交通卡（火車/高鐵/飛機）：geocode toLabel（到站地點），
+            // 存入 activity.location，讓路線從正確到站城市算到住宿（而非從出發地跨縣市計算）
+            if (a.boardingPairId && a.toLabel) {
+              enqueue(day.dayIndex, a.id, a.location, undefined, a.toLabel, day.city || destination)
+            }
+            continue
+          }
           if (hasNoPlace(a)) continue // 無實體地點（rest 純動作/hasPlace=false）不需獨立座標
           enqueue(day.dayIndex, a.id, a.location, a.location?.address, a.placeLabel || a.title, day.city)
         }
