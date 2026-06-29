@@ -15,3 +15,29 @@ export function isCompositeTransport(a: Pick<Activity, 'isComposite' | 'title'>)
 export function hasNoPlace(a: Pick<Activity, 'hasPlace' | 'type'>): boolean {
   return a.hasPlace === false || (a.hasPlace == null && a.type === 'rest')
 }
+
+// ── 班次型交通（候車卡 + 班次交通卡系統）────────────────────────────────────
+
+/** 班次型交通的標題關鍵字（有固定時刻表、需提前抵達：火車/高鐵/飛機/船/客運）。 */
+const SCHEDULED_TRANSPORT_RE = /台鐵|普悠瑪|自強號|莒光號|太魯閣號|觀光列車|高鐵|飛機|航班|班機|渡輪|輪船|船班|客運|國光客運|統聯|葛瑪蘭|豐榮|阿羅哈/
+
+/** 候車前置時間（分）。飛機 180 分，其餘班次 30 分。 */
+export const BOARDING_LEAD_MINUTES = { flight: 180, default: 30 } as const
+
+/** 依班次交通卡取得候車所需前置時間（分）。飛機 180 分，其餘 30 分。 */
+export function getBoardingLeadMin(a: Pick<Activity, 'transportMode' | 'title'>): number {
+  const mode = a.transportMode ?? ''
+  if (mode === 'flight' || /飛機|航班|班機|飛航/.test(a.title ?? '')) return BOARDING_LEAD_MINUTES.flight
+  return BOARDING_LEAD_MINUTES.default
+}
+
+/** 是否為班次型交通（有固定時刻表，需提前候車：火車/高鐵/飛機/船/客運）。
+ *  transportMode flight/train/ferry 明確標示者優先；bus 看標題是否為班次型客運。
+ *  用於手動新增時偵測是否要自動生成候車卡。 */
+export function isScheduledTransport(a: Pick<Activity, 'type' | 'transportMode' | 'title'>): boolean {
+  if (a.type !== 'transport') return false
+  const mode = a.transportMode ?? ''
+  if (['flight', 'train', 'ferry'].includes(mode)) return true
+  if (mode === 'bus') return /客運|國光|統聯|葛瑪蘭|豐榮|阿羅哈/.test(a.title ?? '')
+  return SCHEDULED_TRANSPORT_RE.test(a.title ?? '')
+}

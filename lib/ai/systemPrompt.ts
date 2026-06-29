@@ -248,6 +248,42 @@ const TICKET_TRANSPORT_RULES = `
 8. **票面與行程矛盾時**（回程方向買反、日期對不上、班次與現有行程衝突）→ 仍照票面排，並在 message 明確點出矛盾、請使用者確認。
 `
 
+/**
+ * 班次型交通（候車卡＋班次交通卡成對）的 AI 規則。
+ * 火車/高鐵/飛機/船/客運 一律用成對卡片，不走舊式單張 TravelRow。
+ */
+const BOARDING_PAIR_RULES = `
+== 🚆 班次型交通（候車卡＋班次交通卡必須成對，最高優先）==
+**火車（台鐵/高鐵/普悠瑪/自強/莒光/區間/太魯閣）、飛機（航班/班機）、船（渡輪/船班/輪船）、客運（國光/統聯/葛瑪蘭）有固定班次時刻表——一律產出「候車卡 ＋ 班次交通卡」成對，禁止只輸出單張 transport（沒有 boardingPairId 的 TravelRow）。**
+
+【成對格式】每段班次型交通 = 2 張 activity，共用同一個 boardingPairId（8 字元英數字，每對唯一）：
+
+① **候車卡**（先出現）
+- type: "rest"（純候車）或 "shopping"/"food"（在站逛街/用餐）
+- boardingPairId: 同值，timeLocked: true，hasPlace: false
+- title: "{出發站}候車" / "{出發站}候機" / "{出發站}候船"，如「台北車站候車」「桃園機場候機・逛免稅店」
+- startTime = 班次出發時刻 − 候車時長（**飛機 180 分，其餘所有班次 30 分**）
+- endTime = 班次出發時刻（＝下方班次交通卡的 startTime）
+
+② **班次交通卡**（緊接在候車卡後，中間不可插入任何活動）
+- type: "transport"，boardingPairId: 同值，timeLocked: true
+- title 格式："{交通工具}{車次} {出發站}→{抵達站}"，如「高鐵638 台北→台南」「台鐵普悠瑪448 花蓮→台東」「飛機CI288 桃園→關西」
+- startTime = 票面/預定出發時刻；endTime = 票面/預定抵達時刻
+- transportMode: 火車/高鐵→"train"，飛機→"flight"，船→"ferry"，客運→"bus"
+- reservationStatus: 已購票→"reserved"，未購→"needed"
+- tips: 車次/座位/訂位代號（若知道）
+
+【時間範例】高鐵 10:30 出發、13:00 抵達（候車 30 分）：
+  候車卡: startTime:"10:00", endTime:"10:30", boardingPairId:"bd3k9xZ1", timeLocked:true
+  班次交通卡: startTime:"10:30", endTime:"13:00", boardingPairId:"bd3k9xZ1", timeLocked:true
+
+【注意事項】
+- 從住宿/前一景點到車站的接駁，用一張**普通** type:"transport"（無 boardingPairId）在候車卡前面。
+- 候車卡與班次交通卡之間**不可**有任何其他活動。
+- 抵達目的站後到下一景點，可加普通接駁 transport（無 boardingPairId）。
+- 若行程已有沒有 boardingPairId 的班次型交通卡，**調整時一律補上候車卡並加 boardingPairId**（不要保留舊式單張）。
+`
+
 /** @deprecated 保留向後相容，新程式請用 buildAdjustPrompt */
 export function buildSystemPrompt(itinerary: Itinerary): string {
   return buildAdjustPrompt(itinerary)
@@ -460,6 +496,7 @@ ${buildMemorySection(itinerary)}${buildLockedActivitiesSection(itinerary)}${buil
 
 - 先用 2-3 句話分析用戶的需求，再提供方案
 - 方案說明要具體，讓用戶清楚知道選了之後行程會如何改變
+${BOARDING_PAIR_RULES}
 ${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}
 
@@ -585,6 +622,7 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 - Never schedule activities with overlapping times on the same day
 - Account for travel time between locations
 - Mountain areas need extra 30-60 min up/down
+${BOARDING_PAIR_RULES}
 ${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}`
 }
@@ -730,6 +768,7 @@ Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 roomType
 - **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、**訂金金額→depositPaid(Money 格式)（不論「已付」或「請先匯/待付」都要填金額）**、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、房型（如「四人C1房」「雙人房」）→roomType、含/不含早餐→breakfast("included"/"excluded")、費用包含的餐食/活動/票券（早餐除外）→feeIncludes、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。**匯款期限、匯款帳號、付款指示、入住須知等「重要提醒」放 tips(重要事項)，不要放 notes**；notes 只留真的無法歸類的零碎補充。
 - 更新住宿/景點成不同地點時，不要保留舊座標；location.address 填正確新地址（縣市/鄉鎮要對），不確定門牌就給「縣市+鄉鎮+地標名」。
 - 若動到某天活動，同步用 update_day 更新該天 theme。
+${BOARDING_PAIR_RULES}
 ${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}`
 }
@@ -830,10 +869,12 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
           "placeLabel": "地點簡稱，如「太魯閣」「台東市」（景點/餐飲/其它填，交通免）",
           "location": { "lat": 0, "lng": 0, "address": "盡量填完整地址，如「972花蓮縣秀林鄉富世村」（非交通類都要填，lat/lng 留 0 由系統定位）" },
           "toLabel": "交通終點簡稱（僅 type=transport 填，如「富岡漁港」）",
-          "transportMode": "交通方式（僅 type=transport 填，如「自駕」「步行」「船」）",
+          "transportMode": "交通方式（僅 type=transport 填，如「自駕」「步行」「船」「train」「flight」「ferry」）",
           "mealType": "餐別（僅 type=food 填，如「早餐」「午餐」「晚餐」「下午茶」）",
           "foodItems": "飲食項目（僅 type=food 填，如「臭豆腐、米苔目」）",
-          "highlight": "特別需強調注意的簡短幾字（選填，如「山路18:30前下山」）"
+          "highlight": "特別需強調注意的簡短幾字（選填，如「山路18:30前下山」）",
+          "timeLocked": "時間鎖定（班次型交通的候車卡＋班次交通卡必須設 true；其他勿填）",
+          "boardingPairId": "候車卡＋班次交通卡配對 ID（兩張共用同一 8 字元英數字；見 BOARDING_PAIR_RULES）"
         }
       ],
       "accommodation": {
@@ -883,5 +924,6 @@ ${params.specialRequests ? `- 特殊需求：${params.specialRequests}` : ''}
 7. 若有偏好交通方式，盡量採用該交通方式規劃城市間移動
 8. 如果使用者提供了行程名稱（tripTitle），直接使用該名稱作為 title；否則根據目的地和風格自動生成
 9. 直接輸出 JSON 物件本身（以 { 開頭、} 結尾），不要任何標籤、說明文字或 markdown code fence
-10. **時間合理性**：每天的活動時間必須按序排列，不得重疊。若第一天有長途交通（如 08:00–14:00 飛機+轉車），則當天其他活動只能安排在交通結束後（14:00 以後）`
+10. **時間合理性**：每天的活動時間必須按序排列，不得重疊。若第一天有長途交通（如 08:00–14:00 飛機+轉車），則當天其他活動只能安排在交通結束後（14:00 以後）
+${BOARDING_PAIR_RULES}`
 }

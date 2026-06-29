@@ -92,6 +92,9 @@ export const ActivitySchema = z.object({
   contact: z.string().optional(),
   /** 時間鎖定：true 時任何自動重算（AI/拖拉）皆不可改 startTime/endTime/duration */
   timeLocked: z.boolean().optional(),
+  /** 候車卡/班次交通卡的配對 ID：候車卡（非 transport）與班次交通卡（transport）共用同一值，
+   *  標記為不可分離單位（中間不可插入、刪除時同刪、拖拉時同移）。AI 生成時必須填此欄位。 */
+  boardingPairId: z.string().optional(),
 })
 
 export const AccommodationSchema = z.object({

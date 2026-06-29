@@ -11,6 +11,42 @@ import { fmtKm, toneFor, stayShort } from '@/lib/itinerary/cardTone'
 import { estimateLeg } from '@/lib/maps/estimateLeg'
 import { isCompositeTransport } from '@/lib/itinerary/activityFlags'
 
+/** 班次交通卡（boardingPairId 存在、type=transport）：有卡片外殼的班次型交通（火車/高鐵/飛機/船/客運） */
+function ScheduledTransportRow({ transport, onClick }: { transport: Activity; onClick?: (a: Activity) => void }) {
+  const { icon } = modeInfo(transport)
+  const s = toMin(transport.startTime)
+  const e = toMin(transport.endTime)
+  const durSec = s != null && e != null && e > s ? (e - s) * 60 : null
+  return (
+    <RowFrame
+      timeTop={transport.startTime || null}
+      timeBottom={transport.endTime || null}
+      icon={icon}
+      onClick={onClick ? () => onClick(transport) : undefined}
+    >
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 relative">
+        <span className="absolute top-2 right-2 text-[11px] text-indigo-400 select-none">🔒</span>
+        <p className="font-semibold text-indigo-800 leading-snug text-sm pr-6">{transport.title}</p>
+        {transport.tips && <p className="text-[11px] text-indigo-600 mt-0.5 leading-snug">{transport.tips}</p>}
+        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+          {durSec && <span className="text-[11px] text-gray-400">行程 {fmtDur(durSec)}</span>}
+          {transport.cost && (
+            <span className="text-[11px] text-gray-400">
+              {transport.cost.currency} {transport.cost.amount.toLocaleString()}{transport.cost.isEstimate ? '（估）' : ''}
+            </span>
+          )}
+          {transport.reservationStatus === 'reserved' && (
+            <span className="text-[11px] text-emerald-600 font-medium">🎫 已購票</span>
+          )}
+          {transport.reservationStatus === 'needed' && (
+            <span className="text-[11px] text-amber-600 font-medium">⚠ 待購票</span>
+          )}
+        </div>
+      </div>
+    </RowFrame>
+  )
+}
+
 const toMin = (t?: string): number | null => {
   if (!t) return null
   const [h, m] = t.split(':').map(Number)
@@ -394,11 +430,38 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
           {acts.map((activity, idx) => {
             const prev = idx > 0 ? acts[idx - 1] : undefined
             const next = idx < acts.length - 1 ? acts[idx + 1] : undefined
-            const addBtn = canEdit && (
+
+            // ── 候車卡/班次交通卡配對判斷 ─────────────────────────────────────
+            // 候車卡：有 boardingPairId 且非 transport（type=rest/shopping/food 等）
+            const isBoardingWait = !!(activity.boardingPairId && activity.type !== 'transport')
+            // 班次交通卡：有 boardingPairId 且為 transport
+            const isSchedTransCard = !!(activity.boardingPairId && activity.type === 'transport')
+            // 此卡後一張是配對的班次交通卡 → 不顯示 InsertRow（中間不可插入）
+            const nextIsPairedTransport = isBoardingWait
+              && next?.boardingPairId === activity.boardingPairId
+              && next?.type === 'transport'
+            // 此卡前一張是配對的候車卡 → 不在前面加任何移動列
+            const prevIsPairedWait = isSchedTransCard
+              && prev?.boardingPairId === activity.boardingPairId
+              && prev?.type !== 'transport'
+
+            // 中間禁插：候車卡後面緊接班次交通卡時不顯示 InsertRow
+            const addBtn = canEdit && !nextIsPairedTransport && (
               <InsertRow onClick={() => onAddActivity?.(idx)} />
             )
 
             if (activity.type === 'transport') {
+              // ── 班次交通卡（有 boardingPairId）→ 完整卡片樣式 ──
+              if (isSchedTransCard) {
+                return (
+                  <div key={activity.id}>
+                    {/* prevIsPairedWait → 前一張是候車卡，已在同一站，不需移動列 */}
+                    <ScheduledTransportRow transport={activity} onClick={onActivityClick} />
+                    {addBtn}
+                  </div>
+                )
+              }
+              // ── 複合交通卡 ──
               if (isCompositeTransport(activity)) {
                 return (
                   <div key={activity.id}>
@@ -407,6 +470,7 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
                   </div>
                 )
               }
+              // ── 普通移動列 ──
               const leg = next && next.type !== 'transport' ? legByTo.get(next.id) : undefined
               const s = toMin(activity.startTime)
               const e = toMin(activity.endTime)
@@ -423,7 +487,9 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               )
             }
 
+            // ── 非交通卡（景點/餐飲/候車卡等）──────────────────────────────────
             // 前一張是活動（非交通卡）→ 需要一條「合成移動列」；leg 過期時用直線概估、不消失
+            // 但若這是班次交通卡前面的候車卡，上一張也是非交通卡，仍需要移動列（前往車站）
             const needSynthetic = idx > 0 && !!prev && prev.type !== 'transport'
             const synthetic = needSynthetic ? legByTo.get(activity.id) : undefined
             const syntheticEst = needSynthetic ? estimateLeg(prev?.location, activity.location) : null

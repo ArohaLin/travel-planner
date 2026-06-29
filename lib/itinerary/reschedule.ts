@@ -71,15 +71,25 @@ export interface Block {
   place: Activity
   /** 這張景點卡之前的交通卡（移動列），跟著一起搬 */
   leading: Activity[]
+  /** 候車卡的配對班次交通卡（boardingPairId 相同）：跟著 place 一起移動，不進 buf */
+  trailingPair?: Activity
 }
 
-/** 切成 blocks ＋ 釘在最後的 trailing 交通卡（最後一張景點之後殘留者，如「返回民宿休息」）。 */
+/** 切成 blocks ＋ 釘在最後的 trailing 交通卡（最後一張景點之後殘留者，如「返回民宿休息」）。
+ *  特殊處理：班次交通卡（boardingPairId 與前一個景點卡相同）→ 附在前一個 block 的 trailingPair，
+ *  不進 buf，確保候車卡+班次交通卡作為一個單位一起搬/刪。 */
 export function buildBlocks(activities: Activity[]): { blocks: Block[]; trailing: Activity[] } {
   const blocks: Block[] = []
   let buf: Activity[] = []
   for (const a of activities) {
     if (isTransport(a)) {
-      buf.push(a)
+      // 班次交通卡特殊處理：若前一 block 的 place 有相同 boardingPairId → 掛在 trailingPair，不進 buf
+      const lastBlock = blocks[blocks.length - 1]
+      if (a.boardingPairId && lastBlock?.place.boardingPairId === a.boardingPairId) {
+        lastBlock.trailingPair = a
+      } else {
+        buf.push(a)
+      }
     } else {
       blocks.push({ place: a, leading: buf })
       buf = []
@@ -92,6 +102,7 @@ export function flatten(blocks: Block[], trailing: Activity[]): Activity[] {
   const out: Activity[] = []
   for (const b of blocks) {
     out.push(...b.leading, b.place)
+    if (b.trailingPair) out.push(b.trailingPair)
   }
   out.push(...trailing)
   return out
@@ -260,7 +271,9 @@ export function moveBlockToDay(
     if (bestI >= 0) insertAt = bestI + 1
   }
   const newBlocks = [...tb.blocks]
-  newBlocks.splice(insertAt, 0, { place: { ...moved }, leading: [] })
+  // 若移動的候車卡有 trailingPair（班次交通卡），一起帶到目標天
+  const movedTrailing = sb.blocks[idx].trailingPair ? { ...sb.blocks[idx].trailingPair! } : undefined
+  newBlocks.splice(insertAt, 0, { place: { ...moved }, leading: [], trailingPair: movedTrailing })
   const newTarget = flatten(newBlocks, tb.trailing)
   const tFrom = firstDivergence(target, newTarget)
   const recomputedTarget =
@@ -271,6 +284,7 @@ export function moveBlockToDay(
 
 /**
  * 刪除一個活動並重排當天時間（同天）。
+ * - 刪「候車卡或班次交通卡」（有 boardingPairId）：連同配對的另一張一起刪。
  * - 刪「景點」：連同它的前置交通卡（block 的 leading）一起刪；剩餘 block 從異動點起重排，
  *   後面活動時間自動往前接、剩餘交通卡標籤對齊正確的下一站。
  * - 刪「交通卡」：只移除那一張，再從異動點起重排。
@@ -284,11 +298,21 @@ export function deletePlace(activities: Activity[], id: string): Activity[] {
   if (idx < 0) return activities
   const target = activities[idx]
 
+  // 候車卡或班次交通卡（有 boardingPairId）→ 兩張一起刪
+  if (target.boardingPairId) {
+    const pairId = target.boardingPairId
+    const next = activities.filter((a) => a.boardingPairId !== pairId)
+    if (next.length === activities.length) return activities
+    const from = firstDivergence(activities, next)
+    if (from === -1) return next
+    return recomputeTimes(next, Math.max(0, from), buildGapHint(activities), toMin(activities[0]?.startTime))
+  }
+
   let next: Activity[]
   if (isTransport(target)) {
     next = activities.filter((a) => a.id !== id) // 刪交通卡：只移除這一張
   } else {
-    const { blocks, trailing } = buildBlocks(activities) // 刪景點：移除整個 block（景點＋前置交通卡）
+    const { blocks, trailing } = buildBlocks(activities) // 刪景點：移除整個 block（景點＋前置交通卡＋trailingPair）
     next = flatten(blocks.filter((b) => b.place.id !== id), trailing)
   }
   if (next.length === activities.length) return activities // 沒刪到任何東西

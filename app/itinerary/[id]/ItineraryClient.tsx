@@ -15,6 +15,7 @@ import {
   type ShiftWarning,
 } from '@/lib/utils/activityTime'
 import { deletePlace, changedTimeIds, setDepartureTime, toMin, fromMin } from '@/lib/itinerary/reschedule'
+import { isScheduledTransport, getBoardingLeadMin } from '@/lib/itinerary/activityFlags'
 import type { Itinerary, TripMetadata, Activity, Accommodation } from '@/lib/types/itinerary'
 import type { ItineraryPatch, PatchOp } from '@/lib/types/patch'
 import type { MemberRole, GlobalRole } from '@/lib/types/collaboration'
@@ -749,7 +750,8 @@ export function ItineraryClient({
     const ok = await submitPatch(patch)
     if (ok) {
       setDeleteConfirm(null)
-      const extra = removedExtra > 0 ? '（含前置交通）' : ''
+      const hasPair = !!target.boardingPairId
+      const extra = hasPair ? '（含配對候車卡/交通卡）' : removedExtra > 0 ? '（含前置交通）' : ''
       showToast(
         shiftedCount > 0
           ? `已刪除「${target.title}」${extra}，後續時間已自動調整`
@@ -769,28 +771,67 @@ export function ItineraryClient({
     const dayIndex = modal.dayIndex
     const activities = currentDayData?.activities ?? []
 
-    const simulatedActivities = [...activities, newActivity].sort((a, b) =>
+    // ── 班次型交通自動生成候車卡 ────────────────────────────────────────────
+    // 使用者手動新增班次型交通（火車/高鐵/飛機/船/客運）且尚未綁定 boardingPairId 時，
+    // 自動在前面插入一張候車卡，兩張共用同一 boardingPairId。
+    let finalActivity = newActivity
+    let boardingWaitCard: Activity | null = null
+    if (isScheduledTransport(newActivity) && !newActivity.boardingPairId) {
+      const pairId = nanoid(8)
+      const leadMin = getBoardingLeadMin(newActivity)
+      const [th, tm] = newActivity.startTime.split(':').map(Number)
+      const departMin = (isNaN(th) ? 9 : th) * 60 + (isNaN(tm) ? 0 : tm)
+      const waitStart = Math.max(0, departMin - leadMin)
+      const hh = (n: number) => String(Math.floor(n / 60)).padStart(2, '0')
+      const mm = (n: number) => String(n % 60).padStart(2, '0')
+
+      // 嘗試從 title 格式「高鐵638 台北→台南」提取出發站
+      const stationMatch = newActivity.title.match(/\s+(.+?)→/)
+      const fromStation = stationMatch?.[1]?.trim()
+      const isPlane = newActivity.transportMode === 'flight' || /飛機|航班|班機/.test(newActivity.title)
+      const isFerry = newActivity.transportMode === 'ferry' || /渡輪|船班|輪船/.test(newActivity.title)
+      const waitTitle = fromStation
+        ? (isPlane ? `${fromStation}機場候機` : isFerry ? `${fromStation}碼頭候船` : `${fromStation}候車`)
+        : (isPlane ? '機場候機' : isFerry ? '碼頭候船' : '候車')
+
+      boardingWaitCard = {
+        id: nanoid(8),
+        type: 'rest',
+        title: waitTitle,
+        startTime: `${hh(waitStart)}:${mm(waitStart)}`,
+        endTime: newActivity.startTime,
+        boardingPairId: pairId,
+        timeLocked: true,
+        hasPlace: false,
+      }
+      finalActivity = { ...newActivity, boardingPairId: pairId, timeLocked: true }
+    }
+
+    const simulatedActivities = [...activities, finalActivity].sort((a, b) =>
       a.startTime.localeCompare(b.startTime),
     )
-    const plan = computeInsertShiftOps(simulatedActivities, newActivity.id, dayIndex)
+    const plan = computeInsertShiftOps(simulatedActivities, finalActivity.id, dayIndex)
 
-    const mainOp: PatchOp = { op: 'add_activity', dayIndex, payload: newActivity }
+    const mainOp: PatchOp = { op: 'add_activity', dayIndex, payload: finalActivity }
+    const extraOps: PatchOp[] = boardingWaitCard
+      ? [{ op: 'add_activity', dayIndex, payload: boardingWaitCard }]
+      : []
 
     if (plan.outOfRangeWarnings.length > 0) {
       setConflictDialog({
-        actionLabel: `新增：${newActivity.title}`,
+        actionLabel: `新增：${finalActivity.title}`,
         warnings: plan.outOfRangeWarnings,
         onForce: async () => {
           const forcePatch: ItineraryPatch = {
             patchId: nanoid(8),
-            description: `手動新增（強制）：${newActivity.title}`,
+            description: `手動新增（強制）：${finalActivity.title}`,
             proposedBy: 'user',
-            ops: [mainOp],
+            ops: [...extraOps, mainOp],
           }
           const ok = await submitPatch(forcePatch)
           if (ok) {
             setModal({ open: false })
-            notifyForceSaveResult(simulatedActivities, `已新增「${newActivity.title}」`)
+            notifyForceSaveResult(simulatedActivities, `已新增「${finalActivity.title}」`)
           }
         },
       })
@@ -799,18 +840,20 @@ export function ItineraryClient({
 
     const patch: ItineraryPatch = {
       patchId: nanoid(8),
-      description: `手動新增：${newActivity.title}`,
+      description: `手動新增：${finalActivity.title}`,
       proposedBy: 'user',
-      ops: [mainOp, ...plan.ops],
+      ops: [...extraOps, mainOp, ...plan.ops],
     }
 
     const ok = await submitPatch(patch)
     if (ok) {
       setModal({ open: false })
       showToast(
-        plan.ops.length > 0
-          ? `已新增「${newActivity.title}」，${plan.ops.length} 個活動時間已自動調整`
-          : `已新增「${newActivity.title}」`,
+        boardingWaitCard
+          ? `已新增「${finalActivity.title}」並自動加入候車時段`
+          : plan.ops.length > 0
+            ? `已新增「${finalActivity.title}」，${plan.ops.length} 個活動時間已自動調整`
+            : `已新增「${finalActivity.title}」`,
         'success',
       )
     }
