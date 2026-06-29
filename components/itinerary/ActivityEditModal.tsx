@@ -278,33 +278,66 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
           </div>
 
-          {/* Time range */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">開始時間 *</label>
-              <input
-                type="time"
-                value={form.startTime}
-                onChange={(e) => handleStartTimeChange(e.target.value)}
-                className={clsx(
-                  'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
-                  errors.startTime ? 'border-red-400' : 'border-gray-200',
-                )}
-              />
-              {errors.startTime && <p className="text-xs text-red-500 mt-1">{errors.startTime}</p>}
-            </div>
-            <div className="flex-1">
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">結束時間</label>
-              <input
-                type="time"
-                value={form.endTime ?? ''}
-                onChange={(e) => set('endTime', e.target.value || undefined)}
-                className={clsx(
-                  'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
-                  errors.endTime ? 'border-red-400' : 'border-gray-200',
-                )}
-              />
-              {errors.endTime && <p className="text-xs text-red-500 mt-1">{errors.endTime}</p>}
+          {/* Time range + 時間鎖定 */}
+          <div className="space-y-2">
+            {/* 鎖定 toggle */}
+            <button
+              type="button"
+              onClick={() => set('timeLocked', !form.timeLocked)}
+              className={clsx(
+                'w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition-colors',
+                form.timeLocked
+                  ? 'bg-amber-50 border-amber-200 text-amber-800'
+                  : 'bg-gray-50 border-gray-200 text-gray-500',
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <span>{form.timeLocked ? '🔒' : '🔓'}</span>
+                <span className="font-medium">{form.timeLocked ? '時間已鎖定（點此解鎖）' : '鎖定時間'}</span>
+              </span>
+              <span className={clsx(
+                'text-[11px] px-2 py-0.5 rounded-full font-medium',
+                form.timeLocked ? 'bg-amber-200 text-amber-800' : 'bg-gray-200 text-gray-500',
+              )}>
+                {form.timeLocked ? '開啟' : '關閉'}
+              </span>
+            </button>
+            {form.timeLocked && (
+              <p className="text-[11px] text-amber-600 px-1">AI 調整與拖拉排序都不會更動此時間。解鎖後才能修改。</p>
+            )}
+
+            {/* 時間輸入 */}
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">開始時間 *</label>
+                <input
+                  type="time"
+                  value={form.startTime}
+                  onChange={(e) => handleStartTimeChange(e.target.value)}
+                  disabled={!!form.timeLocked}
+                  className={clsx(
+                    'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
+                    errors.startTime ? 'border-red-400' : 'border-gray-200',
+                    form.timeLocked && 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                  )}
+                />
+                {errors.startTime && <p className="text-xs text-red-500 mt-1">{errors.startTime}</p>}
+              </div>
+              <div className="flex-1">
+                <label className="text-xs font-semibold text-gray-500 mb-1 block">結束時間</label>
+                <input
+                  type="time"
+                  value={form.endTime ?? ''}
+                  onChange={(e) => set('endTime', e.target.value || undefined)}
+                  disabled={!!form.timeLocked}
+                  className={clsx(
+                    'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
+                    errors.endTime ? 'border-red-400' : 'border-gray-200',
+                    form.timeLocked && 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                  )}
+                />
+                {errors.endTime && <p className="text-xs text-red-500 mt-1">{errors.endTime}</p>}
+              </div>
             </div>
           </div>
 

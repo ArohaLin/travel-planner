@@ -90,6 +90,8 @@ export const ActivitySchema = z.object({
   freeCancelBy: z.string().optional(),
   /** 聯絡資訊（電話 / Email）*/
   contact: z.string().optional(),
+  /** 時間鎖定：true 時任何自動重算（AI/拖拉）皆不可改 startTime/endTime/duration */
+  timeLocked: z.boolean().optional(),
 })
 
 export const AccommodationSchema = z.object({

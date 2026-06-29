@@ -131,11 +131,14 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
           {/* ① 行程資訊 */}
           <Section title="行程資訊">
             <div className="bg-gray-50 rounded-2xl p-3 space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-gray-400">時間</span>
-                <span className="text-gray-800 font-medium">
+                <span className="text-gray-800 font-medium flex items-center gap-1.5">
                   {activity.startTime}
                   {activity.endTime && ` — ${activity.endTime}`}
+                  {activity.timeLocked && (
+                    <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">🔒 固定</span>
+                  )}
                 </span>
               </div>
               {dur !== null && (

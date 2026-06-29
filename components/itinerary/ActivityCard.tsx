@@ -54,6 +54,11 @@ export function ActivityContent({ activity }: { activity: Activity }) {
               {RESERVATION[resv].icon} {RESERVATION[resv].label}
             </span>
           )}
+          {activity.timeLocked && (
+            <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+              🔒 固定時間
+            </span>
+          )}
         </div>
         {activity.type !== 'transport' && activity.location?.address && (
           <a
