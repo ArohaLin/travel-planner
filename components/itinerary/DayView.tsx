@@ -28,9 +28,9 @@ function ScheduledTransportRow({ transport, onClick }: { transport: Activity; on
         <span className="absolute top-2 right-2 text-[11px] text-indigo-400 select-none">🔒</span>
         <p className="font-semibold text-indigo-800 leading-snug text-sm pr-6">{fmtSchedTitle(transport.title)}</p>
         <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-          {durSec && <span className="text-[11px] text-gray-400">行程 {fmtDur(durSec)}</span>}
+          {durSec && <span className="text-[11px] text-gray-600">行程 {fmtDur(durSec)}</span>}
           {transport.cost && (
-            <span className="text-[11px] text-gray-400">
+            <span className="text-[11px] text-gray-600">
               {transport.cost.currency} {transport.cost.amount.toLocaleString()}{transport.cost.isEstimate ? '（估）' : ''}
             </span>
           )}
