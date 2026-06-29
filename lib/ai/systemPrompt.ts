@@ -230,6 +230,24 @@ const PATCH_SCHEMA_DOCS = `
 { "id": "aB3kP9xZ", "type": "sightseeing", "title": "清水寺參觀", "startTime": "14:00", "endTime": "16:00", "bookingRequired": false }
 `
 
+/**
+ * 票券／訂位的交通解析鐵則。使用者上傳車票、機票、訂位截圖時，最常出錯的就是
+ * 「多段交通壓成一張卡、時間自己估、車次座位遺失」。此規則三個產 patch 的提示詞共用。
+ */
+const TICKET_TRANSPORT_RULES = `
+== 🎫 票券／訂位交通解析（使用者附上車票、機票、訂位截圖時最高優先）==
+讀到票券影像/截圖時，務必逐張讀出票面，嚴格照票面重排交通，**不可自行估算或合併**：
+1. **逐段拆分（最常犯錯）**：一趟旅程含多種交通工具或需轉乘（高鐵→轉台鐵、轉機、轉乘不同班次）時，**每一段(leg)各自一張 type:"transport" 卡**，嚴禁壓成一張。
+   例：去程要拆成「高鐵 新竹→台北」一張 ＋「台鐵 台北→花蓮」另一張，不可合成「高鐵與台鐵前往花蓮」。
+2. **時間照票面一字不差**：每段 startTime=票面發車時刻、endTime=票面到站時刻，**直接抄，嚴禁估算、四捨五入、或為了銜接而順移**。
+3. **轉乘空檔要看得見**：前段到站到後段發車之間若 ≥10 分鐘，不可把空檔吃掉讓兩段時間相接——在後段 title 標「轉乘」「候車」（例「台北轉乘候車後搭台鐵」），或在兩段間排一張 type:"rest" 候車卡說明等待。
+4. **車次／座位／訂位代號不可遺失**：車次車種、車廂座位、訂位代號、票價，寫進 transport 與 tips 欄位（例 tips:"自強448普悠瑪・5車31號・訂位代號01194492"）；isComposite 視情況。
+5. **title 格式**：有車次的城際交通用「{交通工具}{車次} {出發站}→{抵達站}」（例「台鐵448普悠瑪 台北→花蓮」「高鐵670 新竹→台北」）；接駁仍用「出發：A前往B」。
+6. **接駁段時間要扣著票面**：住家/飯店→車站、車站→飯店的接駁各自一張 transport，時間須讓使用者趕得上票面發車（例 高鐵18:57發車→接駁段須在18:57前抵站，不可排到18:57才出發）。
+7. **reservationStatus**：票券＝已購票，相關交通卡 reservationStatus 設 "reserved"。
+8. **票面與行程矛盾時**（回程方向買反、日期對不上、班次與現有行程衝突）→ 仍照票面排，並在 message 明確點出矛盾、請使用者確認。
+`
+
 /** @deprecated 保留向後相容，新程式請用 buildAdjustPrompt */
 export function buildSystemPrompt(itinerary: Itinerary): string {
   return buildAdjustPrompt(itinerary)
@@ -442,7 +460,7 @@ ${buildMemorySection(itinerary)}${buildLockedActivitiesSection(itinerary)}${buil
 
 - 先用 2-3 句話分析用戶的需求，再提供方案
 - 方案說明要具體，讓用戶清楚知道選了之後行程會如何改變
-
+${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}
 
 ## Plans 輸出格式
@@ -567,7 +585,7 @@ Activity optional fields: endTime, intro, transport, recommendation, tips, cost
 - Never schedule activities with overlapping times on the same day
 - Account for travel time between locations
 - Mountain areas need extra 30-60 min up/down
-
+${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}`
 }
 
@@ -712,7 +730,7 @@ Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 roomType
 - **住宿訂房確認單：資訊要逐項拆進對應的結構化欄位，嚴禁整段塞進 notes**——訂房平台→bookingPlatform、訂單/訂位編號→orderNumber、**訂金金額→depositPaid(Money 格式)（不論「已付」或「請先匯/待付」都要填金額）**、最晚免費取消期限→freeCancelBy、房價→cost（**填每晚單價，不是總價**；確認單只給總價時自行除以晚數）、房型（如「四人C1房」「雙人房」）→roomType、含/不含早餐→breakfast("included"/"excluded")、費用包含的餐食/活動/票券（早餐除外）→feeIncludes、電話/Email/訂房人→contact、入退房時間→checkInTime/checkOutTime、飯店地址→location.address，並把 reservationStatus 設為 "reserved"。**匯款期限、匯款帳號、付款指示、入住須知等「重要提醒」放 tips(重要事項)，不要放 notes**；notes 只留真的無法歸類的零碎補充。
 - 更新住宿/景點成不同地點時，不要保留舊座標；location.address 填正確新地址（縣市/鄉鎮要對），不確定門牌就給「縣市+鄉鎮+地標名」。
 - 若動到某天活動，同步用 update_day 更新該天 theme。
-
+${TICKET_TRANSPORT_RULES}
 ${PATCH_SCHEMA_DOCS}`
 }
 
