@@ -47,6 +47,13 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
     id: initial?.id ?? nanoid(8),
   }))
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // 票價（班次交通卡用，對應 Activity.cost）
+  const [costAmount, setCostAmount] = useState<string>(
+    initial?.cost?.amount !== undefined ? String(initial.cost.amount) : ''
+  )
+  const [costCurrency, setCostCurrency] = useState<string>(
+    initial?.cost?.currency ?? 'TWD'
+  )
   // 卡片照片上傳狀態
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -148,6 +155,12 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
         : undefined
     }
 
+    // 票價：有填金額才組 cost 物件
+    const parsedAmount = parseFloat(costAmount)
+    const builtCost = !isNaN(parsedAmount) && parsedAmount >= 0 && costAmount.trim() !== ''
+      ? { amount: parsedAmount, currency: costCurrency.trim() || 'TWD', isEstimate: form.cost?.isEstimate ?? false }
+      : form.cost
+
     // Clean up empty optional fields
     const cleaned: Activity = {
       ...form,
@@ -159,6 +172,9 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
       transport: form.transport?.trim() || undefined,
       recommendation: form.recommendation?.trim() || undefined,
       tips: form.tips?.trim() || undefined,
+      orderNumber: form.orderNumber?.trim() || undefined,
+      bookingPlatform: form.bookingPlatform?.trim() || undefined,
+      cost: builtCost,
       location,
     }
     onSave(cleaned)
@@ -343,17 +359,50 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
 
           {/* 卡片精簡欄位（依類型顯示）*/}
           {form.type === 'transport' ? (
-            <div className="space-y-3 bg-gray-50 rounded-xl p-3">
-              <p className="text-xs font-semibold text-gray-500">交通資訊（用於卡片精簡顯示）</p>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">終點</label>
-                <input type="text" value={form.toLabel ?? ''} onChange={(e) => set('toLabel', e.target.value || undefined)}
-                  placeholder="例：富岡漁港" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">交通方式</label>
-                <input type="text" value={form.transportMode ?? ''} onChange={(e) => set('transportMode', e.target.value || undefined)}
-                  placeholder="例：自駕、步行、船" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+            <div className="space-y-3">
+              {/* 班次型交通專區（有 boardingPairId）*/}
+              {form.boardingPairId && (
+                <div className="space-y-3 bg-indigo-50 rounded-xl p-3 border border-indigo-100">
+                  <p className="text-xs font-semibold text-indigo-700">班次資訊</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-indigo-600 mb-1 block">訂位代號 / PNR</label>
+                      <input type="text" value={form.orderNumber ?? ''} onChange={(e) => set('orderNumber', e.target.value || undefined)}
+                        placeholder="如：ABCD1234" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-indigo-600 mb-1 block">訂票平台</label>
+                      <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
+                        placeholder="如：高鐵官網" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="col-span-2">
+                      <label className="text-xs text-indigo-600 mb-1 block">票價</label>
+                      <input type="number" min="0" value={costAmount} onChange={(e) => setCostAmount(e.target.value)}
+                        placeholder="0" className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-indigo-600 mb-1 block">幣別</label>
+                      <input type="text" value={costCurrency} onChange={(e) => setCostCurrency(e.target.value)}
+                        placeholder="TWD" maxLength={3} className="w-full border border-indigo-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white uppercase" />
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* 通用交通欄位 */}
+              <div className="space-y-3 bg-gray-50 rounded-xl p-3">
+                <p className="text-xs font-semibold text-gray-500">交通資訊</p>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">{form.boardingPairId ? '抵達站' : '終點'}</label>
+                  <input type="text" value={form.toLabel ?? ''} onChange={(e) => set('toLabel', e.target.value || undefined)}
+                    placeholder={form.boardingPairId ? '例：台南、關西機場' : '例：富岡漁港'} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">交通方式</label>
+                  <input type="text" value={form.transportMode ?? ''} onChange={(e) => set('transportMode', e.target.value || undefined)}
+                    placeholder="例：train、flight、ferry、bus 或自駕" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                </div>
               </div>
             </div>
           ) : form.type === 'food' ? (
@@ -436,12 +485,14 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             />
           </div>
           <div>
-            <label className="text-xs font-semibold text-gray-500 mb-1 block">貼心提醒</label>
+            <label className="text-xs font-semibold text-gray-500 mb-1 block">
+              {form.type === 'transport' && form.boardingPairId ? '座位 / 補充資訊' : '貼心提醒'}
+            </label>
             <textarea
               rows={2}
               value={form.tips ?? ''}
               onChange={(e) => set('tips', e.target.value || undefined)}
-              placeholder="注意事項、最佳時段或小撇步（可省略）"
+              placeholder={form.type === 'transport' && form.boardingPairId ? '座位號、對號座、月台號、托運行李等' : '注意事項、最佳時段或小撇步（可省略）'}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-purple-500"
             />
           </div>
