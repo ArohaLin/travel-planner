@@ -128,6 +128,31 @@ ${lines.join('\n')}
 }
 
 /**
+ * 固定時間活動清單。有鎖定活動時才輸出，作為 AI 安排時間的硬性錨點說明。
+ */
+function buildLockedActivitiesSection(itinerary: Itinerary): string {
+  const items: string[] = []
+  for (const day of itinerary.days) {
+    for (const act of day.activities) {
+      if (!act.timeLocked) continue
+      const time = act.endTime ? `${act.startTime}–${act.endTime}` : act.startTime
+      items.push(`- 第${day.dayIndex + 1}天 ID:${act.id}「${act.title}」${time}（固定，不得修改時間）`)
+    }
+  }
+  if (items.length === 0) return ''
+  return `
+## 🔒 固定時間活動（絕對不得修改以下活動的 startTime / endTime / duration）
+
+以下活動已被使用者鎖定時間（timeLocked:true）。調整行程時這些時間是硬性錨點：
+${items.join('\n')}
+- **在這些活動「前」安排的項目，結束時間不得超過其 startTime**
+- **在這些活動「後」安排的項目，開始時間不得早於其 endTime**
+- 若用戶要求調整恰好衝突，應說明無法修改，並建議在鎖定時段以外安排
+- 可以修改這些活動的 title、notes、intro 等非時間欄位，但絕對不可動 startTime/endTime/duration
+`
+}
+
+/**
  * 行程專屬 AI 記憶 recap + 更新指示（#15）。
  * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
  * <memory>更新後的記憶</memory>，由後端解析後存回 metadata.aiMemory。
@@ -313,7 +338,7 @@ export function buildAdjustPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
+${buildMemorySection(itinerary)}${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}
 ## 核心規則
 
 1. **永遠以繁體中文回覆**
@@ -463,7 +488,7 @@ export function buildAdjustPromptGemini(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildTravelTimeSection(itinerary)}
+${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}
 ## 🧠 行程專屬記憶（每次討論前必讀）
 ${mem
   ? `先前與使用者累積的重點（喜好、厭惡、特別需求），務必遵守：\n<trip_memory>\n${mem}\n</trip_memory>`
