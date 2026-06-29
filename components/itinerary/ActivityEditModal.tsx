@@ -54,6 +54,24 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
   const [costCurrency, setCostCurrency] = useState<string>(
     initial?.cost?.currency ?? 'TWD'
   )
+  // 班次型交通卡：從 title 解析 "高鐵638 台北→台南" → vehicleNum="高鐵638", fromStation="台北"
+  const isSchedTransCard = !!(initial?.boardingPairId && initial?.type === 'transport')
+  function parseSchedTitle(title: string) {
+    const m = title.match(/^(.+?)\s+(.+?)→(.+)$/)
+    return m ? { vehicleNum: m[1].trim(), fromStation: m[2].trim() } : { vehicleNum: '', fromStation: '' }
+  }
+  const [vehicleNum, setVehicleNum] = useState(() =>
+    isSchedTransCard ? parseSchedTitle(initial?.title ?? '').vehicleNum : ''
+  )
+  const [fromStation, setFromStation] = useState(() =>
+    isSchedTransCard ? parseSchedTitle(initial?.title ?? '').fromStation : ''
+  )
+  function rebuildTitle(vNum: string, from: string, to: string | undefined) {
+    const toStr = (to ?? '').trim()
+    const route = from.trim() && toStr ? `${from.trim()}→${toStr}` : from.trim() || toStr
+    const next = [vNum.trim(), route].filter(Boolean).join(' ')
+    if (next) set('title', next)
+  }
   // 卡片照片上傳狀態
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -278,21 +296,51 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             </div>
           </div>
 
-          {/* Title */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 mb-1 block">名稱 *</label>
-            <input
-              type="text"
-              value={form.title}
-              onChange={(e) => set('title', e.target.value)}
-              placeholder="例：築地市場散步"
-              className={clsx(
-                'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
-                errors.title ? 'border-red-400' : 'border-gray-200',
-              )}
-            />
-            {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
-          </div>
+          {/* Title：班次交通卡由欄位組合自動生成，其餘手動輸入 */}
+          {isSchedTransCard ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">班次 *</label>
+                  <input
+                    type="text"
+                    value={vehicleNum}
+                    onChange={(e) => { setVehicleNum(e.target.value); rebuildTitle(e.target.value, fromStation, form.toLabel) }}
+                    placeholder="如：高鐵638、飛機CI288"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 mb-1 block">起點站 *</label>
+                  <input
+                    type="text"
+                    value={fromStation}
+                    onChange={(e) => { setFromStation(e.target.value); rebuildTitle(vehicleNum, e.target.value, form.toLabel) }}
+                    placeholder="如：台北、桃園機場"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+              </div>
+              {/* 自動組合後的完整名稱預覽 */}
+              <p className="text-[11px] text-indigo-500 px-1">完整名稱：{form.title || '（請填班次與起點站）'}</p>
+              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-semibold text-gray-500 mb-1 block">名稱 *</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => set('title', e.target.value)}
+                placeholder="例：築地市場散步"
+                className={clsx(
+                  'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
+                  errors.title ? 'border-red-400' : 'border-gray-200',
+                )}
+              />
+              {errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
+            </div>
+          )}
 
           {/* Time range + 時間鎖定 */}
           <div className="space-y-2">
@@ -395,7 +443,10 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                 <p className="text-xs font-semibold text-gray-500">交通資訊</p>
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">{form.boardingPairId ? '抵達站' : '終點'}</label>
-                  <input type="text" value={form.toLabel ?? ''} onChange={(e) => set('toLabel', e.target.value || undefined)}
+                  <input type="text" value={form.toLabel ?? ''} onChange={(e) => {
+                    set('toLabel', e.target.value || undefined)
+                    if (isSchedTransCard) rebuildTitle(vehicleNum, fromStation, e.target.value)
+                  }}
                     placeholder={form.boardingPairId ? '例：台南、關西機場' : '例：富岡漁港'} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
                 </div>
                 <div>
