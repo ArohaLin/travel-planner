@@ -253,35 +253,13 @@ const TICKET_TRANSPORT_RULES = `
  * 火車/高鐵/飛機/船/客運 一律用成對卡片，不走舊式單張 TravelRow。
  */
 const BOARDING_PAIR_RULES = `
-== 🚆 班次型交通（候車卡＋班次交通卡必須成對，最高優先）==
-**火車（台鐵/高鐵/普悠瑪/自強/莒光/區間/太魯閣）、飛機（航班/班機）、船（渡輪/船班/輪船）、客運（國光/統聯/葛瑪蘭）有固定班次時刻表——一律產出「候車卡 ＋ 班次交通卡」成對，禁止只輸出單張 transport（沒有 boardingPairId 的 TravelRow）。**
+== 班次型交通：候車卡＋班次交通卡必須成對（最高優先）==
+火車/高鐵/飛機/船/客運一律輸出「候車卡 ＋ 班次交通卡」兩張，共用同一 boardingPairId（8 字元英數字），兩張皆 timeLocked:true，禁止只輸出單張。
 
-【成對格式】每段班次型交通 = 2 張 activity，共用同一個 boardingPairId（8 字元英數字，每對唯一）：
+① 候車卡（先出現）：type "rest"/"shopping"/"food"；hasPlace:false；title "{出發站}候車/候機/候船"；startTime=出發時刻−候車時長（飛機 180分，其餘 30分），endTime=出發時刻。
+② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: reserved/needed；tips 填車次/座位/訂位代號。
 
-① **候車卡**（先出現）
-- type: "rest"（純候車）或 "shopping"/"food"（在站逛街/用餐）
-- boardingPairId: 同值，timeLocked: true，hasPlace: false
-- title: "{出發站}候車" / "{出發站}候機" / "{出發站}候船"，如「台北車站候車」「桃園機場候機・逛免稅店」
-- startTime = 班次出發時刻 − 候車時長（**飛機 180 分，其餘所有班次 30 分**）
-- endTime = 班次出發時刻（＝下方班次交通卡的 startTime）
-
-② **班次交通卡**（緊接在候車卡後，中間不可插入任何活動）
-- type: "transport"，boardingPairId: 同值，timeLocked: true
-- title 格式："{交通工具}{車次} {出發站}→{抵達站}"，如「高鐵638 台北→台南」「台鐵普悠瑪448 花蓮→台東」「飛機CI288 桃園→關西」
-- startTime = 票面/預定出發時刻；endTime = 票面/預定抵達時刻
-- transportMode: 火車/高鐵→"train"，飛機→"flight"，船→"ferry"，客運→"bus"
-- reservationStatus: 已購票→"reserved"，未購→"needed"
-- tips: 車次/座位/訂位代號（若知道）
-
-【時間範例】高鐵 10:30 出發、13:00 抵達（候車 30 分）：
-  候車卡: startTime:"10:00", endTime:"10:30", boardingPairId:"bd3k9xZ1", timeLocked:true
-  班次交通卡: startTime:"10:30", endTime:"13:00", boardingPairId:"bd3k9xZ1", timeLocked:true
-
-【注意事項】
-- 從住宿/前一景點到車站的接駁，用一張**普通** type:"transport"（無 boardingPairId）在候車卡前面。
-- 候車卡與班次交通卡之間**不可**有任何其他活動。
-- 抵達目的站後到下一景點，可加普通接駁 transport（無 boardingPairId）。
-- 若行程已有沒有 boardingPairId 的班次型交通卡，**調整時一律補上候車卡並加 boardingPairId**（不要保留舊式單張）。
+接駁（住宿→車站、抵達站→景點）用普通 transport，不加 boardingPairId。行程已有無 boardingPairId 的班次型交通卡，調整時補上候車卡並加 boardingPairId。
 `
 
 /** @deprecated 保留向後相容，新程式請用 buildAdjustPrompt */
