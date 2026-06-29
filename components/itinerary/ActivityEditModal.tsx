@@ -90,6 +90,12 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
     const next = [vNum, route].filter(Boolean).join(' ')
     if (next) set('title', next)
   }
+  // 班次卡開啟時自動以括號格式 rebuild title（修舊格式如「高鐵670 新竹→台北」→「高鐵(670) 新竹→台北」）
+  useEffect(() => {
+    if (isSchedTransCard) rebuildTitle(transType, vehicleNo, fromStation, form.toLabel)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 卡片照片上傳狀態
   const photoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingPhoto, setUploadingPhoto] = useState(false)
@@ -367,18 +373,11 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
               {errors.title && <p className="text-xs text-red-500">{errors.title}</p>}
 
               <div className="border-t border-indigo-100 pt-3 space-y-3">
-                {/* 訂位 + 平台 */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-indigo-600 mb-1 block">訂位代號 / PNR</label>
-                    <input type="text" value={form.orderNumber ?? ''} onChange={(e) => set('orderNumber', e.target.value || undefined)}
-                      placeholder="如：ABCD1234" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-indigo-600 mb-1 block">訂票平台</label>
-                    <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
-                      placeholder="如：高鐵官網" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
-                  </div>
+                {/* 訂票平台 */}
+                <div>
+                  <label className="text-xs text-indigo-600 mb-1 block">訂票平台</label>
+                  <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
+                    placeholder="如：高鐵官網" className="w-full border border-indigo-200 bg-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                 </div>
                 {/* 票價 + 幣別 */}
                 <div className="grid gap-2" style={{gridTemplateColumns:'2fr 1fr'}}>
@@ -452,7 +451,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                   className={clsx(
                     'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
                     errors.startTime ? 'border-red-400' : 'border-gray-200',
-                    form.timeLocked && 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                    form.timeLocked && 'bg-gray-100 text-gray-600 cursor-not-allowed',
                   )}
                 />
                 {errors.startTime && <p className="text-xs text-red-500 mt-1">{errors.startTime}</p>}
@@ -467,7 +466,7 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
                   className={clsx(
                     'w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500',
                     errors.endTime ? 'border-red-400' : 'border-gray-200',
-                    form.timeLocked && 'bg-gray-100 text-gray-400 cursor-not-allowed',
+                    form.timeLocked && 'bg-gray-100 text-gray-600 cursor-not-allowed',
                   )}
                 />
                 {errors.endTime && <p className="text-xs text-red-500 mt-1">{errors.endTime}</p>}

@@ -23,6 +23,8 @@ export function formatCardMain(activity: Activity): string {
   const t = activity.type
   const paren = (s?: string) => (s && s.trim() ? `（${s.trim()}）` : '')
   if (t === 'transport') {
+    // 班次型交通卡：title 已是「高鐵(670) 新竹→台北」完整格式，直接用
+    if (activity.boardingPairId) return activity.title
     const to = activity.toLabel?.trim()
     if (to) return `前往 ${to}${paren(activity.transportMode)}`
     return `${activity.title}${paren(activity.transportMode)}`
