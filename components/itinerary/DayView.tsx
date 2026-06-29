@@ -249,47 +249,30 @@ function CompositeTransportRow({ transport, onClick }: { transport: Activity; on
 }
 
 /* ─── 出發地列（前一晚住宿／第 1 天出發城市）：早餐・整理行李時間區間 ─── */
-function DepartureRow({ name, location, isHome, departTime, prepStartTime, onEdit, address, onEditAddress }: {
+function DepartureRow({ name, location, isHome, departTime, prepStartTime, onEdit, address }: {
   name: string; location?: GeoLocation | null; isHome?: boolean
   departTime?: string | null; prepStartTime?: string | null; onEdit?: () => void
-  address?: string; onEditAddress?: () => void
+  address?: string
 }) {
   const PREP_MIN = 90
   const hh = (n: number) => `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`
   const depMin = toMin(departTime ?? undefined)
   const startStr = prepStartTime ?? (depMin != null ? hh(Math.max(0, depMin - PREP_MIN)) : '')
-  const hasButtons = onEdit || (isHome && onEditAddress)
   return (
     <RowFrame timeTop={startStr || null} timeBottom={departTime ?? null} hollow hideTopLine>
       <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 px-3 py-2.5 relative">
-        {hasButtons && (
-          <div className="absolute top-2 right-2 flex gap-1">
-            {isHome && onEditAddress && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEditAddress() }}
-                title="設定起點地址"
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 active:bg-purple-100"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                </svg>
-              </button>
-            )}
-            {onEdit && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onEdit() }}
-                title="編輯出發時間"
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 active:bg-purple-100"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                </svg>
-              </button>
-            )}
-          </div>
+        {onEdit && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            title="編輯出發地"
+            className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-purple-600 hover:bg-purple-50 active:bg-purple-100"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+            </svg>
+          </button>
         )}
-        <div className={`flex items-start gap-2 ${hasButtons ? 'pr-14' : ''}`}>
+        <div className={`flex items-start gap-2 ${onEdit ? 'pr-7' : ''}`}>
           <span className="text-base leading-none mt-0.5">{isHome ? '🏠' : '🏨'}</span>
           <div className="min-w-0">
             <p className="font-medium text-gray-700 leading-snug text-sm">出發地：{name}</p>
@@ -373,7 +356,6 @@ interface DayViewProps {
   hasNoteForAccommodation?: boolean
   onEditTheme?: () => void
   onEditDeparture?: () => void
-  onEditOriginAddress?: () => void
   onEditReturnAddress?: () => void
   onLongPressActivity?: (activity: Activity) => void
 }
@@ -402,7 +384,7 @@ function ActivityRow({ activity, isLast, onClick, onLongPress }: {
   )
 }
 
-export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, onOpenAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onEditOriginAddress, onEditReturnAddress, onLongPressActivity }: DayViewProps) {
+export function DayView({ day, currency, departure, arrival, canEdit, onEditActivity, onDeleteActivity, onAddActivity, onActivityClick, onAddNote, hasNoteFor, onEditAccommodation, onAddNoteAccommodation, onOpenAccommodation, hasNoteForAccommodation, onEditTheme, onEditDeparture, onEditReturnAddress, onLongPressActivity }: DayViewProps) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   void (onEditActivity || onDeleteActivity || onAddNote || hasNoteFor) // 這些改由詳情視窗觸發；保留 props 相容
   // travelSig 為空＝路段過期（剛編輯/刪除/排序、尚未重算）→ 不用舊 travelLegs，移動列改直線概估
@@ -481,7 +463,6 @@ export function DayView({ day, currency, departure, arrival, canEdit, onEditActi
               departTime={acts[0]?.startTime}
               prepStartTime={day.prepStartTime}
               onEdit={canEdit ? onEditDeparture : undefined}
-              onEditAddress={canEdit ? onEditOriginAddress : undefined}
             />
           )}
           {canEdit && <InsertRow onClick={() => onAddActivity?.(-1)} />}

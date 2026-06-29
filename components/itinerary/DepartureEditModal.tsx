@@ -2,30 +2,35 @@
 
 import { useEffect, useState } from 'react'
 import { toMin, fromMin } from '@/lib/itinerary/reschedule'
+import { AddressAutocompleteInput } from '@/components/map/AddressAutocompleteInput'
 
 /**
- * 出發地卡片的時間編輯視窗：先按編輯鈕才開啟，改完按「確認」才生效（避免在卡片上誤觸）。
+ * 出發地卡片的編輯視窗：時間（整理行李開始 + 出發時間）+ 起點地址。
  * - 整理行李開始＝出發地卡片「起始」（純記錄，不動其它活動）
  * - 出發時間＝當天第一個行程的開始（改了當天行程往後順移重算）
+ * - 起點地址＝精確住家地址，地圖用；空白表示不設定（回落到城市名）
  */
 export function DepartureEditModal({
   open,
   prepStart,
   departTime,
+  originAddress,
   onClose,
   onSave,
 }: {
   open: boolean
   prepStart: string
   departTime: string
+  originAddress?: string
   onClose: () => void
-  onSave: (prepStart: string, departTime: string) => void
+  onSave: (prepStart: string, departTime: string, address: string) => void
 }) {
   const [s, setS] = useState(prepStart)
   const [e, setE] = useState(departTime)
+  const [addr, setAddr] = useState(originAddress ?? '')
   useEffect(() => {
-    if (open) { setS(prepStart); setE(departTime) }
-  }, [open, prepStart, departTime])
+    if (open) { setS(prepStart); setE(departTime); setAddr(originAddress ?? '') }
+  }, [open, prepStart, departTime, originAddress])
 
   if (!open) return null
 
@@ -52,7 +57,7 @@ export function DepartureEditModal({
         onClick={(ev) => ev.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-base font-bold text-gray-800">編輯出發地時間</h3>
+          <h3 className="text-base font-bold text-gray-800">編輯出發地</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500 active:bg-gray-200 -mr-1">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
@@ -66,9 +71,22 @@ export function DepartureEditModal({
           <input type="time" value={s} onChange={(ev) => onPrepChange(ev.target.value)} className={inputCls} />
         </label>
 
-        <label className="block mb-5">
+        <label className="block mb-3">
           <span className="text-sm text-gray-600">出發時間（當天第一個行程）</span>
           <input type="time" value={e} onChange={(ev) => onDepChange(ev.target.value)} className={inputCls} />
+        </label>
+
+        <label className="block mb-5">
+          <span className="text-sm text-gray-600">
+            起點地址
+            <span className="text-[10px] text-gray-400 ml-1">（選填，地圖路線更精確）</span>
+          </span>
+          <AddressAutocompleteInput
+            value={addr}
+            onChange={setAddr}
+            placeholder="例：新竹縣竹北市光明六路..."
+            className={inputCls}
+          />
         </label>
 
         <div className="flex gap-3">
@@ -79,7 +97,7 @@ export function DepartureEditModal({
             取消
           </button>
           <button
-            onClick={() => onSave(s, e)}
+            onClick={() => onSave(s, e, addr)}
             className="flex-1 py-2.5 rounded-xl bg-purple-500 text-white font-semibold active:bg-purple-600"
           >
             確認

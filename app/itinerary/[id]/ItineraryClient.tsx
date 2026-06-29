@@ -100,7 +100,6 @@ export function ItineraryClient({
   // 拖拉排序模式（長按景點卡進入）
   const [dragMode, setDragMode] = useState(false)
   const [departureEditOpen, setDepartureEditOpen] = useState(false)
-  const [editOriginAddrOpen, setEditOriginAddrOpen] = useState(false)
   const [editReturnAddrOpen, setEditReturnAddrOpen] = useState(false)
   const [savingAddr, setSavingAddr] = useState(false)
   const [todoOpen, setTodoOpen] = useState(false)
@@ -684,7 +683,7 @@ export function ItineraryClient({
   // ── 出發地時間編輯視窗（按編輯鈕開啟，確認才生效）：一次套用「整理行李開始」＋「出發時間」 ──
   //    出發時間＝第一活動開始 → setDepartureTime 整天順移；整理行李開始＝prepStartTime（純記錄）。
   //    兩者合成同一筆 update_day patch（一次歷程、一次確認）。
-  async function handleSaveDeparture(prepStart: string, departure: string) {
+  async function handleSaveDeparture(prepStart: string, departure: string, address: string) {
     if (!currentDayData) { setDepartureEditOpen(false); return }
     const activities = currentDayData.activities
     const payload: { prepStartTime?: string; activities?: Activity[] } = {}
@@ -694,18 +693,24 @@ export function ItineraryClient({
       const next = setDepartureTime(activities, m)
       if (next !== activities && changedTimeIds(activities, next).size > 0) payload.activities = next
     }
-    if (payload.prepStartTime === undefined && payload.activities === undefined) {
+    // 時間有變更才送 patch
+    if (payload.prepStartTime !== undefined || payload.activities !== undefined) {
+      const patch: ItineraryPatch = {
+        patchId: nanoid(8),
+        description: '調整出發地時間',
+        proposedBy: 'user',
+        ops: [{ op: 'update_day', dayIndex: activeDay, payload }],
+      }
+      const ok = await submitPatch(patch)
+      if (!ok) return
+    }
+    // 地址有變更才送 metadata PATCH
+    if (address !== (displayItinerary.metadata.originAddress ?? '')) {
+      await handleSaveAddress('originAddress', address)
+    } else {
       setDepartureEditOpen(false)
-      return
+      showToast('已更新出發地', 'success')
     }
-    const patch: ItineraryPatch = {
-      patchId: nanoid(8),
-      description: '調整出發地時間',
-      proposedBy: 'user',
-      ops: [{ op: 'update_day', dayIndex: activeDay, payload }],
-    }
-    const ok = await submitPatch(patch)
-    if (ok) { setDepartureEditOpen(false); showToast('已更新出發地時間', 'success') }
   }
 
   // ── 起點／終點地址編輯（行程卡 & 行程資訊卡 共用）────────────────────────────
@@ -720,8 +725,8 @@ export function ItineraryClient({
       if (res.ok) {
         const data = await res.json()
         handleMetadataUpdated({ ...displayItinerary.metadata, [field]: value.trim() || undefined, ...data.metadata })
-        setEditOriginAddrOpen(false)
         setEditReturnAddrOpen(false)
+        setDepartureEditOpen(false)
         showToast('地址已更新', 'success')
       } else {
         const d = await res.json().catch(() => ({}))
@@ -1128,7 +1133,6 @@ export function ItineraryClient({
               hasNoteForAccommodation={aiNotes.notes.some(n => n.activityId === `acc-${activeDay}`)}
               onEditTheme={() => setEditThemeOpen(true)}
               onEditDeparture={userCanEdit ? () => setDepartureEditOpen(true) : undefined}
-              onEditOriginAddress={userCanEdit && activeDay === 0 ? () => setEditOriginAddrOpen(true) : undefined}
               onEditReturnAddress={userCanEdit && activeDay === displayItinerary.days.length - 1 ? () => setEditReturnAddrOpen(true) : undefined}
               onLongPressActivity={userCanEdit ? () => { setDragMode(true); if (navigator.vibrate) navigator.vibrate(15) } : undefined}
             />
@@ -1385,15 +1389,6 @@ export function ItineraryClient({
       )}
 
       <AddressEditModal
-        open={editOriginAddrOpen}
-        title="設定起點地址"
-        description="填入精確住家地址後，地圖第一段路線會從實際位置出發（而非僅從城市中心）。"
-        value={displayItinerary.metadata.originAddress ?? ''}
-        onClose={() => setEditOriginAddrOpen(false)}
-        onSave={(v) => handleSaveAddress('originAddress', v)}
-        saving={savingAddr}
-      />
-      <AddressEditModal
         open={editReturnAddrOpen}
         title="設定終點地址"
         description="填入精確地址（留空則沿用起點地址）。"
@@ -1414,6 +1409,7 @@ export function ItineraryClient({
             })()
           }
           departTime={currentDayData.activities[0]?.startTime ?? ''}
+          originAddress={displayItinerary.metadata.originAddress}
           onClose={() => setDepartureEditOpen(false)}
           onSave={handleSaveDeparture}
         />
