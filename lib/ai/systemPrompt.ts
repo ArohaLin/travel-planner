@@ -153,6 +153,35 @@ ${items.join('\n')}
 }
 
 /**
+ * 小幫手模式專用：時間鎖定說明。
+ * 與 buildLockedActivitiesSection 不同：此版本允許在使用者提供明確票面資料時覆寫時間，
+ * 但必須使用 two-op 手續，且僅限票券/訂位確認單這類「有明確票面時間的資料」。
+ */
+function buildAssistantLockedSection(itinerary: Itinerary): string {
+  const items: string[] = []
+  for (const day of itinerary.days) {
+    for (const act of day.activities) {
+      if (!act.timeLocked) continue
+      const time = act.endTime ? `${act.startTime}–${act.endTime}` : act.startTime
+      items.push(`- 第${day.dayIndex + 1}天 ID:${act.id}「${act.title}」${time}`)
+    }
+  }
+  if (items.length === 0) return ''
+  return `
+## 🔒 時間鎖定活動
+以下活動的 timeLocked:true，時間受保護：
+${items.join('\n')}
+
+**時間鎖定的覆寫規則（小幫手模式）**：
+- 一般情況（使用者只說「調整」「修改」「換一下」）→ **不可改時間**，只改非時間欄位（title/bookingReference/cost/notes 等）。
+- 唯一允許覆寫的情況：使用者提供了**明確的票面資料**（車票截圖、機票確認單、訂位確認信等，上面有具體出發/到達時刻）→ 照票面覆寫，但**必須送兩個連續 op**：
+  1. 第一個 update_activity：包含新的 startTime/endTime ＋ 訂位資訊 ＋ **"timeLocked": false**（解鎖才能更新時間）
+  2. 第二個 update_activity（同一 activityId）：只帶 **{ "timeLocked": true }**（立即重新鎖定）
+  省略 "timeLocked": false 的話，系統會自動把 startTime/endTime 從 patch 移除，時間更新無效。
+`
+}
+
+/**
  * 行程專屬 AI 記憶 recap + 更新指示（#15）。
  * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
  * <memory>更新後的記憶</memory>，由後端解析後存回 metadata.aiMemory。
@@ -265,11 +294,7 @@ const BOARDING_PAIR_RULES = `
 ① 候車卡（先出現）：type "rest"/"shopping"/"food"；hasPlace:false；title "{出發站}候車/候機/候船"；startTime=出發時刻−候車時長（飛機 180分，其餘 30分），endTime=出發時刻。**不設 timeLocked**（使用者可自行微調出發時間）。
 ② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: "reserved"；**bookingReference 填訂位代號/確認碼；cost 填票價**；tips 可補「車次・車廂座位・訂位代號」整體摘要（選填）。
 
-更新既有行程的票券/訂位資訊時：**訂位代號（bookingReference）、票價（cost）、reservationStatus 一律更新在「班次交通卡」（type="transport", timeLocked=true 那張）上，不要寫入候車卡的 notes/tips**。候車卡只需確認 endTime 與班次交通卡的 startTime 吻合。
-⚠️ **timeLocked 覆寫**：班次交通卡有 timeLocked:true 時間鎖定。**更新票面時間（startTime/endTime）時，必須送出兩個連續的 update_activity op**：
-  - 第一個 op payload：新的 startTime/endTime/bookingReference/cost/reservationStatus… ＋ "timeLocked": false（解鎖才能更新時間）
-  - 第二個 op payload（同一個 activityId）：{ "timeLocked": true }（立即重新鎖定）
-  省略 timeLocked:false 的話，系統會自動把 startTime/endTime 從 payload 移除，時間更新無效。
+更新既有行程的票券/訂位資訊時：**訂位代號（bookingReference）、票價（cost）、reservationStatus 一律更新在「班次交通卡」（type="transport" 那張）上，不要寫入候車卡的 notes/tips**。候車卡只需確認 endTime 與班次交通卡的 startTime 吻合。
 
 接駁（住宿→車站、抵達站→景點）用普通 transport，不加 boardingPairId。行程已有無 boardingPairId 的班次型交通卡，調整時補上候車卡並加 boardingPairId。
 `
@@ -702,7 +727,7 @@ export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivi
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${lock}
+${buildMemorySection(itinerary)}${buildAssistantLockedSection(itinerary)}${lock}
 
 == 你的任務（依序）==
 1. **看懂**：判斷使用者給的是什麼（訂房/門票/交通票確認、店家招牌或菜單照、景點照、地圖或部落格連結、純文字安排…）。
