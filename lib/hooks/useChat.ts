@@ -428,19 +428,26 @@ export function useChat(itineraryId: string): UseChatReturn {
       setIsGeneratingPlans(true) // 顯示「處理中」動畫
       setLastPlans(null)
       setLastPlansMessageId(null)
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 150_000) // 150 秒 client timeout
       try {
         const res = await fetch('/api/ai/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ itineraryId, threadId, ...payload }),
+          signal: controller.signal,
         })
         const data = await res.json().catch(() => ({}))
         if (data?.aiInfo) saveLastAIInfo(data.aiInfo)
         if (!res.ok) return { ok: false, error: data?.error ?? '小幫手暫時無回應' }
         return { ok: true }
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          return { ok: false, error: 'AI 分析時間過長，請稍後再試或換一張較清晰的照片' }
+        }
         return { ok: false, error: '網路錯誤，請再試一次' }
       } finally {
+        clearTimeout(timer)
         setIsStreaming(false)
         setIsGeneratingPlans(false)
         // 重載：撈出伺服器寫好的 user+assistant 訊息與待選方案（Realtime 也會送，這裡保險）
