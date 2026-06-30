@@ -514,6 +514,38 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 ---
 
+### 1-F 候車卡定位到舊有誤位置（region bias 附上行程目的地城市）
+
+**發生時間**：2026-06-30
+
+**症狀**：花蓮行程第一天，路線圖顯示「家裡 → 新竹市區（實線）→ 虛直線到台北」；
+預期應為「家裡 → 竹北高鐵站（實線）→ 虛直線到台北高鐵站」。
+
+**根本原因**：
+
+- `RoutePrefetcher` 與 `MapView` 在 geocode 候車卡（`type=rest + boardingPairId`）時，
+  傳入 `regionBias = day.city || destination`。
+- 該行程 Day 0 的 `day.city = "花蓮市"`（AI 以行程主要目的地標記整天）。
+- 於是 geocoder 實際搜尋 **「新竹高鐵站 花蓮市」**，返回不精確座標（24.8046, 120.9718），
+  比竹北高鐵站實際位置（24.808, 120.974）偏差約 480m，在地圖上落入新竹市區範圍。
+
+**修復方法**：
+
+| 動作 | 檔案 |
+|---|---|
+| 候車卡 enqueue 改為 `regionBias = undefined`（站名已含地名） | `MapView.tsx`、`RoutePrefetcher.tsx` |
+| 清除 DB 裡的錯誤座標 + Day 0 travelSig/travelLegs | 一次性腳本 `scripts/_fix-day0-geo.mts` |
+
+**預防原則**：
+
+- **候車卡（departure station）的 title 已包含城市**（例「新竹高鐵站」、「台北車站」），
+  無需 region bias；加了 `day.city` 反而把花蓮等遠地城市附入 query，導致誤定位。
+- **一般景點** 的 title 通常只有景點名（「太魯閣」、「清水斷崖」）需要 `day.city` 才能定位正確；
+  候車卡是例外。
+- 修改 geocode region bias 規則時，確認 4 條管線一致（見附錄）。
+
+---
+
 ## 附錄：四條 geocode 管線一覽
 
 每次改過濾規則，以下四處要同步：
