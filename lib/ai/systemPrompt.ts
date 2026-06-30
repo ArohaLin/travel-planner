@@ -222,6 +222,7 @@ const PATCH_SCHEMA_DOCS = `
 
 **必填**：id（8字元英數字）、type、title、startTime
 **選填**（只在有意義時才加）：endTime、cost（有具體費用）、bookingUrl、reservationStatus（"none"無需預訂／"needed"需要預訂／"reserved"已經預訂；省略＝"none"，需預訂的請填 "needed"）
+**預訂資訊欄位**（有票券/訂位確認資料時使用）：bookingReference（訂位代號/確認碼/電子票券號）、orderNumber（訂單編號）、bookingPlatform（訂票平台）、depositPaid（訂金金額，Money 格式）、freeCancelBy（最晚免費取消，文字）、contact（聯絡資訊）
 **語意標記**（消猜測，依情況才填）：rest 純動作(check-in/盥洗)填 hasPlace:false、其實是要去的真實地點填 hasPlace:true；transport 含還車/候船/報到等複合用途填 isComposite:true。
 
 **省略以下欄位**（除非使用者明確要求）：description、location、duration、notes
@@ -241,7 +242,12 @@ const TICKET_TRANSPORT_RULES = `
    例：去程要拆成「高鐵 新竹→台北」一張 ＋「台鐵 台北→花蓮」另一張，不可合成「高鐵與台鐵前往花蓮」。
 2. **時間照票面一字不差**：每段 startTime=票面發車時刻、endTime=票面到站時刻，**直接抄，嚴禁估算、四捨五入、或為了銜接而順移**。
 3. **轉乘空檔要看得見**：前段到站到後段發車之間若 ≥10 分鐘，不可把空檔吃掉讓兩段時間相接——在後段 title 標「轉乘」「候車」（例「台北轉乘候車後搭台鐵」），或在兩段間排一張 type:"rest" 候車卡說明等待。
-4. **車次／座位／訂位代號不可遺失**：車次車種、車廂座位、訂位代號、票價，寫進 transport 與 tips 欄位（例 tips:"自強448普悠瑪・5車31號・訂位代號01194492"）；isComposite 視情況。
+4. **車次／座位／訂位代號必須填入結構化欄位**：
+   - reservationStatus → "reserved"（已購票）
+   - bookingReference → 訂位代號/確認碼（例 "01536612"）**（必填，用結構化欄位，絕不可只塞進 tips 文字）**
+   - cost → 票價（Money 格式，例 {"amount":1015,"currency":"TWD","isEstimate":false}；多人共一代號填總價）
+   - tips → 可補一行整體摘要（例 "高鐵1549・標準車廂對號座・全票3+孩童1・訂位代號01536612"）（選填）
+   - isComposite 視情況。
 5. **title 格式**：有車次的城際交通用「{交通工具}{車次} {出發站}→{抵達站}」（例「台鐵448普悠瑪 台北→花蓮」「高鐵670 新竹→台北」）；接駁仍用「出發：A前往B」。
 6. **接駁段時間要扣著票面**：住家/飯店→車站、車站→飯店的接駁各自一張 transport，時間須讓使用者趕得上票面發車（例 高鐵18:57發車→接駁段須在18:57前抵站，不可排到18:57才出發）。
 7. **reservationStatus**：票券＝已購票，相關交通卡 reservationStatus 設 "reserved"。
@@ -257,7 +263,9 @@ const BOARDING_PAIR_RULES = `
 火車/高鐵/飛機/船/客運一律輸出「候車卡 ＋ 班次交通卡」兩張，共用同一 boardingPairId（8 字元英數字），禁止只輸出單張。
 
 ① 候車卡（先出現）：type "rest"/"shopping"/"food"；hasPlace:false；title "{出發站}候車/候機/候船"；startTime=出發時刻−候車時長（飛機 180分，其餘 30分），endTime=出發時刻。**不設 timeLocked**（使用者可自行微調出發時間）。
-② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: reserved/needed；tips 填車次/座位/訂位代號。
+② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: "reserved"；**bookingReference 填訂位代號/確認碼；cost 填票價**；tips 可補「車次・車廂座位・訂位代號」整體摘要（選填）。
+
+更新既有行程的票券/訂位資訊時：**訂位代號（bookingReference）、票價（cost）、reservationStatus 一律更新在「班次交通卡」（type="transport", timeLocked=true 那張）上，不要寫入候車卡的 notes/tips**。候車卡只需確認 endTime 與班次交通卡的 startTime 吻合。
 
 接駁（住宿→車站、抵達站→景點）用普通 transport，不加 boardingPairId。行程已有無 boardingPairId 的班次型交通卡，調整時補上候車卡並加 boardingPairId。
 `
@@ -736,7 +744,7 @@ ${buildMemorySection(itinerary)}${lock}
 - remove_activity: { "op": "remove_activity", "dayIndex": N, "activityId": "id" }
 - set_day_accommodation: { "op": "set_day_accommodation", "dayIndex": N, "payload": { Accommodation } }
 
-Activity 必填 id(8字)/type/title/startTime；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl/hasPlace(false=純動作無地點)/isComposite(true=複合交通)
+Activity 必填 id(8字)/type/title/startTime；選填 endTime/intro/transport/recommendation/tips/cost/placeLabel/foodItems/mealType/highlight/reservationStatus/bookingUrl/hasPlace(false=純動作無地點)/isComposite(true=複合交通)/**預訂欄位**：bookingReference(訂位代號/確認碼/電子票券號)/orderNumber(訂單編號)/bookingPlatform(訂票平台)/depositPaid(訂金,Money)/freeCancelBy(最晚免費取消,文字)/contact(聯絡資訊)
 Accommodation 必填 id/name/location/checkInTime/checkOutTime；選填 roomType(房型) / cost(每晚價,Money) / breakfast(早餐:"included"含/"excluded"不含) / feeIncludes(費用包含項目,早餐以外的餐食/活動/票券) / reservationStatus / bookingPlatform(訂房平台) / orderNumber(訂單/訂位編號) / bookingReference(訂位代號/確認碼/電子票券號) / bookingUrl(訂房連結) / depositPaid(訂金金額,已付或待匯都填,Money) / freeCancelBy(最晚免費取消,文字如「2026-06-20 23:59 前」) / contact(電話/Email/訂房人) / intro(住宿說明) / tips(重要事項/入住須知/匯款指示) / notes(無法歸類的其他補充)
 
 == 欄位與地址規則 ==
