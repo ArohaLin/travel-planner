@@ -193,17 +193,12 @@ function BookingCard({
   const isStandalone = b.source === 'standalone'
   const hasBookingData = !!(b.bookingPlatform || b.orderNumber || b.bookingReference || b.bookingUrl || b.freeCancelBy)
 
-  return (
-    <div
-      className={clsx(
-        'bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 flex flex-col gap-2',
-        canEdit && onClick ? 'active:bg-gray-50 cursor-pointer' : '',
-      )}
-      onClick={canEdit && onClick ? onClick : undefined}
-    >
+  // 主內容區：用 button 包住，iOS Safari 才能可靠觸發點擊
+  const mainContent = (
+    <>
       {/* Top row */}
       <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
             <span className={clsx('text-xs px-1.5 py-0.5 rounded font-medium', SOURCE_BADGE[b.source])}>
               {SOURCE_LABEL[b.source]}
@@ -215,7 +210,6 @@ function BookingCard({
           </div>
           <p className="text-sm font-semibold text-gray-900 truncate">{b.title}</p>
         </div>
-        {/* 可編輯時顯示箭頭提示（整卡可點）*/}
         {canEdit && onClick && (
           <svg className="w-4 h-4 text-gray-300 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
@@ -233,7 +227,7 @@ function BookingCard({
 
       {/* Booking details */}
       {(b.bookingPlatform || b.orderNumber || b.bookingReference || b.freeCancelBy) && (
-        <div className="flex flex-col gap-0.5 text-xs text-gray-500 border-t border-gray-50 pt-1.5 mt-0.5">
+        <div className="flex flex-col gap-0.5 text-xs text-gray-500 border-t border-gray-50 pt-1.5 mt-0.5 text-left">
           {b.bookingPlatform && <span>🏷️ {b.bookingPlatform}</span>}
           {b.orderNumber && <span className="truncate">📋 {b.orderNumber}</span>}
           {b.bookingReference && <span className="truncate">🎫 {b.bookingReference}</span>}
@@ -252,9 +246,26 @@ function BookingCard({
           {b.depositPaid && <span className="text-gray-500">訂金 {fmtMoney(b.depositPaid)}</span>}
         </div>
       )}
+    </>
+  )
 
-      {/* Quick actions — stopPropagation 防止整卡 onClick 觸發 */}
-      <div className="flex gap-2 mt-0.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col">
+      {/* 主內容：可編輯時用 <button> 確保 iOS Safari 可靠點擊；否則用 div */}
+      {canEdit && onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          className="w-full text-left px-4 pt-3 pb-2 flex flex-col gap-2 active:bg-gray-50 rounded-t-2xl"
+        >
+          {mainContent}
+        </button>
+      ) : (
+        <div className="px-4 pt-3 pb-2 flex flex-col gap-2">{mainContent}</div>
+      )}
+
+      {/* Quick actions — 兄弟節點，不是子節點，自然不會干擾上方 button */}
+      <div className="flex gap-2 px-4 pb-3 flex-wrap">
         {b.bookingUrl && (
           <a
             href={b.bookingUrl}
