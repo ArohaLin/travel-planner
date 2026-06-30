@@ -41,7 +41,8 @@ import { TodoSheet } from '@/components/itinerary/TodoSheet'
 import { useTodos } from '@/lib/hooks/useTodos'
 import { useShopping } from '@/lib/hooks/useShopping'
 import { ShoppingSheet, type ScheduleStore } from '@/components/shopping/ShoppingSheet'
-import { BookingSheet } from '@/components/bookings/BookingSheet'
+import { BookingSheet, type UnifiedBooking } from '@/components/bookings/BookingSheet'
+import type { LinkedBookingUpdate } from '@/components/bookings/BookingEditModal'
 import { useBookings } from '@/lib/hooks/useBookings'
 import { deriveAutoTodos } from '@/lib/todo/deriveTodos'
 import { MapView } from '@/components/map/MapView'
@@ -288,6 +289,81 @@ export function ItineraryClient({
       setEditAccommodation(null)
       showToast(multi ? `住宿「${updated.name}」已更新（同步 ${targetDays.length} 晚）` : `住宿「${updated.name}」已更新`, 'success')
     }
+  }
+
+  // ── 預約管理：就地編輯連結的活動/住宿預約欄位 ────────────────────────────────
+  async function handleSaveLinkedBooking(ub: UnifiedBooking, updates: LinkedBookingUpdate): Promise<boolean> {
+    if (ub.source === 'activity' && ub.rawId !== undefined && ub.dayIndex !== undefined) {
+      // update_activity patch：把預約欄位寫回活動
+      const day = displayItinerary.days[ub.dayIndex]
+      const act = day?.activities.find((a) => a.id === ub.rawId)
+      if (!act) { showToast('找不到活動', 'error'); return false }
+      const patch: ItineraryPatch = {
+        patchId: nanoid(8),
+        description: `編輯預約：${act.title}`,
+        proposedBy: 'user',
+        ops: [{
+          op: 'update_activity',
+          dayIndex: ub.dayIndex,
+          activityId: act.id,
+          payload: {
+            title: updates.title,
+            reservationStatus: updates.reservationStatus,
+            cost: updates.cost ?? act.cost,
+            depositPaid: updates.depositPaid,
+            bookingPlatform: updates.bookingPlatform,
+            orderNumber: updates.orderNumber,
+            bookingReference: updates.bookingReference,
+            bookingUrl: updates.bookingUrl,
+            freeCancelBy: updates.freeCancelBy,
+            contact: updates.contact,
+            notes: updates.notes ?? act.notes,
+          },
+        }],
+      }
+      const ok = await submitPatch(patch)
+      if (ok) showToast(`已更新「${act.title}」預約資訊`, 'success')
+      return ok
+    }
+
+    if (ub.source === 'lodging' && ub.rawId !== undefined && ub.dayIndex !== undefined) {
+      // 同 id 住宿跨多晚一併同步
+      const sameIdDays = displayItinerary.days
+        .filter((d) => d.accommodation?.id === ub.rawId)
+        .map((d) => d.dayIndex)
+      const targetDays = sameIdDays.length > 0 ? sameIdDays : [ub.dayIndex]
+      const day = displayItinerary.days[ub.dayIndex]
+      const acc = day?.accommodation
+      if (!acc) { showToast('找不到住宿', 'error'); return false }
+      const updated = {
+        ...acc,
+        name: updates.title,
+        reservationStatus: updates.reservationStatus,
+        cost: updates.cost ?? acc.cost,
+        depositPaid: updates.depositPaid,
+        bookingPlatform: updates.bookingPlatform,
+        orderNumber: updates.orderNumber,
+        bookingReference: updates.bookingReference,
+        bookingUrl: updates.bookingUrl,
+        freeCancelBy: updates.freeCancelBy,
+        contact: updates.contact,
+        notes: updates.notes ?? acc.notes,
+      }
+      const multi = targetDays.length > 1
+      const patch: ItineraryPatch = {
+        patchId: nanoid(8),
+        description: multi
+          ? `編輯住宿預約：${acc.name}（同步 ${targetDays.length} 晚）`
+          : `編輯住宿預約：${acc.name}`,
+        proposedBy: 'user',
+        ops: targetDays.map((dayIndex) => ({ op: 'set_day_accommodation', dayIndex, payload: updated })),
+      }
+      const ok = await submitPatch(patch)
+      if (ok) showToast(multi ? `已更新「${acc.name}」預約（同步 ${targetDays.length} 晚）` : `已更新「${acc.name}」預約`, 'success')
+      return ok
+    }
+
+    return false
   }
 
   // ── 住宿複製到其他天 ─────────────────────────────────────────────────────────
@@ -1385,6 +1461,7 @@ export function ItineraryClient({
           onAddBooking={bookingState.addBooking}
           onEditBooking={bookingState.editBooking}
           onDeleteBooking={bookingState.deleteBooking}
+          onSaveLinkedBooking={handleSaveLinkedBooking}
         />
       )}
 

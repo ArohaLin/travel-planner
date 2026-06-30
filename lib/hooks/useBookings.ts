@@ -120,6 +120,7 @@ function toBody(data: Partial<Booking>): Record<string, unknown> {
     depositPaid: data.depositPaid,
     bookingPlatform: data.bookingPlatform,
     orderNumber: data.orderNumber,
+    bookingReference: data.bookingReference,
     bookingUrl: data.bookingUrl,
     freeCancelBy: data.freeCancelBy,
     contact: data.contact,

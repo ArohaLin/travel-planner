@@ -37,6 +37,7 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
   // 訂房資訊
   const [bookingPlatform, setBookingPlatform] = useState(accommodation.bookingPlatform ?? '')
   const [orderNumber, setOrderNumber] = useState(accommodation.orderNumber ?? '')
+  const [bookingReference, setBookingReference] = useState(accommodation.bookingReference ?? '')
   const [freeCancelBy, setFreeCancelBy] = useState(accommodation.freeCancelBy ?? '')
   // 照片
   const [userPhotoUrl, setUserPhotoUrl] = useState(accommodation.userPhotoUrl)
@@ -103,6 +104,7 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
       bookingUrl: bookingUrl.trim() || undefined,
       bookingPlatform: bookingPlatform.trim() || undefined,
       orderNumber: orderNumber.trim() || undefined,
+      bookingReference: bookingReference.trim() || undefined,
       depositPaid: parseMoney(depositAmount, depositCurrency, accommodation.depositPaid),
       freeCancelBy: freeCancelBy.trim() || undefined,
       intro: intro.trim() || undefined,
@@ -275,6 +277,10 @@ export function AccommodationEditModal({ accommodation, onSave, onClose, onUploa
                   <label className="text-xs text-gray-500 mb-1 block">訂單編號</label>
                   <input type="text" value={orderNumber} onChange={(e) => setOrderNumber(e.target.value)} placeholder="例：A1234567" className={inputCls} />
                 </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">訂位代號（確認碼/票券號）</label>
+                <input type="text" value={bookingReference} onChange={(e) => setBookingReference(e.target.value)} placeholder="例：ABCDEF" className={inputCls} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">訂房連結</label>

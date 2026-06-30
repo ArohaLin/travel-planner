@@ -90,6 +90,8 @@ export const ActivitySchema = z.object({
   freeCancelBy: z.string().optional(),
   /** 聯絡資訊（電話 / Email）*/
   contact: z.string().optional(),
+  /** 訂位代號（訂位碼 / 電子票券號 / 確認碼；與訂單編號不同來源時並列）*/
+  bookingReference: z.string().optional(),
   /** 時間鎖定：true 時任何自動重算（AI/拖拉）皆不可改 startTime/endTime/duration */
   timeLocked: z.boolean().optional(),
   /** 候車卡/班次交通卡的配對 ID：候車卡（非 transport）與班次交通卡（transport）共用同一值，
@@ -133,6 +135,8 @@ export const AccommodationSchema = z.object({
   bookingPlatform: z.string().optional(),
   /** 訂單編號 */
   orderNumber: z.string().optional(),
+  /** 訂位代號（訂位碼 / 電子票券號 / 確認碼）*/
+  bookingReference: z.string().optional(),
   /** 已付訂金 */
   depositPaid: MoneySchema.optional(),
   /** 最晚免費取消（自由文字，如「2026-06-20 23:59 前」）*/

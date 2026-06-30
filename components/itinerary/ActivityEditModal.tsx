@@ -215,7 +215,11 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
       recommendation: form.recommendation?.trim() || undefined,
       tips: form.tips?.trim() || undefined,
       orderNumber: form.orderNumber?.trim() || undefined,
+      bookingReference: form.bookingReference?.trim() || undefined,
       bookingPlatform: form.bookingPlatform?.trim() || undefined,
+      depositPaid: form.depositPaid ?? undefined,
+      freeCancelBy: form.freeCancelBy?.trim() || undefined,
+      contact: form.contact?.trim() || undefined,
       cost: builtCost,
       location,
     }
@@ -638,17 +642,56 @@ export function ActivityEditModal({ mode, initial, onSave, onClose, onUploadPhot
             </div>
           </div>
 
-          {/* Booking URL (only when 需要/已預訂) */}
+          {/* 訂票細節（需要/已預訂才顯示，非交通類）*/}
           {(form.reservationStatus ?? (form.bookingRequired ? 'needed' : 'none')) !== 'none' && (
-            <div>
-              <label className="text-xs font-semibold text-gray-500 mb-1 block">預訂連結</label>
-              <input
-                type="url"
-                value={form.bookingUrl ?? ''}
-                onChange={(e) => set('bookingUrl', e.target.value || undefined)}
-                placeholder="https://..."
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
+            <div className="space-y-3 bg-purple-50/60 rounded-xl p-3 border border-purple-100">
+              <p className="text-xs font-semibold text-purple-700">訂票資訊</p>
+              {form.type !== 'transport' && (
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">訂票平台</label>
+                  <input type="text" value={form.bookingPlatform ?? ''} onChange={(e) => set('bookingPlatform', e.target.value || undefined)}
+                    placeholder="KKday / Klook / 官網…" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">訂單編號</label>
+                  <input type="text" value={form.orderNumber ?? ''} onChange={(e) => set('orderNumber', e.target.value || undefined)}
+                    placeholder="訂單/訂位號" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">訂位代號</label>
+                  <input type="text" value={form.bookingReference ?? ''} onChange={(e) => set('bookingReference', e.target.value || undefined)}
+                    placeholder="確認碼/票券號" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">預訂連結</label>
+                <input type="url" value={form.bookingUrl ?? ''} onChange={(e) => set('bookingUrl', e.target.value || undefined)}
+                  placeholder="https://…" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">訂金（{form.cost?.currency ?? costCurrency}）</label>
+                  <input type="number" min="0"
+                    value={form.depositPaid?.amount != null ? String(form.depositPaid.amount) : ''}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      set('depositPaid', v ? { amount: parseFloat(v), currency: form.cost?.currency ?? costCurrency, isEstimate: false } : undefined)
+                    }}
+                    placeholder="0" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">最晚免費取消</label>
+                  <input type="text" value={form.freeCancelBy ?? ''} onChange={(e) => set('freeCancelBy', e.target.value || undefined)}
+                    placeholder="2026-08-01 前" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">聯絡資訊</label>
+                <input type="text" value={form.contact ?? ''} onChange={(e) => set('contact', e.target.value || undefined)}
+                  placeholder="電話 / Email" className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" />
+              </div>
             </div>
           )}
         </div>

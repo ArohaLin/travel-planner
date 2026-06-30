@@ -19,6 +19,7 @@ function fields(body: any) {
     deposit_paid: body.depositPaid ?? null,
     booking_platform: body.bookingPlatform ? String(body.bookingPlatform) : null,
     order_number: body.orderNumber ? String(body.orderNumber) : null,
+    booking_reference: body.bookingReference ? String(body.bookingReference) : null,
     booking_url: body.bookingUrl ? String(body.bookingUrl) : null,
     free_cancel_by: body.freeCancelBy ? String(body.freeCancelBy) : null,
     contact: body.contact ? String(body.contact) : null,
@@ -121,6 +122,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const bookingFields = {
       bookingPlatform: bk.booking_platform ?? undefined,
       orderNumber: bk.order_number ?? undefined,
+      bookingReference: bk.booking_reference ?? undefined,
       bookingUrl: bk.booking_url ?? undefined,
       depositPaid: bk.deposit_paid ?? undefined,
       freeCancelBy: bk.free_cancel_by ?? undefined,
@@ -177,12 +179,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
         cost: act.cost ?? null,
         booking_platform: act.bookingPlatform ?? null,
         order_number: act.orderNumber ?? null,
+        booking_reference: act.bookingReference ?? null,
         booking_url: act.bookingUrl ?? null,
         deposit_paid: act.depositPaid ?? null,
         free_cancel_by: act.freeCancelBy ?? null,
         contact: act.contact ?? null,
       }
-      delete act.bookingPlatform; delete act.orderNumber; delete act.bookingUrl
+      delete act.bookingPlatform; delete act.orderNumber; delete act.bookingReference; delete act.bookingUrl
       delete act.depositPaid; delete act.freeCancelBy; delete act.contact
       act.reservationStatus = 'none'
     } else {
@@ -196,12 +199,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
         cost: acc.cost ?? null,
         booking_platform: acc.bookingPlatform ?? null,
         order_number: acc.orderNumber ?? null,
+        booking_reference: acc.bookingReference ?? null,
         booking_url: acc.bookingUrl ?? null,
         deposit_paid: acc.depositPaid ?? null,
         free_cancel_by: acc.freeCancelBy ?? null,
         contact: acc.contact ?? null,
       }
-      delete acc.bookingPlatform; delete acc.orderNumber; delete acc.bookingUrl
+      delete acc.bookingPlatform; delete acc.orderNumber; delete acc.bookingReference; delete acc.bookingUrl
       delete acc.depositPaid; delete acc.freeCancelBy; delete acc.contact
       acc.reservationStatus = 'none'
     }

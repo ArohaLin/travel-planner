@@ -21,6 +21,7 @@ export interface Booking {
   depositPaid?: BookingMoney
   bookingPlatform?: string
   orderNumber?: string
+  bookingReference?: string
   bookingUrl?: string
   freeCancelBy?: string
   contact?: string
@@ -45,6 +46,7 @@ export function mapBooking(row: any): Booking {
     depositPaid: row.deposit_paid ?? undefined,
     bookingPlatform: row.booking_platform ?? undefined,
     orderNumber: row.order_number ?? undefined,
+    bookingReference: row.booking_reference ?? undefined,
     bookingUrl: row.booking_url ?? undefined,
     freeCancelBy: row.free_cancel_by ?? undefined,
     contact: row.contact ?? undefined,

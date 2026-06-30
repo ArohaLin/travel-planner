@@ -168,9 +168,6 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
                     <span className="text-gray-400">預約</span>
                     <span className={`text-sm ${reserved ? 'text-emerald-600' : 'text-amber-600'}`}>
                       {reserved ? '✅ 已預訂' : '📅 需預訂'}
-                      {activity.bookingUrl && (
-                        <a href={activity.bookingUrl} target="_blank" rel="noopener noreferrer" className="underline ml-1">連結</a>
-                      )}
                     </span>
                   </div>
                 )
@@ -178,7 +175,65 @@ export function ActivityDetailModal({ activity, dayNumber, onClose, canEdit, onE
             </div>
           </Section>
 
-          {/* ② 介紹與安排理由 */}
+          {/* ② 訂票資訊（有預約欄位才顯示）*/}
+          {(() => {
+            const hasBooking = !!(
+              activity.bookingPlatform || activity.orderNumber || activity.bookingReference ||
+              activity.depositPaid || activity.freeCancelBy || activity.contact ||
+              (activity.reservationStatus && activity.reservationStatus !== 'none' && activity.bookingUrl)
+            )
+            if (!hasBooking) return null
+            return (
+              <Section title="訂票資訊">
+                <div className="rounded-2xl border border-purple-100 bg-purple-50/40 p-3 space-y-1.5">
+                  {activity.bookingPlatform && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">平台</span>
+                      <span className="text-gray-800">{activity.bookingPlatform}</span>
+                    </div>
+                  )}
+                  {activity.orderNumber && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">訂單編號</span>
+                      <span className="text-gray-800 break-all">{activity.orderNumber}</span>
+                    </div>
+                  )}
+                  {activity.bookingReference && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">訂位代號</span>
+                      <span className="text-gray-800 break-all">{activity.bookingReference}</span>
+                    </div>
+                  )}
+                  {activity.depositPaid && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">訂金</span>
+                      <span className="text-gray-800">{formatMoney(activity.depositPaid)}</span>
+                    </div>
+                  )}
+                  {activity.freeCancelBy && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">免費取消</span>
+                      <span className="text-gray-800">{activity.freeCancelBy}</span>
+                    </div>
+                  )}
+                  {activity.contact && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <span className="text-gray-500 flex-shrink-0 w-20">聯絡</span>
+                      <span className="text-gray-800">{activity.contact}</span>
+                    </div>
+                  )}
+                  {activity.bookingUrl && (
+                    <a href={activity.bookingUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-block text-sm text-purple-700 underline mt-0.5">
+                      開啟訂票連結 ↗
+                    </a>
+                  )}
+                </div>
+              </Section>
+            )
+          })()}
+
+          {/* ③ 介紹與安排理由 */}
           <Section title="介紹與安排理由">
             {activity.intro || activity.description ? (
               <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">

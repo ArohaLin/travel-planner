@@ -31,12 +31,12 @@ function fmt(field: string, val: any): string {
 const ACC_LABELS: [string, string][] = [
   ['name', '名稱'], ['location', '地址'], ['roomType', '房型'], ['checkInTime', '入住'], ['checkOutTime', '退房'],
   ['reservationStatus', '預約狀態'], ['cost', '每晚金額'], ['breakfast', '早餐'], ['feeIncludes', '費用包含'], ['depositPaid', '訂金'],
-  ['bookingPlatform', '訂房平台'], ['orderNumber', '訂單編號'], ['freeCancelBy', '免費取消'],
+  ['bookingPlatform', '訂房平台'], ['orderNumber', '訂單編號'], ['bookingReference', '訂位代號'], ['freeCancelBy', '免費取消'],
   ['contact', '聯絡資訊'], ['bookingUrl', '訂房連結'], ['intro', '說明'], ['tips', '重要事項'], ['notes', '備註'],
 ]
 const ACT_LABELS: Record<string, string> = {
   title: '名稱', startTime: '開始', endTime: '結束', location: '地址', cost: '費用',
-  reservationStatus: '預約狀態', bookingUrl: '預訂連結', intro: '介紹', transport: '交通',
+  reservationStatus: '預約狀態', bookingUrl: '預訂連結', bookingPlatform: '訂票平台', orderNumber: '訂單編號', bookingReference: '訂位代號', depositPaid: '訂金', freeCancelBy: '免費取消', contact: '聯絡資訊', intro: '介紹', transport: '交通',
   recommendation: '推薦', tips: '貼心提醒', highlight: '特別提醒', placeLabel: '地點',
   mealType: '餐別', foodItems: '飲食項目', notes: '備註', description: '說明',
 }

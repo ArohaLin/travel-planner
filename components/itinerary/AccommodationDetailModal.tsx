@@ -35,7 +35,7 @@ export function AccommodationDetailModal({
   const acc = accommodation
   const resv = effectiveLodgingReservation(acc.reservationStatus)
   const photoSrc = acc.userPhotoUrl ?? (acc.photoRef ? `/api/photo?ref=${encodeURIComponent(acc.photoRef)}` : null)
-  const hasBookingInfo = acc.bookingPlatform || acc.orderNumber || acc.bookingUrl || acc.depositPaid || acc.freeCancelBy
+  const hasBookingInfo = acc.bookingPlatform || acc.orderNumber || acc.bookingReference || acc.bookingUrl || acc.depositPaid || acc.freeCancelBy
 
   const [copyMode, setCopyMode] = useState(false)
   const [selectedDays, setSelectedDays] = useState<Set<number>>(new Set())
@@ -141,6 +141,7 @@ export function AccommodationDetailModal({
               <p className="text-xs font-semibold text-emerald-700 mb-1">訂房資訊</p>
               {acc.bookingPlatform && <Row label="訂房平台" value={acc.bookingPlatform} />}
               {acc.orderNumber && <Row label="訂單編號" value={acc.orderNumber} />}
+              {acc.bookingReference && <Row label="訂位代號" value={acc.bookingReference} />}
               {acc.depositPaid && <Row label="訂金" value={formatMoney(acc.depositPaid)} />}
               {acc.freeCancelBy && <Row label="最晚免費取消" value={acc.freeCancelBy} />}
               {acc.bookingUrl && (
