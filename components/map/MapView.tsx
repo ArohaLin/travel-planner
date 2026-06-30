@@ -160,9 +160,10 @@ function MapViewInner({ itinerary, itineraryId, selectedDays, onSelectedDaysChan
       for (const a of day.activities) {
         if (a.type === 'transport') continue // 港口用 buildDayPoints 內建座標，免 geocode
         // 候車卡（rest + boardingPairId）：geocode 出發車站，讓「家→出發站」開車路線正確出現
+        // 站名已含地名（如「新竹高鐵站」），不加 day.city（否則「新竹高鐵站 花蓮市」誤定位）
         if (a.type === 'rest' && a.boardingPairId) {
           const stationName = a.title.replace(/[候等]車$|轉乘候車$/, '').trim()
-          if (stationName) enqueue(dayIndex, a.id, a.location, undefined, stationName, day.city)
+          if (stationName) enqueue(dayIndex, a.id, a.location, undefined, stationName, undefined)
           continue
         }
         if (hasNoPlace(a)) continue // 無實體地點（rest 純動作/hasPlace=false）不需獨立座標

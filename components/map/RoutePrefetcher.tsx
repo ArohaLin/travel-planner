@@ -104,10 +104,11 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
             continue
           }
           // 候車卡（rest + boardingPairId）：geocode 出發車站，讓「家→出發站」開車路線正確出現
+          // 注意：站名（如「新竹高鐵站」）已含地名，不加 day.city（否則「新竹高鐵站 花蓮市」誤定位）
           if (a.type === 'rest' && a.boardingPairId) {
             const stationName = a.title.replace(/[候等]車$|轉乘候車$/, '').trim()
             if (stationName) {
-              enqueue(day.dayIndex, a.id, a.location, undefined, stationName, day.city || destination)
+              enqueue(day.dayIndex, a.id, a.location, undefined, stationName, undefined)
             }
             continue
           }
