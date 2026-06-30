@@ -98,8 +98,9 @@ export function RoutePrefetcher({ itinerary, itineraryId, onSaved }: Props) {
         for (const a of day.activities) {
           if (a.type === 'transport') {
             // 班次型交通卡（火車/高鐵/飛機）：geocode toLabel（到站地點）
+          // 站名已含地名（如「新竹高鐵站」、「花蓮車站」），不加 day.city 避免跨區行程誤定位
             if (a.boardingPairId && a.toLabel) {
-              enqueue(day.dayIndex, a.id, a.location, undefined, a.toLabel, day.city || destination)
+              enqueue(day.dayIndex, a.id, a.location, undefined, a.toLabel, undefined)
             }
             continue
           }
