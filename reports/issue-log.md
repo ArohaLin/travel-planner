@@ -538,10 +538,11 @@ summary: 各類 bug 的根本原因、修復方法與預防建議，供未來排
 
 **預防原則**：
 
-- **候車卡（departure station）的 title 已包含城市**（例「新竹高鐵站」、「台北車站」），
-  無需 region bias；加了 `day.city` 反而把花蓮等遠地城市附入 query，導致誤定位。
-- **一般景點** 的 title 通常只有景點名（「太魯閣」、「清水斷崖」）需要 `day.city` 才能定位正確；
-  候車卡是例外。
+- **候車卡與班次型交通卡的站名已含城市**（例「新竹高鐵站」、「台北車站」、「花蓮車站」），
+  無需 region bias；加了 `day.city` 反而把遠地城市附入 query，導致跨區行程誤定位。
+  → RoutePrefetcher 的 `transport（toLabel）` 與 `rest + boardingPairId（stationName）` 均改為 `regionBias = undefined`。
+- **一般景點** 的 title 通常只有景點名（「太魯閣」、「清水斷崖」），需要 `day.city` 才能正確定位；
+  站名是例外。
 - 修改 geocode region bias 規則時，確認 4 條管線一致（見附錄）。
 
 ---
