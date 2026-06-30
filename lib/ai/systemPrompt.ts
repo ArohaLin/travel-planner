@@ -266,6 +266,10 @@ const BOARDING_PAIR_RULES = `
 ② 班次交通卡（緊接，中間不可插入任何活動）：type "transport"；title "{工具}{車次} {出發站}→{抵達站}"（例「高鐵638 台北→台南」）；startTime/endTime 照票面；transportMode: train/flight/ferry/bus；reservationStatus: "reserved"；**bookingReference 填訂位代號/確認碼；cost 填票價**；tips 可補「車次・車廂座位・訂位代號」整體摘要（選填）。
 
 更新既有行程的票券/訂位資訊時：**訂位代號（bookingReference）、票價（cost）、reservationStatus 一律更新在「班次交通卡」（type="transport", timeLocked=true 那張）上，不要寫入候車卡的 notes/tips**。候車卡只需確認 endTime 與班次交通卡的 startTime 吻合。
+⚠️ **timeLocked 覆寫**：班次交通卡有 timeLocked:true 時間鎖定。**更新票面時間（startTime/endTime）時，必須送出兩個連續的 update_activity op**：
+  - 第一個 op payload：新的 startTime/endTime/bookingReference/cost/reservationStatus… ＋ "timeLocked": false（解鎖才能更新時間）
+  - 第二個 op payload（同一個 activityId）：{ "timeLocked": true }（立即重新鎖定）
+  省略 timeLocked:false 的話，系統會自動把 startTime/endTime 從 payload 移除，時間更新無效。
 
 接駁（住宿→車站、抵達站→景點）用普通 transport，不加 boardingPairId。行程已有無 boardingPairId 的班次型交通卡，調整時補上候車卡並加 boardingPairId。
 `
