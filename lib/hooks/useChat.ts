@@ -429,7 +429,10 @@ export function useChat(itineraryId: string): UseChatReturn {
       setLastPlans(null)
       setLastPlansMessageId(null)
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 150_000) // 150 秒 client timeout
+      // 伺服器 maxDuration=300 秒；client timeout 設在其之下（290 秒）僅作真正網路卡死的保底，
+      // 避免像先前設 150 秒那樣提早放棄——伺服器其實還在跑、最終仍會把方案寫進資料庫，
+      // 造成「顯示逾時錯誤，結果方案還是跑出來了」的矛盾體驗。
+      const timer = setTimeout(() => controller.abort(), 290_000)
       try {
         const res = await fetch('/api/ai/assistant', {
           method: 'POST',
@@ -443,7 +446,7 @@ export function useChat(itineraryId: string): UseChatReturn {
         return { ok: true }
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') {
-          return { ok: false, error: 'AI 分析時間過長，請稍後再試或換一張較清晰的照片' }
+          return { ok: false, error: 'AI 處理時間過長（超過 290 秒），請稍後再試一次；若稍後對話視窗仍自動出現方案，代表其實已處理完成，可直接使用' }
         }
         return { ok: false, error: '網路錯誤，請再試一次' }
       } finally {
