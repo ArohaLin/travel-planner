@@ -9,7 +9,7 @@ import { fetchUrlText, extractUrls } from '@/lib/ai/fetchUrl'
 import { isLocalAI, runLocalClaude } from '@/lib/ai/localClaude'
 import { sendPushToUser } from '@/lib/push/send'
 import { runAfterResponse } from '@/lib/push/waitUntil'
-import { MODEL_PRICING, computeCostUSD, usdToTwd, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
+import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, buildAIErrorMessage, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 
 export const maxDuration = 300
@@ -143,7 +143,21 @@ export async function POST(request: Request) {
     }
   } catch (e) {
     console.error('[assistant] AI 失敗:', String(e).slice(0, 200))
-    return NextResponse.json({ error: 'AI 暫時無回應，請稍後再試' }, { status: 502 })
+    const { code, meaning } = classifyError(e)
+    const errMessage = buildAIErrorMessage(code, meaning)
+    // 寫進對話視窗，讓使用者在聊天串裡就看得到問題與建議處理方式，不只靠 toast
+    await db.from('chat_messages').insert({
+      thread_id: threadId, role: 'assistant', content: errMessage,
+      patch: null, patch_status: 'none',
+    })
+    const errInfo: AIResultInfo = {
+      timestamp: new Date().toISOString(), scene: 'adjust',
+      provider: isLocalAI() ? 'local' : 'gemini',
+      model: isLocalAI() ? 'claude -p（本機訂閱制）' : MODEL_PRICING.gemini.label,
+      success: false, errorCode: code, errorMeaning: meaning,
+      usage, costUSD: null, costTWD: null, durationMs: Date.now() - startTs,
+    }
+    return NextResponse.json({ error: 'AI 暫時無回應，請稍後再試', aiInfo: errInfo }, { status: 502 })
   }
 
   const parsed = parseAssistantJson(text)

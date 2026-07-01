@@ -141,6 +141,25 @@ export function classifyError(err: unknown): { code: string; meaning: string } {
   return { code: 'UNKNOWN', meaning: ERROR_MEANINGS.UNKNOWN }
 }
 
+/** 依錯誤代碼組出「問題是什麼＋怎麼處理」的繁中訊息，供各 AI route 寫進對話視窗使用。 */
+export function buildAIErrorMessage(code: string, meaning: string): string {
+  switch (code) {
+    case '429':
+      return `⚠️ AI 額度已用完或請求過於頻繁（${meaning}）。\n\n建議：稍後再試（額度通常會在一段時間後重置），或請管理者確認 API 的額度／帳單設定。`
+    case '502':
+    case '503':
+    case '504':
+      return `⚠️ AI 服務目前暫時無法使用（${meaning}）。\n\n建議：稍等 1-2 分鐘後再試一次。`
+    case 'TIMEOUT':
+      return `⚠️ 這次處理逾時了。\n\n建議：內容簡化一些（例如照片改小張、文字改短），或稍後再試一次。`
+    case 'PARSE_ERROR':
+    case 'EMPTY':
+      return `⚠️ AI 有回應，但內容異常無法判讀（${meaning}）。\n\n建議：再試一次；若持續發生，可換個方式描述或分批處理。`
+    default:
+      return `⚠️ 這次請求發生未預期的錯誤（${meaning}）。\n\n建議：稍後再試一次；若持續發生，請透過「回報問題」讓我們知道。`
+  }
+}
+
 export function errorMeaning(code: string): string {
   return ERROR_MEANINGS[code] ?? '未知錯誤'
 }

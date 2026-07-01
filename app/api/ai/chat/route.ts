@@ -8,7 +8,7 @@ import { fetchUrlText, extractUrls } from '@/lib/ai/fetchUrl'
 import { sendPushToUser } from '@/lib/push/send'
 import { runAfterResponse } from '@/lib/push/waitUntil'
 import { getItineraryAccess } from '@/lib/auth/access'
-import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
+import { MODEL_PRICING, computeCostUSD, usdToTwd, classifyError, buildAIErrorMessage, type AIUsage, type AIResultInfo } from '@/lib/ai/pricing'
 import type { Itinerary } from '@/lib/types/itinerary'
 import type { AIPlan } from '@/lib/types/patch'
 import type { ModelProvider } from '@/lib/ai/client'
@@ -390,7 +390,12 @@ export async function POST(request: Request) {
       } catch (err) {
         console.error('[chat] Stream error:', err)
         streamError = String(err)
-        safeEnqueue('\n\n[發生錯誤，請再試一次]')
+        // 寫進對話視窗（不只 toast）：清楚說明問題與建議處理方式
+        const { code, meaning } = classifyError(err)
+        const errNote = buildAIErrorMessage(code, meaning)
+        const delta = fullResponse.trim() ? `\n\n${errNote}` : errNote
+        fullResponse += delta
+        safeEnqueue(delta)
       }
 
       // After stream ends: parse plans (adjust mode) or just save (consult mode)
