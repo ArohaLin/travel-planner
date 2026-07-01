@@ -45,6 +45,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
     transitCities: metadata.transitCities ?? [],
     preferredTransport: metadata.preferredTransport ?? [],
     memberProfiles: metadata.memberProfiles ?? ([] as MemberProfile[]),
+    userNotes: metadata.userNotes ?? '',
     aiMemory: metadata.aiMemory ?? '',
   })
 
@@ -60,6 +61,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
       transitCities: metadata.transitCities ?? [],
       preferredTransport: metadata.preferredTransport ?? [],
       memberProfiles: metadata.memberProfiles ?? [],
+      userNotes: metadata.userNotes ?? '',
       aiMemory: metadata.aiMemory ?? '',
     })
     setEditing(true)
@@ -107,6 +109,7 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
         transitCities: form.transitCities.length > 0 ? form.transitCities : undefined,
         preferredTransport: form.preferredTransport.length > 0 ? form.preferredTransport : undefined,
         memberProfiles: form.memberProfiles.some((m) => m.age || m.gender) ? form.memberProfiles : undefined,
+        userNotes: form.userNotes.trim() || undefined,
         aiMemory: form.aiMemory.trim() || undefined,
       }
 
@@ -250,13 +253,27 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
             </InfoRow>
           )}
 
-          {/* AI 記憶（#15）*/}
+          {/* 人工補充（#48）：使用者親手寫、AI 唯讀，優先於 AI 記憶 */}
+          {metadata.userNotes && metadata.userNotes.trim() && (
+            <div className="pt-2 mt-1 border-t border-gray-50">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <span className="text-sm">📌</span>
+                <span className="text-xs font-medium text-amber-600">人工補充</span>
+                <span className="text-[10px] text-gray-400">（你親自寫的固定須知，AI 只會遵守、不會改動）</span>
+              </div>
+              <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-amber-50/60 rounded-xl px-3 py-2">
+                {metadata.userNotes}
+              </p>
+            </div>
+          )}
+
+          {/* AI 記憶（#15；#48 收斂為只存偏好）*/}
           {metadata.aiMemory && metadata.aiMemory.trim() && (
             <div className="pt-2 mt-1 border-t border-gray-50">
               <div className="flex items-center gap-1.5 mb-1.5">
                 <span className="text-sm">🧠</span>
                 <span className="text-xs font-medium text-purple-600">AI 記憶</span>
-                <span className="text-[10px] text-gray-400">（AI 會在每次討論時參考，可點編輯修改）</span>
+                <span className="text-[10px] text-gray-400">（只存偏好，AI 每次討論自動維護，可手動編輯）</span>
               </div>
               <p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-purple-50/50 rounded-xl px-3 py-2">
                 {metadata.aiMemory}
@@ -436,11 +453,26 @@ export function TripInfoCard({ metadata, itineraryId, canEdit, onMetadataUpdated
           </div>
         )}
 
-        {/* AI 記憶（#15）*/}
+        {/* 人工補充（#48）：使用者親手維護、AI 唯讀，放「一定要／一定不要」的具體安排 */}
         <div>
-          <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1">
+          <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1 flex-wrap">
+            📌 人工補充
+            <span className="text-[10px] text-gray-400 font-normal">（你親自寫、AI 只會遵守不會改動；放「一定要／一定不要」的具體安排）</span>
+          </label>
+          <textarea
+            value={form.userNotes}
+            onChange={(e) => setForm((p) => ({ ...p, userNotes: e.target.value }))}
+            rows={4}
+            placeholder="例：・第2晚一定要住海景房　・絕對不要安排水上活動（怕水）　・回程班機 18:30，當天下午請預留時間別排太滿"
+            className="w-full border border-amber-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/30"
+          />
+        </div>
+
+        {/* AI 記憶（#15；#48 收斂為只存偏好）*/}
+        <div>
+          <label className="text-xs font-medium text-gray-500 block mb-1 flex items-center gap-1 flex-wrap">
             🧠 AI 記憶
-            <span className="text-[10px] text-gray-400 font-normal">（AI 每次討論會參考並自動更新；你也可手動編輯）</span>
+            <span className="text-[10px] text-gray-400 font-normal">（只存偏好，AI 每次討論自動維護；具體「一定要／一定不要」請寫上面人工補充）</span>
           </label>
           <textarea
             value={form.aiMemory}

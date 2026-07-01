@@ -51,7 +51,7 @@ const METADATA_LABELS: Record<string, string> = {
   title: '行程名稱', startDate: '出發日期', endDate: '回程日期',
   originCity: '出發城市', returnCity: '返回城市', transitCities: '中途城市',
   preferredTransport: '交通方式', travelers: '出行人數', memberProfiles: '成員資訊',
-  aiMemory: 'AI 記憶', totalBudget: '預算', destination: '目的地',
+  aiMemory: 'AI 記憶', userNotes: '人工補充', totalBudget: '預算', destination: '目的地',
 }
 
 /** 比較整天活動陣列（以 id 配對），算出新增/刪除/時間變更/欄位變更 */

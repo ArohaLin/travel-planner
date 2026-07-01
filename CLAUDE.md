@@ -172,6 +172,14 @@ npm run dev        # 開發伺服器 http://localhost:3000
 - **前端**：`lib/hooks/useWeather.ts`（SWR）、`components/weather/WeatherChip.tsx`（座標取當天首個有座標景點，否則住宿；預報=實心晶片、歷年=虛線+「歷年」標籤；emoji 圖示見 `lib/weather/display.ts`）、`WeatherDetailSheet.tsx`（含浮動 X；預報顯示早午晚+日出日落+體感；歷年顯示統計+颱風季提醒）。掛在 `DayView` 頂部。
 - **誠實處理**：歷年標清楚「非預報」，夏季(6–10月)加颱風季提醒。
 
+### ✅ AI 記憶／人工補充分家（2026-07-01，問題#48）
+解決「手動刪掉的活動，下次請 AI 調整又被加回來」的反覆困擾（見 `reports/issue-log.md` A-3）。**根因是職責重疊**：`aiMemory` 同時記抽象偏好與具體行程，而手動編輯不同步記憶 → 兩份漂移 → AI 把記憶當權威補回舊項目。拆成兩塊：
+- **人工補充 `metadata.userNotes`**（新欄位）：使用者親手寫、**AI 唯讀不可改**，放「一定要／一定不要」的具體安排；只有使用者能改故不漂移。加框段落 `buildUserNotesSection()`（唯讀・最高優先）。
+- **AI 記憶 `metadata.aiMemory`**（收斂）：AI 可讀寫，但**只存抽象偏好、嚴禁存具體行程**。`buildMemorySection()` recap 禁止「因記憶提到偏好就把具體景點加回」；`MEMORY_UPDATE_TAG_RULES`／各模式 JSON `memory` 欄位要求更新時只留偏好、清掉具體條目。
+- `forPrompt` 把 `aiMemory`/`userNotes` 從 `<current_itinerary>` JSON 剝除，AI 只從加框段落讀（不會讀到未加框的舊具體記憶當資料）。四模式（adjust/gemini/consult/assistant，assistant 唯讀不寫回）皆驗證。
+- **UI**：`TripInfoCard` 讀取顯示＋編輯表單各加一塊（人工補充＝琥珀色、AI 記憶＝紫色）。
+- ⚠️ **遺留**：上線前既有 `aiMemory` 可能仍含舊具體條目（如台東行程的朝日溫泉），需一次性清理或待 AI 依新規則自清。
+
 ---
 
 ## 專案結構（重點檔案）

@@ -7,8 +7,13 @@ import type { Itinerary } from '@/lib/types/itinerary'
  * 這些留著只會膨脹 prompt、也可能讓 AI 誤改。
  */
 function forPrompt(itinerary: Itinerary): Itinerary {
+  // aiMemory / userNotes 不放進 JSON blob——它們各自有專屬的框架段落（AI 記憶／人工補充），
+  // 避免 AI 從原始 JSON 讀到未加框的記憶字串、把裡面的具體行程誤當成「該存在的資料」。
+  const { aiMemory, userNotes, ...metaRest } = itinerary.metadata
+  void aiMemory; void userNotes
   return {
     ...itinerary,
+    metadata: metaRest as Itinerary['metadata'],
     days: itinerary.days.map((d) => {
       const { travelLegs, routePolyline, travelSig, ...rest } = d
       void travelLegs
@@ -182,32 +187,60 @@ ${items.join('\n')}
 }
 
 /**
- * 行程專屬 AI 記憶 recap + 更新指示（#15）。
- * 放在 prompt 開頭，讓 AI 每次討論前先讀取記憶；並要求在回應結尾輸出
- * <memory>更新後的記憶</memory>，由後端解析後存回 metadata.aiMemory。
+ * 人工補充（#48）：使用者親手維護的固定須知——「一定要／一定不要」的具體行程安排。
+ * AI 只能唯讀、絕不可修改，是最高優先的使用者意志來源。無內容回傳空字串。
+ * 與 aiMemory 徹底分工：具體行程決定放這裡（不漂移，因為只有使用者能改）；
+ * aiMemory 只存抽象偏好（AI 可自動更新）。這樣「AI 把手動刪掉的東西又加回來」在結構上不會發生。
+ */
+function buildUserNotesSection(itinerary: Itinerary): string {
+  const notes = itinerary.metadata.userNotes?.trim()
+  if (!notes) return ''
+  return `
+## 📌 使用者人工補充（唯讀・最高優先）
+以下是使用者「親手寫下」的固定須知，代表這趟行程明確「一定要」或「一定不要」的安排，優先於一切推測：
+<user_notes>
+${notes}
+</user_notes>
+- **只能讀、絕對不能改寫或刪除**，也**不要把它抄進 AI 記憶**（兩者是分開維護的不同東西）。
+- 寫「一定要 X」→ 調整時務必保留／確保 X；若目前行程缺了它，可主動補上或明確提醒使用者。
+- 寫「一定不要 Y」→ 任何情況都不得加入 Y。
+- 若使用者「這次的訊息」與這裡的須知衝突，以這次訊息為準，並提醒使用者可自行更新人工補充。
+`
+}
+
+/**
+ * 行程專屬 AI 記憶 recap（#15；#48 收斂為「只存偏好」）。
+ * 只 recap「抽象偏好」，明確禁止具體行程——避免記憶與手動編輯漂移後，
+ * 被 AI 誤當成「該補回行程的清單」。更新指示見 MEMORY_UPDATE_TAG_RULES（標籤模式）或各模式的 JSON memory 欄位說明。
  */
 function buildMemorySection(itinerary: Itinerary): string {
   const mem = itinerary.metadata.aiMemory?.trim()
   return `
-## 🧠 行程專屬記憶（每次討論前必讀）
-
+## 🧠 AI 記憶（只存偏好・每次討論前必讀）
 ${mem
-  ? `這是先前與使用者討論累積的重點（喜好、厭惡、特別需求），請務必遵守：\n<trip_memory>\n${mem}\n</trip_memory>`
+  ? `先前累積的「抽象偏好與限制」（口味、步調、預算、禁忌、同行者特性等）：\n<trip_memory>\n${mem}\n</trip_memory>`
   : '（目前尚無記憶內容）'}
 
-⚠️ **記憶不是「行程必須包含這些活動」的檢查清單**：記憶只用來輔助判斷偏好與風格（例如「不吃辣」「喜歡慢步調」），**不代表這些活動現在一定要出現在行程裡**。
-- 若記憶提到的某個景點/活動/住宿，在 <current_itinerary> 目前的實際內容中已經找不到對應 → **代表使用者事後手動移除或改變心意**，這是既定事實。除非使用者**這次的訊息明確要求「加回」「恢復」「補回」該項目**，否則一律視為使用者不要它，**絕對不要主動把它加回行程**——即使記憶裡把它描述成「已確認的決定」也一樣；記憶只反映「當時」的決定，不代表使用者現在還要。
-- 這條規則在「整天重構」「重新整理」這類大範圍改寫時**更要注意**：重構時只根據目前實際存在的活動做整理與時間校正，不要用記憶「補回」目前行程沒有的項目。
-
-**記憶更新規則（必須遵守）**：
-- 在你的回應「最後」，輸出一段 <memory>...</memory>，內容是「更新後的完整記憶」（不是只有新增的部分）。
-- 把這次討論中浮現的喜好、厭惡、特別需求、已確認的決定整併進去，用簡短條列（每條一行，以「・」開頭）。
-- **記憶只記「與行程內容有關」的事**（使用者的偏好、需求、約定好的安排）。**嚴禁記錄一次性操作狀態**——例如「已修正偏緊/不足段落」「已調整 N 處時間」「已依建議預留修正」這類處理紀錄與系統警示狀態，它們與行程無關；若既有記憶中已有這類條目，這次輸出時直接刪除。
-- **自我清理**：若某條記憶描述的活動/安排，在 <current_itinerary> 目前的行程中已經找不到對應（代表已被使用者移除），且這次也沒有使用者要求恢復 → 這次輸出記憶時直接刪除這條，避免記憶內容與實際行程長期不同步、之後又被誤當成「該補回的東西」。
-- 若這次沒有新資訊，就原樣輸出既有記憶。記憶請精簡（最多約 10 條），保留最重要的。
-- <memory> 區塊放在所有其他輸出（包含 <plans>）之後。
+⚠️ **AI 記憶只用來輔助判斷偏好與風格，不是「行程必須包含哪些活動」的清單**：
+- 只放抽象偏好：如「不吃辣／素食」「不要太早起」「預算偏緊」「偏好自駕」「小孩會暈車、長輩走不快」。
+- **絕對不要**因為記憶提到某個偏好，就主動把某個具體景點／活動／住宿加進或加回行程。
+- 使用者若真有「一定要／一定不要」的**具體**安排，會寫在上面的「📌 人工補充」，以那裡為準；AI 記憶不負責記具體行程。
 `
 }
+
+/**
+ * AI 記憶「更新指示」（標籤模式：adjust／consult／minimax 用）。
+ * 收斂為只存偏好、禁存具體行程，避免再次漂移。
+ */
+const MEMORY_UPDATE_TAG_RULES = `
+**AI 記憶更新規則（必須遵守）**：
+- 在你的回應「最後」，輸出一段 <memory>...</memory>，內容是「更新後的完整記憶」（不是只有新增的部分）。
+- **只整併「抽象偏好」**：這次浮現的口味、步調、預算、禁忌、交通偏好、同行者特性等，用簡短條列（每條一行、以「・」開頭、最多約 8 條）。
+- **嚴禁寫入具體行程**：不可記「第X天去某景點」「某晚住某民宿」「幾點做什麼」；不可記一次性操作狀態（如「已修正偏緊段落」「已調整N處時間」）。若既有記憶中有這類條目，這次輸出時**直接刪掉**。
+- 具體的「一定要／一定不要」屬於使用者的「人工補充」，不要複製進來。
+- 若這次沒有新的偏好資訊，就原樣輸出既有記憶（並把不符規則的舊條目清掉）。
+- <memory> 區塊放在所有其他輸出（包含 <plans>）之後。
+`
 
 const PATCH_SCHEMA_DOCS = `
 ## ItineraryPatch JSON Schema
@@ -322,7 +355,7 @@ export function buildAdjustPromptMinimax(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
+${buildUserNotesSection(itinerary)}${buildMemorySection(itinerary)}${MEMORY_UPDATE_TAG_RULES}${buildTravelTimeSection(itinerary)}
 == CRITICAL OUTPUT FORMAT REQUIREMENT ==
 
 You MUST output EXACTLY 1 best adjustment plan using the <plans> XML tag.
@@ -412,7 +445,7 @@ export function buildAdjustPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}
+${buildUserNotesSection(itinerary)}${buildMemorySection(itinerary)}${MEMORY_UPDATE_TAG_RULES}${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}
 ## 核心規則
 
 1. **永遠以繁體中文回覆**
@@ -556,19 +589,12 @@ ${PATCH_SCHEMA_DOCS}
  * 永遠只輸出 1 個最佳方案
  */
 export function buildAdjustPromptGemini(itinerary: Itinerary): string {
-  const mem = itinerary.metadata.aiMemory?.trim()
-
   return `你是一位專業的繁體中文旅遊規劃助手。請根據使用者需求調整以下行程：
 
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}
-## 🧠 行程專屬記憶（每次討論前必讀）
-${mem
-  ? `先前與使用者累積的重點（喜好、厭惡、特別需求），務必遵守：\n<trip_memory>\n${mem}\n</trip_memory>`
-  : '（目前尚無記憶內容）'}
-
+${buildLockedActivitiesSection(itinerary)}${buildTravelTimeSection(itinerary)}${buildUserNotesSection(itinerary)}${buildMemorySection(itinerary)}
 == 輸出格式（最重要）==
 **只輸出「一個 JSON 物件」**——不要任何 <plans>/<patch>/<memory> 標籤、不要 markdown code fence、不要 JSON 物件以外的任何文字。結構如下：
 {
@@ -590,7 +616,7 @@ ${mem
       }
     }
   ],
-  "memory": "更新後的完整記憶：把這次浮現的喜好/厭惡/需求/已確認決定整併進去，每條一行以「・」開頭、最多約10條；只記與行程內容有關的事，嚴禁記一次性操作狀態（如『已修正偏緊段落』『已調整N處時間』）；這次無新資訊就原樣輸出既有記憶；完全沒有則給空字串 \"\""
+  "memory": "更新後的完整 AI 記憶：只整併『抽象偏好』（口味/步調/預算/禁忌/交通偏好/同行者特性），每條一行以「・」開頭、最多約8條；嚴禁寫入具體行程（如『第X天去某景點』『某晚住某民宿』『幾點做什麼』）或一次性操作狀態（如『已修正偏緊段落』『已調整N處時間』），既有記憶若有這類條目一律刪除；具體的『一定要/一定不要』屬於使用者人工補充、不要抄進來；這次無新偏好就原樣輸出既有記憶（清掉不符規則的舊條目）；完全沒有則給空字串 \"\""
 }
 
 == 硬性規則 ==
@@ -658,7 +684,7 @@ export function buildConsultPrompt(itinerary: Itinerary): string {
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildTravelTimeSection(itinerary)}
+${buildUserNotesSection(itinerary)}${buildMemorySection(itinerary)}${MEMORY_UPDATE_TAG_RULES}${buildTravelTimeSection(itinerary)}
 ## 重要限制
 
 1. **你只能提供建議、資訊和諮詢，不能修改行程**
@@ -701,13 +727,14 @@ export function buildConsultPromptLocal(itinerary: Itinerary): string {
       return `Day ${d.dayIndex + 1}（${d.city}${d.theme ? '・' + d.theme : ''}）：${acts || '—'}${acc}`
     })
     .join('\n')
-  const mem = m.aiMemory?.trim() ? `\n使用者偏好/記憶：${m.aiMemory.trim()}\n` : ''
+  const mem = m.aiMemory?.trim() ? `\nAI 記憶（偏好）：${m.aiMemory.trim()}\n` : ''
+  const notes = m.userNotes?.trim() ? `\n使用者人工補充（一定要／一定不要，最高優先）：${m.userNotes.trim()}\n` : ''
 
   return `你是一位專業的繁體中文旅遊顧問，為以下這趟旅程提供建議與諮詢。
 
 行程：${m.title}｜目的地 ${m.destination}｜${itinerary.days.length} 天 ${nights} 夜｜${m.travelers} 人
 ${dayLines}
-${mem}
+${notes}${mem}
 規則：
 - 你只提供建議、資訊與諮詢，不能修改行程；嚴禁輸出 <patch>、<plans> 或任何 JSON。
 - 一定要針對使用者的問題具體回答（不要只打招呼）。
@@ -732,7 +759,7 @@ export function buildAssistantPrompt(itinerary: Itinerary, opts?: { lockedActivi
 <current_itinerary>
 ${JSON.stringify(forPrompt(itinerary), null, 2)}
 </current_itinerary>
-${buildMemorySection(itinerary)}${buildAssistantLockedSection(itinerary)}${lock}
+${buildUserNotesSection(itinerary)}${buildMemorySection(itinerary)}${buildAssistantLockedSection(itinerary)}${lock}
 
 == 你的任務（依序）==
 1. **看懂**：判斷使用者給的是什麼（訂房/門票/交通票確認、店家招牌或菜單照、景點照、地圖或部落格連結、純文字安排…）。

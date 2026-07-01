@@ -236,8 +236,10 @@ export const TripMetadataSchema = z.object({
   currency: z.string().length(3),
   totalBudget: MoneySchema.optional(),
   style: z.array(z.string()).optional(),
-  /** 行程專屬 AI 記憶：記錄與 AI 討論過的喜好、厭惡、特別需求；AI 每次對話前 recap，使用者也可手動編輯 */
+  /** 行程專屬 AI 記憶：只存「抽象偏好」（口味/步調/預算/禁忌/同行者特性）；AI 每次對話前 recap 並可自動更新。禁存具體行程（見 userNotes） */
   aiMemory: z.string().optional(),
+  /** 人工補充：使用者親手寫的固定須知（一定要／一定不要的具體行程安排等）。AI 只能唯讀、不可修改；優先於 aiMemory */
+  userNotes: z.string().optional(),
   language: z.literal('zh-TW'),
 })
 
